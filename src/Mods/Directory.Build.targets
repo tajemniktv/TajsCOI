@@ -28,7 +28,7 @@
 
         <PropertyGroup>
             <_GitCommitCandidate Condition="'$(_GitExitCode)' == '0'">$([System.String]::Copy('$(_GitCommitOutput)').Trim())</_GitCommitCandidate>
-            <_GitCommit Condition="'$(_GitExitCode)' == '0' and $([System.Text.RegularExpressions.Regex]::IsMatch('$(_GitCommitCandidate)', '^[0-9a-fA-F]{12}$'))">$(_GitCommitCandidate)</_GitCommit>
+            <_GitCommit Condition="'$(_GitExitCode)' == '0' and $([System.Text.RegularExpressions.Regex]::IsMatch('$(_GitCommitCandidate)', '^[0-9a-fA-F]{12,64}$'))">$(_GitCommitCandidate)</_GitCommit>
         </PropertyGroup>
 
         <ItemGroup>
