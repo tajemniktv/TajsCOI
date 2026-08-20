@@ -30,7 +30,7 @@ public sealed class UnlockedSpeedService
 
         if (!SimLoopAccess.CanSetRequestedSpeed)
             Log.Error(
-                "TajsTweaks/UnlockedSpeed: SimSpeedMult setter/backing field was not found. " +
+                "TajsTweaks/UnlockedSpeed: Required SimLoopEvents speed/adaptive-mode interop was not found. " +
                 "The game probably changed its simulation internals.");
     }
 
