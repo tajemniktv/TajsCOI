@@ -52,7 +52,12 @@ internal static class SimLoopAccess
             return false;
         }
 
-        if (SimSpeedSetter is null && SimSpeedBackingField is null)
+        Action<SimLoopEvents, int> setRequestedSpeed;
+        if (SimSpeedSetter is { } speedSetter)
+            setRequestedSpeed = (loop, value) => speedSetter.Invoke(loop, [value]);
+        else if (SimSpeedBackingField is { } speedBackingField)
+            setRequestedSpeed = (loop, value) => speedBackingField.SetValue(loop, value);
+        else
         {
             error = "SimSpeedMult setter/backing field was not found.";
             return false;
@@ -61,16 +66,7 @@ internal static class SimLoopAccess
         try
         {
             AdaptiveModeSetter.Invoke(simLoop, [SimAdaptiveSpeedMode.Uncapped]);
-
-            if (SimSpeedSetter is not null)
-                SimSpeedSetter.Invoke(simLoop, [speed]);
-            else if (SimSpeedBackingField is not null)
-                SimSpeedBackingField.SetValue(simLoop, speed);
-            else
-            {
-                error = "SimSpeedMult setter/backing field became unavailable.";
-                return false;
-            }
+            setRequestedSpeed(simLoop, speed);
 
             error = string.Empty;
             return true;
