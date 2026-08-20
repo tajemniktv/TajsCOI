@@ -19,9 +19,6 @@ namespace TajsTweaks.Features.UnlockedSpeed;
 [GlobalDependency(RegistrationMode.AsSelf)]
 public sealed class UnlockedSpeedService
 {
-    private const string MaxSpeedConfigKey = "unlocked_speed_max";
-    private const int DefaultMaxSpeed = 100;
-
     private readonly SimLoopEvents _simLoop;
 
     public UnlockedSpeedService(SimLoopEvents simLoop)
@@ -34,8 +31,7 @@ public sealed class UnlockedSpeedService
                 "The game probably changed its simulation internals.");
     }
 
-    private static int MaxSpeed =>
-        TajsTweaksMod.Current?.JsonConfig.GetInt(MaxSpeedConfigKey) ?? DefaultMaxSpeed;
+    private static int MaxSpeed => UnlockedSpeedSettings.MaxSpeed;
 
     [ConsoleCommand(
         documentation: "Sets requested simulation speed without the vanilla 20x limit.",
