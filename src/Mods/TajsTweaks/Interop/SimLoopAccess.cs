@@ -36,23 +36,31 @@ internal static class SimLoopAccess
     private static readonly MethodInfo? AdaptiveModeSetter =
         AdaptiveModeProperty?.GetSetMethod(true);
 
-    internal static bool CanSetRequestedSpeed => SimSpeedSetter is not null || SimSpeedBackingField is not null;
+    internal static bool CanSetRequestedSpeed =>
+        AdaptiveModeSetter is not null && (SimSpeedSetter is not null || SimSpeedBackingField is not null);
 
     internal static bool TrySetRequestedSpeedUncapped(SimLoopEvents simLoop, int speed, out string error)
     {
+        if (AdaptiveModeSetter is null)
+        {
+            error = "AdaptiveSimSpeedMode setter was not found.";
+            return false;
+        }
+
+        if (SimSpeedSetter is null && SimSpeedBackingField is null)
+        {
+            error = "SimSpeedMult setter/backing field was not found.";
+            return false;
+        }
+
         try
         {
-            AdaptiveModeSetter?.Invoke(simLoop, [SimAdaptiveSpeedMode.Uncapped]);
+            AdaptiveModeSetter.Invoke(simLoop, [SimAdaptiveSpeedMode.Uncapped]);
 
             if (SimSpeedSetter is not null)
                 SimSpeedSetter.Invoke(simLoop, [speed]);
-            else if (SimSpeedBackingField is not null)
-                SimSpeedBackingField.SetValue(simLoop, speed);
             else
-            {
-                error = "SimSpeedMult setter/backing field was not found.";
-                return false;
-            }
+                SimSpeedBackingField!.SetValue(simLoop, speed);
 
             error = string.Empty;
             return true;
