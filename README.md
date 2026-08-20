@@ -40,7 +40,7 @@ Build in Rider, or run:
 .\build.ps1
 ```
 
-Each successful Debug or Release build automatically deploys the live mod to:
+By default (`DeployToModsFolder=true`), each successful Debug or Release build deploys the live mod to:
 
 ```text
 %APPDATA%\Captain of Industry\Mods\TajsTweaks
@@ -117,7 +117,7 @@ On build they are used for:
 
 ## Release ZIP
 
-A Release build additionally creates:
+By default, when live deployment is enabled (`DeployToModsFolder=true`) and `CreateReleaseZip=true`, a Release build additionally creates:
 
 ```text
 %APPDATA%\Captain of Industry\Mods\TajsTweaks_<version>.zip
