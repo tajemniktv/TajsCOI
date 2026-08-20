@@ -11,6 +11,47 @@
                Text="Captain of Industry assemblies were not found at '$(COIManagedDir)'. Set COI_ROOT or edit src\Mods\Directory.Build.props."/>
     </Target>
 
+    <!-- Attach useful build provenance to the assembly without CodeTaskFactory. -->
+    <Target Name="CollectBuildMetadata"
+            BeforeTargets="GenerateAssemblyInfo"
+            Condition="'$(IsCoiMod)' == 'true'">
+        <PropertyGroup>
+            <_BuildTimestampUtc>$([System.DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))</_BuildTimestampUtc>
+        </PropertyGroup>
+
+        <Exec Command="git -C &quot;$(MSBuildProjectDirectory)&quot; rev-parse --short=12 HEAD"
+              ConsoleToMSBuild="true"
+              IgnoreExitCode="true">
+            <Output TaskParameter="ConsoleOutput" ItemName="_GitCommitOutput"/>
+        </Exec>
+
+        <PropertyGroup>
+            <_GitCommit>@(_GitCommitOutput)</_GitCommit>
+            <_GitCommit Condition="'$(_GitCommit)' == ''">unknown</_GitCommit>
+        </PropertyGroup>
+
+        <ItemGroup>
+            <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+                <_Parameter1>ModVersion</_Parameter1>
+                <_Parameter2>$(ModVersion)</_Parameter2>
+            </AssemblyAttribute>
+            <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+                <_Parameter1>BuildConfiguration</_Parameter1>
+                <_Parameter2>$(Configuration)</_Parameter2>
+            </AssemblyAttribute>
+            <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+                <_Parameter1>BuildTimestampUtc</_Parameter1>
+                <_Parameter2>$(_BuildTimestampUtc)</_Parameter2>
+            </AssemblyAttribute>
+            <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+                <_Parameter1>GitCommit</_Parameter1>
+                <_Parameter2>$(_GitCommit)</_Parameter2>
+            </AssemblyAttribute>
+        </ItemGroup>
+
+        <Message Text="Build metadata: $(ModVersion) | $(Configuration) | git $(_GitCommit) | $(_BuildTimestampUtc)" Importance="High"/>
+    </Target>
+
     <!-- Generate manifest.json from the same properties used for assembly metadata. -->
     <Target Name="GenerateCoiManifest"
             BeforeTargets="BeforeBuild"
