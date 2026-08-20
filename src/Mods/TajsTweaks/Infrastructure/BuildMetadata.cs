@@ -4,6 +4,7 @@
 
 #region
 
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -15,12 +16,14 @@ namespace TajsTweaks.Infrastructure;
 
 internal static class BuildMetadata
 {
+    private const string Unknown = "unknown";
+
     private static readonly Assembly Assembly = typeof(BuildMetadata).Assembly;
 
-    internal static string Version => Get("ModVersion", Assembly.GetName().Version?.ToString() ?? "unknown");
+    internal static string Version => Get("ModVersion", Assembly.GetName().Version?.ToString() ?? Unknown);
     internal static string Configuration => Get("BuildConfiguration");
     internal static string GitCommit => Get("GitCommit");
-    internal static string BuildTimestampUtc { get; private set; } = "unknown";
+    internal static string BuildTimestampUtc { get; private set; } = Unknown;
 
     internal static void Initialize(ModManifest manifest)
     {
@@ -30,15 +33,16 @@ internal static class BuildMetadata
             var assemblyPath = Path.Combine(manifest.RootDirectoryPath, assemblyName + ".dll");
 
             if (File.Exists(assemblyPath))
-                BuildTimestampUtc = File.GetLastWriteTimeUtc(assemblyPath).ToString("yyyy-MM-ddTHH:mm:ssZ");
+                BuildTimestampUtc = File.GetLastWriteTimeUtc(assemblyPath)
+                    .ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
         }
         catch
         {
-            BuildTimestampUtc = "unknown";
+            BuildTimestampUtc = Unknown;
         }
     }
 
-    private static string Get(string key, string fallback = "unknown")
+    private static string Get(string key, string fallback = Unknown)
     {
         return Assembly
                    .GetCustomAttributes<AssemblyMetadataAttribute>()
