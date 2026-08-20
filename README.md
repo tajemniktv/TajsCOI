@@ -1,131 +1,196 @@
 # TajsCOI - Taj's mods for Captain of Industry
 
-A fresh attempt at modding Coi.
+A Rider-first workspace for Captain of Industry mods.
 
-## Naming/layout
+## Layout
 
-- Mods live in `src/Mods/<ModName>/`
+- Mods live in `src/Mods/<ModName>/`.
+- Shared CoI build/deploy plumbing lives in `src/Mods/Directory.Build.*`.
+- Unity projects stay outside `src/Mods/` so Unity-generated projects do not inherit the normal mod build settings.
 
-This keeps generic CoI tooling separate from in-game mod names.
+## Tajs Tweaks
 
-## Features
-
-### Taj's Tweaks
-
-`tajs_tweaks_info`
-
-It prints out basic info (whether the mod is loaded) and the game speed.
+### Console commands
 
 `set_game_speed_unlocked 30`
 
-Sets the game speed to 30, bypassing the artificial 20 limit
+Sets the requested simulation speed while bypassing the vanilla 20x validation.
 
-## Adding another mod
+`get_game_speed_unlocked`
 
-Create:
+Shows the current requested speed and configured maximum.
 
-`src/Mods/TajsSomething/TajsSomething.csproj`
+`tajs_tweaks_info`
 
-with:
+Shows mod version, Debug/Release configuration, Git commit, build timestamp, loaded `Mafi.Core` assembly version, requested simulation speed and whether the private speed interop is available.
 
-```xml
+### Configuration
 
-<Project Sdk="Microsoft.NET.Sdk">
-    <PropertyGroup>
-        <IsCoiMod>true</IsCoiMod>
-        <ModId>TajsSomething</ModId>
-        <AssemblyName>TajsSomething</AssemblyName>
-        <RootNamespace>TajsSomething</RootNamespace>
-        <Version>0.1.0</Version>
-    </PropertyGroup>
-</Project>
+`src/Mods/TajsTweaks/config.json` currently exposes:
+
+- `unlocked_speed_max` - maximum value accepted by `set_game_speed_unlocked` (default 100, configurable from 20 to 500).
+
+The command reads the current config value each time it runs.
+
+## Normal development loop
+
+Build in Rider, or run:
+
+```powershell
+.\build.ps1
 ```
 
-Add its `manifest.json`, then add the project to `TajsCOI.slnx`.
+Each successful Debug or Release build automatically deploys the live mod to:
 
-It automatically inherits:
-
-- net48
-- current CoI DLL locations
-- Rider/dotnet-compatible framework references
-- automatic mod deployment
-- validation of the CoI installation
-
-## Adding more game/Unity assemblies
-
-The starter deliberately references only:
-
-- Mafi.dll
-- Mafi.Core.dll
-- Mafi.Base.dll
-
-When a mod actually needs UI/Unity APIs, add only the specific references it uses (for example `Mafi.Unity.dll` plus required `UnityEngine.*` modules). Keeping those optional avoids dragging half of Unity into every tiny mod.
-
-## Unity
-
-When I eventually rename/create a dedicated Unity project, eg `src/TajsCOI.Unity`, a mod can opt into automatic AssetBundle deployment by adding this to its `.csproj`:
-
-```xml
-
-<AssetBundlesSource>$(MSBuildProjectDirectory)\..\..\TajsCOI.Unity\AssetBundles</AssetBundlesSource>
+```text
+%APPDATA%\Captain of Industry\Mods\TajsTweaks
 ```
 
-## Versioning
+Build and launch CoI in one command:
 
-Versions in these files have to be kept in sync manually:
+```powershell
+.\build-and-run.ps1
+```
 
-- `TajsTweaks.csproj`
-- `manifest.json`
+Release build and launch:
 
-### One source of truth
+```powershell
+.\build-and-run.ps1 -Configuration Release
+```
 
-Edit these values in:
+The mod is a DLL, so it does not need a Rider `.NET` Run/Debug configuration. If desired, point a Rider PowerShell/Shell Script configuration at `build-and-run.ps1`.
+
+## Log helper
+
+Follow the newest CoI log and show TajsTweaks/warnings/errors by default:
+
+```powershell
+.\tail-log.ps1
+```
+
+Show every line:
+
+```powershell
+.\tail-log.ps1 -All
+```
+
+Custom filter:
+
+```powershell
+.\tail-log.ps1 -Pattern "TajsTweaks|Path|Simulation"
+```
+
+## Build provenance
+
+Every mod build records these values in .NET assembly metadata:
+
+- mod version
+- build configuration
+- UTC build timestamp
+- current Git commit (12-character SHA, or `unknown` when Git is unavailable)
+
+`tajs_tweaks_info` reads those values from the loaded DLL, which makes it much easier to tell which build is actually running.
+
+No `CodeTaskFactory` or Visual-Studio-only manifest task is used.
+
+## Versioning / manifest
+
+The project properties are the source of truth:
 
 `src/Mods/TajsTweaks/TajsTweaks.csproj`
 
 ```xml
-
 <ModVersion>0.1.0</ModVersion>
 <ModDisplayName>Tajs Tweaks</ModDisplayName>
 <ModDescription>...</ModDescription>
-<ModAuthor>Taj</ModAuthor>
+<ModAuthor>TajemnikTV</ModAuthor>
 <MinGameVersion>0.8.7</MinGameVersion>
 <MaxVerifiedGameVersion>0.8.7</MaxVerifiedGameVersion>
 ```
 
-On build, they are used for:
+On build they are used for:
 
 - .NET assembly metadata
 - generated `manifest.json`
 - deploy messages
-- Release package file name
+- Release package filename
 
-So there is no longer a csproj/manifest version to keep manually synchronized.
-
-### Unity DLL sync
-
-Each build copies the latest DLL, PDB and XML docs to:
-
-`src/ExampleMod.Unity/Assets/DLLs`
-
-### Live deployment
-
-Every Debug or Release build deploys the mod to:
-
-`%APPDATA%\Captain of Industry\Mods\TajsTweaks`
-
-Disable for one build with:
-
-`dotnet build -p:DeployToModsFolder=false`
-
-### Release ZIP
+## Release ZIP
 
 A Release build additionally creates:
 
-`%APPDATA%\Captain of Industry\Mods\TajsTweaks_0.1.0.zip`
+```text
+%APPDATA%\Captain of Industry\Mods\TajsTweaks_<version>.zip
+```
 
-The ZIP contains the mod directory as its root, matching the convenient distribution pattern used by MaFi's ExampleMod.
+The game itself loads the deployed folder. The ZIP is a distribution/archive artifact.
 
-Disable it with:
+Disable ZIP creation for a build with:
 
-`dotnet build -c Release -p:CreateReleaseZip=false`
+```powershell
+dotnet build -c Release -p:CreateReleaseZip=false
+```
+
+Disable live deployment with:
+
+```powershell
+dotnet build -p:DeployToModsFolder=false
+```
+
+## Private API / interop
+
+Private or reflection-based game access belongs under `src/Mods/TajsTweaks/Interop/` rather than inside individual features.
+
+For example, unlocked speed uses `Interop/SimLoopAccess.cs`. If MaFi changes `SimSpeedMult` internals in a future update, that compatibility seam should be the first place to fix instead of hunting reflection code across the mod.
+
+## Adding another mod
+
+Create `src/Mods/TajsSomething/TajsSomething.csproj`:
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <IsCoiMod>true</IsCoiMod>
+        <ModId>TajsSomething</ModId>
+        <ModVersion>0.1.0</ModVersion>
+        <ModDisplayName>Tajs Something</ModDisplayName>
+        <ModDescription>Description here.</ModDescription>
+        <ModAuthor>TajemnikTV</ModAuthor>
+        <MinGameVersion>0.8.7</MinGameVersion>
+        <MaxVerifiedGameVersion>0.8.7</MaxVerifiedGameVersion>
+        <AssemblyName>$(ModId)</AssemblyName>
+        <RootNamespace>TajsSomething</RootNamespace>
+    </PropertyGroup>
+</Project>
+```
+
+Then add the project to `TajsCOI.slnx`.
+
+It inherits:
+
+- `net48`
+- CoI DLL paths from `COI_ROOT`
+- Rider/dotnet-compatible framework references
+- build provenance metadata
+- generated manifest
+- automatic live deployment
+- Release ZIP packaging
+- CoI installation validation
+
+## Adding more game / Unity assemblies
+
+Shared projects currently reference only:
+
+- `Mafi.dll`
+- `Mafi.Core.dll`
+- `Mafi.Base.dll`
+
+When a feature actually needs UI/Unity APIs, add only the specific references it needs, such as `Mafi.Unity.dll` and the relevant `UnityEngine.*` modules.
+
+## Unity
+
+When a dedicated Unity project exists (for example `src/TajsCOI.Unity`), a mod can opt into AssetBundle deployment with:
+
+```xml
+<AssetBundlesSource>$(UnityProjectDir)\AssetBundles</AssetBundlesSource>
+```
