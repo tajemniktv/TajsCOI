@@ -1,0 +1,15 @@
+﻿{
+  "id": "TajsTweaks",
+  "version": "0.1.0",
+  "display_name": "Taj's Tweaks",
+  "description_short": "Quality-of-life and simulation tweaks for Captain of Industry.",
+  "authors": "TajemnikTV",
+  "primary_dlls": [
+    "TajsTweaks.dll"
+  ],
+  "min_game_version": "0.8.7",
+  "max_verified_game_version": "0.8.7",
+  "non_locking_dll_load": true,
+  "can_add_to_saved_game": true,
+  "can_remove_from_saved_game": true
+}

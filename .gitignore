@@ -1,0 +1,27 @@
+# C# / Rider / Visual Studio
+**/bin/
+**/obj/
+.idea/
+.vs/
+*.user
+*.suo
+*.log
+
+# Unity generated/cache
+**/Library/
+**/Temp/
+**/Logs/
+**/UserSettings/
+**/MemoryCaptures/
+
+# OS debris
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# Built/distribution artifacts
+Builds/
+artifacts/
+
+src/ExampleMod
+src/ExampleMod.Unity

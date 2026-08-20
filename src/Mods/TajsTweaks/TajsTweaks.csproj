@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <IsCoiMod>true</IsCoiMod>
+
+        <ModId>TajsTweaks</ModId>
+        <ModVersion>0.1.0</ModVersion>
+        <ModDisplayName>Tajs Tweaks</ModDisplayName>
+        <ModDescription>Quality-of-life and simulation tweaks for Captain of Industry.</ModDescription>
+        <ModAuthor>TajemnikTV</ModAuthor>
+        <MinGameVersion>0.8.7</MinGameVersion>
+        <MaxVerifiedGameVersion>0.8.7</MaxVerifiedGameVersion>
+
+        <AssemblyName>$(ModId)</AssemblyName>
+        <RootNamespace>TajsTweaks</RootNamespace>
+
+        <!--
+          TBD: move from ExampleMod.Unity to a dedicated TajsCOI.Unity project,
+          either change the shared UnityProjectDir in Directory.Build.props or
+          override it here.
+    
+          When custom bundles, uncomment and adjust:
+          <AssetBundlesSource>$(UnityProjectDir)\AssetBundles</AssetBundlesSource>
+        -->
+    </PropertyGroup>
+</Project>
