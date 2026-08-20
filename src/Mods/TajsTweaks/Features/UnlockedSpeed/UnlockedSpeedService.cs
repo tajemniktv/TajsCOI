@@ -1,3 +1,7 @@
+// Taj's Game | UnlockedSpeedService.cs
+// Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
+// All Rights Reserved.
+
 #region
 
 using System.Reflection;
@@ -59,12 +63,12 @@ public sealed class UnlockedSpeedService
         // intentionally throttle the requested multiplier.
         AdaptiveModeSetter?.Invoke(
             _mSimLoop,
-            new object[] { SimAdaptiveSpeedMode.Uncapped });
+            [SimAdaptiveSpeedMode.Uncapped]);
 
         // SimLoopEvents.SetSimSpeed() performs vanilla's 1..20 validation.
         // Its private SimSpeedMult setter does not, so invoke that directly.
         if (SimSpeedSetter is not null)
-            SimSpeedSetter.Invoke(_mSimLoop, new object[] { speed });
+            SimSpeedSetter.Invoke(_mSimLoop, [speed]);
         else if (SimSpeedBackingField is not null)
             SimSpeedBackingField.SetValue(_mSimLoop, speed);
         else
