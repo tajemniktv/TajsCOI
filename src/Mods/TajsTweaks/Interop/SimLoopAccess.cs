@@ -19,6 +19,10 @@ namespace TajsTweaks.Interop;
 /// </summary>
 internal static class SimLoopAccess
 {
+    // S3011 is intentionally suppressed only for this compatibility seam. The vanilla API
+    // hard-limits SetSimSpeed to 20x, so the unlocked-speed feature must reach fixed private
+    // SimLoopEvents members. No user-supplied type/member names are reflected here.
+#pragma warning disable S3011
     private static readonly BindingFlags InstanceFlags = Instance | Public | NonPublic;
 
     private static readonly PropertyInfo? SimSpeedProperty =
@@ -35,6 +39,7 @@ internal static class SimLoopAccess
 
     private static readonly MethodInfo? AdaptiveModeSetter =
         AdaptiveModeProperty?.GetSetMethod(true);
+#pragma warning restore S3011
 
     internal static bool CanSetRequestedSpeed =>
         AdaptiveModeSetter is not null && (SimSpeedSetter is not null || SimSpeedBackingField is not null);
@@ -59,8 +64,13 @@ internal static class SimLoopAccess
 
             if (SimSpeedSetter is not null)
                 SimSpeedSetter.Invoke(simLoop, [speed]);
+            else if (SimSpeedBackingField is not null)
+                SimSpeedBackingField.SetValue(simLoop, speed);
             else
-                SimSpeedBackingField!.SetValue(simLoop, speed);
+            {
+                error = "SimSpeedMult setter/backing field became unavailable.";
+                return false;
+            }
 
             error = string.Empty;
             return true;
