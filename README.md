@@ -86,7 +86,7 @@ The generated assembly metadata contains only stable values that should affect t
 
 - mod version
 - build configuration
-- current Git commit (12-character SHA, or `unknown` when Git is unavailable)
+- current Git commit (an abbreviated hexadecimal SHA of at least 12 characters, or `unknown` when Git is unavailable)
 
 `tajs_tweaks_info` additionally reports the deployed DLL's UTC last-write timestamp as the build-artifact timestamp. This avoids injecting the current clock time into generated `AssemblyInfo`, so a no-op build can remain incremental instead of recompiling the mod just because time continued to exist.
 
