@@ -22,7 +22,7 @@ Shows the current requested speed and configured maximum.
 
 `tajs_tweaks_info`
 
-Shows mod version, Debug/Release configuration, Git commit, build timestamp, loaded `Mafi.Core` assembly version, requested simulation speed and whether the private speed interop is available.
+Shows mod version, Debug/Release configuration, Git commit, deployed DLL timestamp, loaded `Mafi.Core` assembly version, requested simulation speed and whether the private speed interop is available.
 
 ### Configuration
 
@@ -30,7 +30,7 @@ Shows mod version, Debug/Release configuration, Git commit, build timestamp, loa
 
 - `unlocked_speed_max` - maximum value accepted by `set_game_speed_unlocked` (default 100, configurable from 20 to 500).
 
-The command reads the current config value each time it runs.
+The active value is updated when the setting changes and is clamped to 20-500 before use, so manually edited/out-of-range config data cannot expand the command beyond the declared limits.
 
 ## Normal development loop
 
@@ -82,14 +82,13 @@ Custom filter:
 
 ## Build provenance
 
-Every mod build records these values in .NET assembly metadata:
+The generated assembly metadata contains only stable values that should affect the binary:
 
 - mod version
 - build configuration
-- UTC build timestamp
 - current Git commit (12-character SHA, or `unknown` when Git is unavailable)
 
-`tajs_tweaks_info` reads those values from the loaded DLL, which makes it much easier to tell which build is actually running.
+`tajs_tweaks_info` additionally reports the deployed DLL's UTC last-write timestamp as the build-artifact timestamp. This avoids injecting the current clock time into generated `AssemblyInfo`, so a no-op build can remain incremental instead of recompiling the mod just because time continued to exist.
 
 No `CodeTaskFactory` or Visual-Studio-only manifest task is used.
 
