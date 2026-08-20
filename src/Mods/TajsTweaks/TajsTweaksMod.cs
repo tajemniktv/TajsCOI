@@ -7,6 +7,8 @@
 using Mafi;
 using Mafi.Collections;
 using Mafi.Core.Mods;
+using TajsTweaks.Features.UnlockedSpeed;
+using TajsTweaks.Infrastructure;
 
 #endregion
 
@@ -21,11 +23,20 @@ public sealed class TajsTweaksMod : DataOnlyMod
 {
     public TajsTweaksMod(ModManifest manifest) : base(manifest)
     {
+        BuildMetadata.Initialize(manifest);
         Log.Info("TajsTweaks: constructed");
     }
 
     public override void RegisterPrototypes(ProtoRegistrator registrator)
     {
+        var jsonConfig = JsonConfig;
+        UnlockedSpeedSettings.Update(jsonConfig.GetInt(UnlockedSpeedSettings.ConfigKey));
+        jsonConfig.OnValueChanged += paramName =>
+        {
+            if (paramName == UnlockedSpeedSettings.ConfigKey)
+                UnlockedSpeedSettings.Update(jsonConfig.GetInt(UnlockedSpeedSettings.ConfigKey));
+        };
+
         // Add prototype/data registration here as features are added.
         // Example: `registrator.RegisterData<MyMachineData>();`
     }
