@@ -19,8 +19,11 @@ namespace TajsTweaks;
 /// </summary>
 public sealed class TajsTweaksMod : DataOnlyMod
 {
+    internal static TajsTweaksMod? Current { get; private set; }
+
     public TajsTweaksMod(ModManifest manifest) : base(manifest)
     {
+        Current = this;
         Log.Info("TajsTweaks: constructed");
     }
 
