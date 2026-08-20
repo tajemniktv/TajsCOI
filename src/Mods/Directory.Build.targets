@@ -11,12 +11,11 @@
                Text="Captain of Industry assemblies were not found at '$(COIManagedDir)'. Set COI_ROOT or edit src\Mods\Directory.Build.props."/>
     </Target>
 
-    <!-- Attach useful build provenance to the assembly without CodeTaskFactory. -->
+    <!-- Attach stable build provenance to the assembly without CodeTaskFactory. -->
     <Target Name="CollectBuildMetadata"
             BeforeTargets="GenerateAssemblyInfo"
             Condition="'$(IsCoiMod)' == 'true'">
         <PropertyGroup>
-            <_BuildTimestampUtc>$([System.DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))</_BuildTimestampUtc>
             <_GitCommit>unknown</_GitCommit>
         </PropertyGroup>
 
@@ -42,16 +41,12 @@
                 <_Parameter2>$(Configuration)</_Parameter2>
             </AssemblyAttribute>
             <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
-                <_Parameter1>BuildTimestampUtc</_Parameter1>
-                <_Parameter2>$(_BuildTimestampUtc)</_Parameter2>
-            </AssemblyAttribute>
-            <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
                 <_Parameter1>GitCommit</_Parameter1>
                 <_Parameter2>$(_GitCommit)</_Parameter2>
             </AssemblyAttribute>
         </ItemGroup>
 
-        <Message Text="Build metadata: $(ModVersion) | $(Configuration) | git $(_GitCommit) | $(_BuildTimestampUtc)" Importance="High"/>
+        <Message Text="Build metadata: $(ModVersion) | $(Configuration) | git $(_GitCommit)" Importance="High"/>
     </Target>
 
     <!-- Generate manifest.json from the same properties used for assembly metadata. -->
