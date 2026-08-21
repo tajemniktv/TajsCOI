@@ -2033,7 +2033,9 @@ public sealed class DumpSearchDiagnosticsService
                 .Append(" ms; per-tower-cache=").Append(stats.PathTowerCacheCalls[i]).Append('/').Append(formatMilliseconds(stats.PathTowerCacheElapsedTicks[i]))
                 .Append(" ms avg=").Append(formatMicroseconds(averageTicks(stats.PathTowerCacheElapsedTicks[i], stats.PathTowerCacheCalls[i])))
                 .Append(" us max=").Append(formatMilliseconds(stats.PathTowerCacheMaxElapsedTicks[i]))
-                .Append(" ms; residual=").Append(formatMilliseconds(stats.PathResidualElapsedTicks[i])).Append(" ms");
+                .Append(" ms; residual total=").Append(formatMilliseconds(stats.PathResidualElapsedTicks[i]))
+                .Append(" ms avg=").Append(formatMicroseconds(averageTicks(stats.PathResidualElapsedTicks[i], calls)))
+                .Append(" us max=").Append(formatMilliseconds(stats.PathResidualMaxElapsedTicks[i])).Append(" ms");
         }
     }
 
