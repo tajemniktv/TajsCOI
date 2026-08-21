@@ -55,34 +55,27 @@
             Condition="'$(IsCoiMod)' == 'true'">
         <ItemGroup>
             <_ManifestLines Remove="@(_ManifestLines)"/>
-            <_ManifestLines Include="{"/>
             <!-- Keep this canonical layout stable: manifest.json is tracked and is also copied into release packages. -->
-            <!-- MSBuild trims leading whitespace in Item Include values, so sentinel tokens are restored below. -->
-            <_ManifestLines Include='__INDENT2__&quot;id&quot;:&quot;$(ModId)&quot;,'/>
-            <_ManifestLines Include='__INDENT2__&quot;version&quot;:&quot;$(ModVersion)&quot;,'/>
-            <_ManifestLines Include='__INDENT2__&quot;display_name&quot;:&quot;$(ModDisplayName)&quot;,'/>
-            <_ManifestLines Include='__INDENT2__&quot;description_short&quot;:&quot;$(ModDescription)&quot;,'/>
-            <_ManifestLines Include='__INDENT2__&quot;authors&quot;:&quot;$(ModAuthor)&quot;,'/>
-            <_ManifestLines Include='__INDENT2__&quot;primary_dlls&quot;:['/>
-            <_ManifestLines Include='__INDENT4__&quot;$(TargetFileName)&quot;'/>
-            <_ManifestLines Include='__INDENT2__],'/>
-            <_ManifestLines Include='__INDENT2__&quot;min_game_version&quot;:&quot;$(MinGameVersion)&quot;,'/>
-            <_ManifestLines Include='__INDENT2__&quot;max_verified_game_version&quot;:&quot;$(MaxVerifiedGameVersion)&quot;,'/>
-            <_ManifestLines Include='__INDENT2__&quot;non_locking_dll_load&quot;:true,'/>
-            <_ManifestLines Include='__INDENT2__&quot;can_add_to_saved_game&quot;:true,'/>
-            <_ManifestLines Include='__INDENT2__&quot;can_remove_from_saved_game&quot;:true'/>
-            <_ManifestLines Include="}"/>
-        </ItemGroup>
-
-        <ItemGroup>
-            <_ManifestLinesFormatted Remove="@(_ManifestLinesFormatted)"/>
-            <_ManifestLinesFormatted2 Remove="@(_ManifestLinesFormatted2)"/>
-            <_ManifestLinesFormatted Include="@(_ManifestLines->Replace('__INDENT2__','  '))"/>
-            <_ManifestLinesFormatted2 Include="@(_ManifestLinesFormatted->Replace('__INDENT4__','    '))"/>
+            <!-- Store the text as metadata because MSBuild trims leading whitespace in Item Include values. -->
+            <_ManifestLines Include="line01"><Text>{</Text></_ManifestLines>
+            <_ManifestLines Include="line02"><Text>  &quot;id&quot;:&quot;$(ModId)&quot;,</Text></_ManifestLines>
+            <_ManifestLines Include="line03"><Text>  &quot;version&quot;:&quot;$(ModVersion)&quot;,</Text></_ManifestLines>
+            <_ManifestLines Include="line04"><Text>  &quot;display_name&quot;:&quot;$(ModDisplayName)&quot;,</Text></_ManifestLines>
+            <_ManifestLines Include="line05"><Text>  &quot;description_short&quot;:&quot;$(ModDescription)&quot;,</Text></_ManifestLines>
+            <_ManifestLines Include="line06"><Text>  &quot;authors&quot;:&quot;$(ModAuthor)&quot;,</Text></_ManifestLines>
+            <_ManifestLines Include="line07"><Text>  &quot;primary_dlls&quot;:[</Text></_ManifestLines>
+            <_ManifestLines Include="line08"><Text>    &quot;$(TargetFileName)&quot;</Text></_ManifestLines>
+            <_ManifestLines Include="line09"><Text>  ],</Text></_ManifestLines>
+            <_ManifestLines Include="line10"><Text>  &quot;min_game_version&quot;:&quot;$(MinGameVersion)&quot;,</Text></_ManifestLines>
+            <_ManifestLines Include="line11"><Text>  &quot;max_verified_game_version&quot;:&quot;$(MaxVerifiedGameVersion)&quot;,</Text></_ManifestLines>
+            <_ManifestLines Include="line12"><Text>  &quot;non_locking_dll_load&quot;:true,</Text></_ManifestLines>
+            <_ManifestLines Include="line13"><Text>  &quot;can_add_to_saved_game&quot;:true,</Text></_ManifestLines>
+            <_ManifestLines Include="line14"><Text>  &quot;can_remove_from_saved_game&quot;:true</Text></_ManifestLines>
+            <_ManifestLines Include="line15"><Text>}</Text></_ManifestLines>
         </ItemGroup>
 
         <WriteLinesToFile File="$(MSBuildProjectDirectory)\manifest.json"
-                          Lines="@(_ManifestLinesFormatted2)"
+                          Lines="@(_ManifestLines->'%(Text)')"
                           Overwrite="true"
                           Encoding="UTF-8"/>
 
