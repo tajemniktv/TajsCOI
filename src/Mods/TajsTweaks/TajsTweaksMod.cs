@@ -7,7 +7,6 @@
 using Mafi;
 using Mafi.Collections;
 using Mafi.Core.Mods;
-using TajsTweaks.Features.DumpingPathfinding;
 using TajsTweaks.Features.UnlockedSpeed;
 using TajsTweaks.Infrastructure;
 
@@ -32,26 +31,12 @@ public sealed class TajsTweaksMod : DataOnlyMod
     {
         var jsonConfig = JsonConfig;
         UnlockedSpeedSettings.Update(jsonConfig.GetInt(UnlockedSpeedSettings.ConfigKey));
-        DumpingPathfindingGuardSettings.UpdatePerTruckLimit(
-            jsonConfig.GetInt(DumpingPathfindingGuardSettings.PerTruckConfigKey));
-        DumpingPathfindingGuardSettings.UpdateTotalLimit(
-            jsonConfig.GetInt(DumpingPathfindingGuardSettings.TotalConfigKey));
 
         jsonConfig.OnValueChanged += paramName =>
         {
             if (paramName == UnlockedSpeedSettings.ConfigKey)
             {
                 UnlockedSpeedSettings.Update(jsonConfig.GetInt(UnlockedSpeedSettings.ConfigKey));
-            }
-            else if (paramName == DumpingPathfindingGuardSettings.PerTruckConfigKey)
-            {
-                DumpingPathfindingGuardSettings.UpdatePerTruckLimit(
-                    jsonConfig.GetInt(DumpingPathfindingGuardSettings.PerTruckConfigKey));
-            }
-            else if (paramName == DumpingPathfindingGuardSettings.TotalConfigKey)
-            {
-                DumpingPathfindingGuardSettings.UpdateTotalLimit(
-                    jsonConfig.GetInt(DumpingPathfindingGuardSettings.TotalConfigKey));
             }
         };
 
