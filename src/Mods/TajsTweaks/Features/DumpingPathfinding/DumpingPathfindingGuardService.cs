@@ -177,7 +177,7 @@ public sealed class DumpingPathfindingGuardService
         TerrainDumpingManager __instance,
         Option<LooseProductProto> __1,
         Truck __2,
-        ref TerrainDesignation __4,
+        ref TerrainDesignation? __4,
         IIndexable<MineTower> __5,
         ref bool __result)
     {
@@ -204,7 +204,7 @@ public sealed class DumpingPathfindingGuardService
 
         // TryFind... has an out TerrainDesignation. When Harmony skips the original call we must
         // provide the same safe state that a normal false return would expose to its caller.
-        __4 = default;
+        __4 = null;
         __result = false;
         s_currentThrottled++;
         s_totalThrottled++;
