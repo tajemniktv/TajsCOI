@@ -1,4 +1,4 @@
-// Taj's Game | BuildMetadata.cs
+// Taj's COI Mods | BuildMetadata.cs
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 

@@ -1,4 +1,4 @@
-// Taj's Game | UnlockedSpeedService.cs
+// Taj's COI Mods | UnlockedSpeedService.cs
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 

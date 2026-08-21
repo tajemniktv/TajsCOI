@@ -1,4 +1,4 @@
-// Taj's Game | TajsTweaksMod.cs
+// Taj's COI Mods | TajsTweaksMod.cs
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 

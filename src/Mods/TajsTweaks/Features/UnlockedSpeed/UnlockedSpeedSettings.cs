@@ -1,4 +1,4 @@
-// Taj's Game | UnlockedSpeedSettings.cs
+// Taj's COI Mods | UnlockedSpeedSettings.cs
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
@@ -11,17 +11,15 @@ internal static class UnlockedSpeedSettings
     internal const int MinMaxSpeed = 20;
     internal const int MaxMaxSpeed = 500;
 
-    private static int _maxSpeed = DefaultMaxSpeed;
-
-    internal static int MaxSpeed => _maxSpeed;
+    internal static int MaxSpeed { get; private set; } = DefaultMaxSpeed;
 
     internal static void Update(int configuredValue)
     {
         if (configuredValue < MinMaxSpeed)
-            _maxSpeed = MinMaxSpeed;
+            MaxSpeed = MinMaxSpeed;
         else if (configuredValue > MaxMaxSpeed)
-            _maxSpeed = MaxMaxSpeed;
+            MaxSpeed = MaxMaxSpeed;
         else
-            _maxSpeed = configuredValue;
+            MaxSpeed = configuredValue;
     }
 }
