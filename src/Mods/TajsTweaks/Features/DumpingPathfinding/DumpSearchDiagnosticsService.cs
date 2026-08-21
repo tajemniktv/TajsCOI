@@ -70,9 +70,11 @@ public sealed class DumpSearchDiagnosticsService
         var snapshot = snapshotProductStats();
         snapshot.Sort(static (left, right) => right.Calls.CompareTo(left.Calls));
 
+        var completedCalls = s_totalTrueResults + s_totalFalseResults;
+        var incompleteCalls = Math.Max(0, s_totalCalls - completedCalls);
         var totalMs = stopwatchTicksToMilliseconds(s_totalElapsedTicks);
-        var avgUs = s_totalTrueResults + s_totalFalseResults > 0
-            ? stopwatchTicksToMicroseconds(s_totalElapsedTicks) / (s_totalTrueResults + s_totalFalseResults)
+        var avgUs = completedCalls > 0
+            ? stopwatchTicksToMicroseconds(s_totalElapsedTicks) / completedCalls
             : 0.0;
 
         var builder = new StringBuilder(768);
@@ -92,11 +94,13 @@ public sealed class DumpSearchDiagnosticsService
             .Append(s_totalGlobalCalls)
             .Append(", tower=")
             .Append(s_totalTowerCalls)
-            .Append("); returned true/false=")
+            .Append("); returned true/false/incomplete=")
             .Append(s_totalTrueResults)
             .Append('/')
             .Append(s_totalFalseResults)
-            .Append("; observed call time=")
+            .Append('/')
+            .Append(incompleteCalls)
+            .Append("; observed completed-call time=")
             .Append(totalMs.ToString("F2"))
             .Append(" ms, avg=")
             .Append(avgUs.ToString("F1"))
@@ -116,6 +120,7 @@ public sealed class DumpSearchDiagnosticsService
         {
             var stats = snapshot[i];
             var completed = stats.TrueResults + stats.FalseResults;
+            var incomplete = Math.Max(0, stats.Calls - completed);
             var productAvgUs = completed > 0
                 ? stopwatchTicksToMicroseconds(stats.ElapsedTicks) / completed
                 : 0.0;
@@ -128,10 +133,12 @@ public sealed class DumpSearchDiagnosticsService
                 .Append(stats.GlobalCalls)
                 .Append(", tower=")
                 .Append(stats.TowerCalls)
-                .Append("), true/false=")
+                .Append("), true/false/incomplete=")
                 .Append(stats.TrueResults)
                 .Append('/')
                 .Append(stats.FalseResults)
+                .Append('/')
+                .Append(incomplete)
                 .Append(", time=")
                 .Append(stopwatchTicksToMilliseconds(stats.ElapsedTicks).ToString("F2"))
                 .Append(" ms, avg=")
@@ -144,7 +151,7 @@ public sealed class DumpSearchDiagnosticsService
         if (snapshot.Count > count)
             builder.Append("\n  ... ").Append(snapshot.Count - count).Append(" more product(s) omitted.");
 
-        builder.Append("\nNote: returned false includes any call intentionally short-circuited by the separate dumping guard; compare tajs_dump_pf_stats for throttle totals.");
+        builder.Append("\nNote: returned false includes any call intentionally short-circuited by the separate dumping guard; compare tajs_dump_pf_stats for throttle totals. Incomplete calls entered the diagnostic prefix but did not reach its postfix, usually because another patch or the original call threw.");
         return builder.ToString();
     }
 
@@ -153,8 +160,14 @@ public sealed class DumpSearchDiagnosticsService
         customCommandName: "tajs_dump_search_stats_reset")]
     public string ResetStats()
     {
+        // Do not Clear() this dictionary: the simulation hot path deliberately performs an unlocked
+        // fast lookup. Product keys are a tiny, bounded set after prototype registration, so keeping
+        // the structure stable makes console-side resets safe without adding a lock to every search.
         lock (s_productStatsLock)
-            s_productStats.Clear();
+        {
+            foreach (var stats in s_productStats.Values)
+                stats.Reset();
+        }
 
         s_totalCalls = 0;
         s_totalGlobalCalls = 0;
@@ -411,5 +424,16 @@ public sealed class DumpSearchDiagnosticsService
         public long FalseResults;
         public long ElapsedTicks;
         public long MaxElapsedTicks;
+
+        public void Reset()
+        {
+            Calls = 0;
+            GlobalCalls = 0;
+            TowerCalls = 0;
+            TrueResults = 0;
+            FalseResults = 0;
+            ElapsedTicks = 0;
+            MaxElapsedTicks = 0;
+        }
     }
 }
