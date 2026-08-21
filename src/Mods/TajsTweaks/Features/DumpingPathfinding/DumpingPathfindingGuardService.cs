@@ -217,26 +217,48 @@ public sealed class DumpingPathfindingGuardService
         IIndexable<MineTower> towersToEnforce)
     {
         // The target method does not know whether its caller is specifically a storage export.
-        // The safe shared signature of the reproduced bug is narrower and observable here:
-        // this is a tower-enforced search and the product is forbidden by the global dumping filter.
+        // The reproduced pathological state that is observable here is narrower:
+        // the search is tower-enforced, at least one enforced tower accepts the product locally,
+        // and that same product is forbidden by the global dumping filter.
         if (towersToEnforce.Count == 0)
             return false;
 
         var product = s_looseProductOptionValueField?.GetValue(productOption) as LooseProductProto;
-        if (product is null)
+        if (product is null || !anyTowerAcceptsDumpOf(towersToEnforce, product))
             return false;
 
         if (dumpingManager.ProductsAllowedToDump is not IEnumerable<LooseProductProto> globallyAllowedProducts)
             return false;
 
-        foreach (var globallyAllowedProduct in globallyAllowedProducts)
+        return !containsProduct(globallyAllowedProducts, product);
+    }
+
+    private static bool anyTowerAcceptsDumpOf(IIndexable<MineTower> towers, LooseProductProto product)
+    {
+        for (var i = 0; i < towers.Count; i++)
         {
-            if (ReferenceEquals(globallyAllowedProduct, product) ||
-                EqualityComparer<LooseProductProto>.Default.Equals(globallyAllowedProduct, product))
-                return false;
+            if (towers[i].CanAcceptDumpOf(product))
+                return true;
         }
 
-        return true;
+        return false;
+    }
+
+    private static bool containsProduct(IEnumerable<LooseProductProto> products, LooseProductProto product)
+    {
+        // This method runs inside an already-hot simulation search path. Keep the early-exit loop
+        // instead of LINQ's Where/Any delegate pipeline to avoid adding per-call iterator/delegate
+        // overhead merely to satisfy the generic S3267 maintainability preference.
+#pragma warning disable S3267
+        foreach (var candidate in products)
+        {
+            if (ReferenceEquals(candidate, product) ||
+                EqualityComparer<LooseProductProto>.Default.Equals(candidate, product))
+                return true;
+        }
+#pragma warning restore S3267
+
+        return false;
     }
 
     private static void beforePathFindingEnqueue()
