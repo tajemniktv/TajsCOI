@@ -785,6 +785,7 @@ public sealed class DumpSearchDiagnosticsService
         var previousContext = s_currentSearchContext;
         try
         {
+            serviceProfileDeadlineAtSearchBoundary();
             var product = __1.ValueOrNull;
             var path = classifySearch(__instance, product, __5);
             var caller = s_currentCaller;
@@ -1092,6 +1093,20 @@ public sealed class DumpSearchDiagnosticsService
         {
             logOnce(ref s_profileErrorLogged, "timed dump profile deadline handling", ex);
         }
+    }
+
+    private static void serviceProfileDeadlineAtSearchBoundary()
+    {
+        if ((ProfileState)Volatile.Read(ref s_profileState) != ProfileState.Recording)
+            return;
+
+        var active = Volatile.Read(ref s_activeProfile);
+        if (active is null || Stopwatch.GetTimestamp() < active.RecordingEndTimestamp)
+            return;
+
+        // Finalize before admitting a search that starts after the recording window.
+        // The normal pathfinding-tick hook remains the fallback when no search arrives.
+        serviceProfileDeadline();
     }
 
     private static ProfileSnapshot finishProfileLocked(long now)
@@ -1861,6 +1876,7 @@ public sealed class DumpSearchDiagnosticsService
     private static ProfileSnapshot snapshotCurrentProfile(ProfileSession session, long actualRecordingTicks)
     {
         var products = snapshotProductStats();
+        products.Sort(static (left, right) => right.Calls.CompareTo(left.Calls));
         var completedCalls = read(ref s_totalTrueResults) + read(ref s_totalFalseResults);
         return new ProfileSnapshot(
             session,
