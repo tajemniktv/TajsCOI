@@ -18,6 +18,7 @@ using Mafi.Collections;
 using Mafi.Collections.ReadonlyCollections;
 using Mafi.Core.Buildings.Mine;
 using Mafi.Core.Console;
+using Mafi.Core.Entities.Dynamic;
 using Mafi.Core.PathFinding;
 using Mafi.Core.Products;
 using Mafi.Core.Terrain.Designation;
@@ -57,6 +58,7 @@ public sealed class DumpSearchDiagnosticsService
     private static readonly long[] s_pathCandidateCalls = new long[(int)SearchPath.Count];
     private static readonly long[] s_pathLatencyBuckets = new long[(int)SearchPath.Count * LatencyBucketCount];
     private static readonly long[] s_latencyBuckets = new long[LatencyBucketCount];
+    private static readonly SearchBreakdownStats s_breakdownStats = new();
     private static readonly object s_profileGate = new();
     private static readonly List<ProfileSnapshot> s_profileHistory = new(MaxProfileHistory);
 
@@ -67,6 +69,7 @@ public sealed class DumpSearchDiagnosticsService
     private static int s_pfEnqueuePatchApplied;
     private static int s_callerPatchCount;
     private static int s_cachePatchCount;
+    private static int s_breakdownPatchCount;
     private static int s_prefixErrorLogged;
     private static int s_postfixErrorLogged;
     private static int s_tickErrorLogged;
@@ -77,6 +80,10 @@ public sealed class DumpSearchDiagnosticsService
     private static int s_profileErrorLogged;
     private static int s_profileOutputErrorLogged;
     private static int s_residualAccountingErrorLogged;
+    private static int s_bestSelectionPrefixErrorLogged;
+    private static int s_bestSelectionPostfixErrorLogged;
+    private static int s_bestSelectionFinalizerErrorLogged;
+    private static int s_nearbyDiagnosticsErrorLogged;
 
     private static long s_totalCalls;
     private static long s_totalTrueResults;
@@ -140,12 +147,13 @@ public sealed class DumpSearchDiagnosticsService
     public string GetStats()
     {
         var snapshot = snapshotProductStats();
-        snapshot.Sort(static (left, right) => right.Calls.CompareTo(left.Calls));
+        sortProductSnapshots(snapshot);
 
         var pathCalls = snapshotCounters(s_pathCalls);
         var callerCalls = snapshotCounters(s_callerCalls);
         var pathCandidateDesignations = snapshotCounters(s_pathCandidateDesignations);
         var pathCandidateCalls = snapshotCounters(s_pathCandidateCalls);
+        var breakdown = s_breakdownStats.Snapshot();
 
         var totalCalls = read(ref s_totalCalls);
         var completedCalls = read(ref s_totalTrueResults) + read(ref s_totalFalseResults);
@@ -162,6 +170,8 @@ public sealed class DumpSearchDiagnosticsService
             .Append(readInt(ref s_tickBoundaryPatchApplied) != 0)
             .Append(", PF enqueue diagnostics=")
             .Append(readInt(ref s_pfEnqueuePatchApplied) != 0)
+            .Append(", breakdown patches=")
+            .Append(readInt(ref s_breakdownPatchCount))
             .Append("; calls current/last/peak=")
             .Append(read(ref s_currentCalls))
             .Append('/')
@@ -215,13 +225,25 @@ public sealed class DumpSearchDiagnosticsService
             .Append(formatMilliseconds(read(ref s_nestedResidualMaxElapsedTicks)))
             .Append(", accounting anomalies=")
             .Append(read(ref s_nestedResidualAccountingAnomalies))
-            .Append(", observed cache candidates total/searches/max=")
+            .Append(", raw eligible-cache candidates total/searches/max=")
             .Append(read(ref s_totalCandidateDesignations))
             .Append('/')
             .Append(read(ref s_observedCandidateCalls))
             .Append('/')
             .Append(read(ref s_maxCandidateDesignations))
-            .Append("\nPath observed cache candidates total/searches: ")
+            .Append("\nBreakdown: ")
+            .Append(formatStageSummary(breakdown))
+            .Append("\nBreakdown counts: final m_designationsCache total/searches/max=")
+            .Append(formatCountSummary(breakdown.FinalCandidateCount, breakdown.FinalCandidateCalls, breakdown.FinalCandidateMax))
+            .Append(", nearby scanned/accepted/added=")
+            .Append(breakdown.NearbyScanned).Append('/')
+            .Append(breakdown.NearbyAccepted).Append('/')
+            .Append(breakdown.NearbyAdded)
+            .Append(", nearby mode tower/global/unknown=")
+            .Append(breakdown.NearbyModeCalls[(int)NearbyMode.Tower]).Append('/')
+            .Append(breakdown.NearbyModeCalls[(int)NearbyMode.Global]).Append('/')
+            .Append(breakdown.NearbyModeCalls[(int)NearbyMode.Unknown])
+            .Append("\nPath raw eligible-cache candidates total/searches: ")
             .Append(formatCounterSummary(SearchPathNames, pathCandidateDesignations, pathCandidateCalls))
             .Append("\nPF enqueues current/last/peak/total=")
             .Append(read(ref s_currentPfEnqueues))
@@ -244,6 +266,7 @@ public sealed class DumpSearchDiagnosticsService
             .Append(" ms.")
             .Append("\nOuter latency buckets: ")
             .Append(formatLatencyBuckets(s_latencyBuckets));
+        appendPathBreakdown(builder, breakdown, pathCalls);
 
         var worstCall = Volatile.Read(ref s_worstCall);
         if (worstCall is not null)
@@ -274,7 +297,7 @@ public sealed class DumpSearchDiagnosticsService
                 .Append(formatCounterSummary(SearchPathNames, stats.PathCalls))
                 .Append("; callers=")
                 .Append(formatCounterSummary(SearchCallerNames, stats.CallerCalls))
-                .Append("; observed-cache-candidates total/cache-invocations=")
+                 .Append("; raw eligible-cache candidates total/cache-searches=")
                 .Append(stats.CandidateDesignations)
                 .Append('/')
                 .Append(stats.CandidateCalls)
@@ -305,11 +328,21 @@ public sealed class DumpSearchDiagnosticsService
                 .Append(" ms avg=")
                 .Append(formatMicroseconds(averageTicks(stats.TowerCacheElapsedTicks, stats.TowerCacheCalls)))
                 .Append(" us max=")
-                .Append(formatMilliseconds(stats.TowerCacheMaxElapsedTicks))
-                .Append(" ms; residual=")
-                .Append(formatMilliseconds(stats.ResidualElapsedTicks))
-                .Append(" ms, latency=")
-                .Append(formatLatencyBuckets(stats.LatencyBuckets));
+                 .Append(formatMilliseconds(stats.TowerCacheMaxElapsedTicks))
+                 .Append(" ms; residual=")
+                 .Append(formatMilliseconds(stats.ResidualElapsedTicks))
+                 .Append(" ms, latency=")
+                 .Append(formatLatencyBuckets(stats.LatencyBuckets));
+            builder.Append("; breakdown=").Append(formatStageSummary(stats.Breakdown));
+            builder.Append("; final-cache total/searches/max=").Append(formatCountSummary(stats.Breakdown.FinalCandidateCount, stats.Breakdown.FinalCandidateCalls, stats.Breakdown.FinalCandidateMax));
+            builder.Append("; nearby scanned/accepted/added=")
+                .Append(stats.Breakdown.NearbyScanned).Append('/')
+                .Append(stats.Breakdown.NearbyAccepted).Append('/')
+                .Append(stats.Breakdown.NearbyAdded)
+                .Append(" mode tower/global/unknown=")
+                .Append(stats.Breakdown.NearbyModeCalls[(int)NearbyMode.Tower]).Append('/')
+                .Append(stats.Breakdown.NearbyModeCalls[(int)NearbyMode.Global]).Append('/')
+                .Append(stats.Breakdown.NearbyModeCalls[(int)NearbyMode.Unknown]);
             appendProductPathMetrics(builder, stats);
         }
 
@@ -603,10 +636,11 @@ public sealed class DumpSearchDiagnosticsService
         patchPathFindingEnqueue(harmony);
         patchCallerMethods(harmony);
         patchCacheMethods(harmony);
+        patchBreakdownMethods(harmony);
 
         Log.Info(
             $"TajsTweaks: dump-search diagnostics active; functional limiter disabled, PF tick buckets={readInt(ref s_tickBoundaryPatchApplied) != 0}, " +
-            $"PF enqueue diagnostics={readInt(ref s_pfEnqueuePatchApplied) != 0}, caller patches={readInt(ref s_callerPatchCount)}, cache patches={readInt(ref s_cachePatchCount)}.");
+            $"PF enqueue diagnostics={readInt(ref s_pfEnqueuePatchApplied) != 0}, caller patches={readInt(ref s_callerPatchCount)}, cache patches={readInt(ref s_cachePatchCount)}, breakdown patches={readInt(ref s_breakdownPatchCount)}.");
     }
 
     private static void patchTickBoundary(Harmony harmony)
@@ -779,6 +813,7 @@ public sealed class DumpSearchDiagnosticsService
         TerrainDumpingManager __instance,
         Option<LooseProductProto> __1,
         IIndexable<MineTower>? __5,
+        Lyst<TerrainDesignation>? __7,
         out DumpSearchCallState __state)
     {
         __state = default;
@@ -797,7 +832,8 @@ public sealed class DumpSearchDiagnosticsService
                 stats,
                 path,
                 caller,
-                Stopwatch.GetTimestamp());
+                Stopwatch.GetTimestamp(),
+                __7);
             s_currentSearchContext = context;
             stats.RecordCallStart();
             Interlocked.Increment(ref s_totalCalls);
@@ -808,6 +844,67 @@ public sealed class DumpSearchDiagnosticsService
         {
             s_currentSearchContext = previousContext;
             logOnce(ref s_prefixErrorLogged, "dump-search diagnostics prefix", ex);
+        }
+    }
+
+    private static void patchBreakdownMethods(Harmony harmony)
+    {
+        var bestSelection = findInstanceMethod(
+            typeof(TerrainDesignationsManager),
+            "TryFindBestReadyToFulfill",
+            typeof(bool),
+            typeof(IEnumerable<TerrainDesignation>),
+            typeof(Tile2i),
+            typeof(Vehicle),
+            typeof(TerrainDesignation).MakeByRefType(),
+            typeof(Option<LooseProductProto>),
+            typeof(bool));
+        if (bestSelection is null)
+        {
+            logOptionalPatchFailure("TerrainDesignationsManager.TryFindBestReadyToFulfill was not found");
+        }
+        else
+        {
+            try
+            {
+                harmony.Patch(
+                    bestSelection,
+                    prefix: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(beforeBestReadyToFulfill)),
+                    postfix: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(afterBestReadyToFulfill)),
+                    finalizer: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(endBestReadyToFulfill)));
+                Interlocked.Increment(ref s_breakdownPatchCount);
+            }
+            catch (Exception ex)
+            {
+                logOptionalPatchFailure($"best-designation timing patch failed: {ex}");
+            }
+        }
+
+        var nearbyEligibility = findInstanceMethod(
+            typeof(TerrainDumpingManager),
+            "isEligibleAsNearbyFor",
+            typeof(bool),
+            typeof(TerrainDesignation),
+            typeof(TerrainDesignation),
+            typeof(bool));
+        if (nearbyEligibility is null)
+        {
+            logOptionalPatchFailure("TerrainDumpingManager.isEligibleAsNearbyFor was not found");
+        }
+        else
+        {
+            try
+            {
+                harmony.Patch(
+                    nearbyEligibility,
+                    prefix: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(beforeNearbyEligibility)),
+                    postfix: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(afterNearbyEligibility)));
+                Interlocked.Increment(ref s_breakdownPatchCount);
+            }
+            catch (Exception ex)
+            {
+                logOptionalPatchFailure($"nearby-designation diagnostics patch failed: {ex}");
+            }
         }
     }
 
@@ -860,6 +957,7 @@ public sealed class DumpSearchDiagnosticsService
         var candidateCalls = Volatile.Read(ref context.CandidateCalls);
         var cacheSummary = context.GetCacheSummary();
         var residualTicks = calculateResidualTicks(elapsedTicks, cacheSummary.TotalElapsedTicks);
+        var breakdown = context.CompleteBreakdown(elapsedTicks, cacheSummary.TotalElapsedTicks, context.StartTimestamp + elapsedTicks);
 
         context.Stats.RecordCompletion(
             path,
@@ -870,7 +968,9 @@ public sealed class DumpSearchDiagnosticsService
             candidateDesignations,
             candidateCalls,
             cacheSummary,
-            residualTicks);
+            residualTicks,
+            breakdown);
+        s_breakdownStats.Record(path, breakdown);
         Interlocked.Increment(ref s_pathCalls[(int)path]);
         Interlocked.Increment(ref s_callerCalls[(int)context.Caller]);
         Interlocked.Increment(ref s_latencyBuckets[getLatencyBucket(elapsedTicks)]);
@@ -947,6 +1047,7 @@ public sealed class DumpSearchDiagnosticsService
                 s_currentSearchContext,
                 isPerTower: false,
                 Stopwatch.GetTimestamp());
+            context.OuterSearch?.BeginEligibleCache(context.StartTimestamp, isPerTower: false);
             s_currentEligibleCacheContext = context;
             __state = new EligibleCacheCallState(context);
         }
@@ -973,6 +1074,7 @@ public sealed class DumpSearchDiagnosticsService
                 s_currentSearchContext,
                 isPerTower: true,
                 Stopwatch.GetTimestamp());
+            context.OuterSearch?.BeginEligibleCache(context.StartTimestamp, isPerTower: true);
             s_currentEligibleCacheContext = context;
             __state = new EligibleCacheCallState(context);
         }
@@ -1024,7 +1126,8 @@ public sealed class DumpSearchDiagnosticsService
 
         try
         {
-            var elapsedTicks = Math.Max(0, Stopwatch.GetTimestamp() - context.StartTimestamp);
+            var completedTimestamp = Stopwatch.GetTimestamp();
+            var elapsedTicks = Math.Max(0, completedTimestamp - context.StartTimestamp);
             if (context.IsPerTower)
             {
                 Interlocked.Increment(ref s_towerEligibleCacheCalls);
@@ -1053,6 +1156,7 @@ public sealed class DumpSearchDiagnosticsService
             }
 
             outer.RecordCandidateDesignations(hasResult ? candidateCount : 0);
+            outer.RecordEligibleCacheEnd(completedTimestamp);
         }
         catch (Exception ex)
         {
@@ -1060,6 +1164,74 @@ public sealed class DumpSearchDiagnosticsService
                 ref (context.IsPerTower ? ref s_towerCacheDiagnosticsErrorLogged : ref s_globalCacheDiagnosticsErrorLogged),
                 context.IsPerTower ? "per-tower eligible-cache diagnostics" : "global eligible-cache diagnostics",
                 ex);
+        }
+    }
+
+    private static void beforeBestReadyToFulfill(
+        IEnumerable<TerrainDesignation> __0,
+        out BestReadyToFulfillCallState __state)
+    {
+        __state = default;
+        var context = s_currentSearchContext;
+        if (context is null)
+            return;
+
+        try
+        {
+            var timestamp = Stopwatch.GetTimestamp();
+            var candidateCount = __0 is ICollectionWithCount counted ? counted.Count : -1;
+            context.BeginBestReadyToFulfill(timestamp, candidateCount);
+            __state = new BestReadyToFulfillCallState(context);
+        }
+        catch (Exception ex)
+        {
+            logOnce(ref s_bestSelectionPrefixErrorLogged, "best-designation diagnostics prefix", ex);
+        }
+    }
+
+    private static void afterBestReadyToFulfill(bool __result, BestReadyToFulfillCallState __state)
+    {
+        try
+        {
+            __state.Context?.CompleteBestReadyToFulfill(Stopwatch.GetTimestamp(), __result);
+        }
+        catch (Exception ex)
+        {
+            logOnce(ref s_bestSelectionPostfixErrorLogged, "best-designation diagnostics postfix", ex);
+        }
+    }
+
+    private static Exception? endBestReadyToFulfill(Exception? __exception, BestReadyToFulfillCallState __state)
+    {
+        if (__exception is not null)
+        {
+            try
+            {
+                __state.Context?.CompleteBestReadyToFulfill(Stopwatch.GetTimestamp(), result: false);
+            }
+            catch (Exception ex)
+            {
+                logOnce(ref s_bestSelectionFinalizerErrorLogged, "best-designation diagnostics finalizer", ex);
+            }
+        }
+
+        return __exception;
+    }
+
+    private static void beforeNearbyEligibility()
+    {
+        s_currentSearchContext?.RecordNearbyDesignationScanned();
+    }
+
+    private static void afterNearbyEligibility(bool __result)
+    {
+        try
+        {
+            s_currentSearchContext?.RecordNearbyDesignationResult(__result);
+        }
+        catch (Exception ex)
+        {
+            logOnce(ref s_nearbyDiagnosticsErrorLogged, "nearby-designation diagnostics", ex);
         }
     }
 
@@ -1208,6 +1380,15 @@ public sealed class DumpSearchDiagnosticsService
         return snapshot;
     }
 
+    private static void sortProductSnapshots(List<ProductSearchSnapshot> snapshots)
+    {
+        snapshots.Sort(static (left, right) =>
+        {
+            var calls = right.Calls.CompareTo(left.Calls);
+            return calls != 0 ? calls : string.CompareOrdinal(left.ProductId, right.ProductId);
+        });
+    }
+
     private static long[] snapshotCounters(long[] counters)
     {
         var snapshot = new long[counters.Length];
@@ -1215,6 +1396,12 @@ public sealed class DumpSearchDiagnosticsService
             snapshot[i] = Interlocked.Read(ref counters[i]);
 
         return snapshot;
+    }
+
+    private static void resetCounters(long[] counters)
+    {
+        for (var i = 0; i < counters.Length; i++)
+            Interlocked.Exchange(ref counters[i], 0);
     }
 
     private static void resetAllStats()
@@ -1237,6 +1424,7 @@ public sealed class DumpSearchDiagnosticsService
     {
         foreach (var stats in s_productStats.Values)
             stats.Reset();
+        s_breakdownStats.Reset();
 
         Interlocked.Exchange(ref s_totalCalls, 0);
         Interlocked.Exchange(ref s_totalTrueResults, 0);
@@ -1422,6 +1610,33 @@ public sealed class DumpSearchDiagnosticsService
         "explicit-tower-global-forbidden-rejected",
     };
 
+    private enum SearchStage
+    {
+        PreSelection,
+        CandidateFiltering,
+        BestReadyToFulfill,
+        NearbyExpansion,
+        Unaccounted,
+        Count,
+    }
+
+    private static readonly string[] SearchStageNames =
+    {
+        "pre-selection",
+        "candidate-filtering",
+        "TryFindBestReadyToFulfill",
+        "nearby-expansion",
+        "unaccounted",
+    };
+
+    private enum NearbyMode
+    {
+        Unknown,
+        Global,
+        Tower,
+        Count,
+    }
+
     private static readonly string[] LatencyBucketNames =
     {
         "<0.1ms",
@@ -1482,6 +1697,16 @@ public sealed class DumpSearchDiagnosticsService
         public EligibleCacheDiagnosticContext? Context { get; }
     }
 
+    private readonly struct BestReadyToFulfillCallState
+    {
+        public BestReadyToFulfillCallState(SearchDiagnosticContext? context)
+        {
+            Context = context;
+        }
+
+        public SearchDiagnosticContext? Context { get; }
+    }
+
     private sealed class EligibleCacheDiagnosticContext
     {
         public EligibleCacheDiagnosticContext(
@@ -1510,13 +1735,20 @@ public sealed class DumpSearchDiagnosticsService
             ProductSearchStats stats,
             SearchPath path,
             SearchCaller caller,
-            long startTimestamp)
+            long startTimestamp,
+            Lyst<TerrainDesignation>? nearbyDesignations)
         {
             Previous = previous;
             Stats = stats;
             Path = path;
             Caller = caller;
             StartTimestamp = startTimestamp;
+            NearbyDesignations = nearbyDesignations;
+            NearbyDesignationsInitialCount = nearbyDesignations?.Count ?? -1;
+            NearbyMode = path == SearchPath.GlobalAllowed ? NearbyMode.Global :
+                path is SearchPath.ExplicitTower or SearchPath.ExplicitTowerGlobalForbiddenRejected
+                    ? NearbyMode.Tower
+                    : NearbyMode.Unknown;
         }
 
         public SearchDiagnosticContext? Previous { get; }
@@ -1524,6 +1756,8 @@ public sealed class DumpSearchDiagnosticsService
         public SearchPath Path { get; private set; }
         public SearchCaller Caller { get; }
         public long StartTimestamp { get; }
+        public Lyst<TerrainDesignation>? NearbyDesignations { get; }
+        public int NearbyDesignationsInitialCount { get; }
         public long CandidateDesignations;
         public int CandidateCalls;
         public long GlobalCacheElapsedTicks;
@@ -1533,6 +1767,126 @@ public sealed class DumpSearchDiagnosticsService
         public int GlobalCacheCalls;
         public int TowerCacheCalls;
         public int CompletionRecorded;
+        public long PreSelectionElapsedTicks;
+        public long CandidateFilteringElapsedTicks;
+        public long BestReadyToFulfillElapsedTicks;
+        public long NearbyExpansionElapsedTicks;
+        public long UnaccountedElapsedTicks;
+        public int BestReadyToFulfillCalls;
+        public int CandidateFilteringCalls;
+        public int BestReadyToFulfillCompletionRecorded;
+        public int FinalCandidateCount = -1;
+        public int FinalCandidateCountCalls;
+        public int NearbyScanned;
+        public int NearbyAccepted;
+        public NearbyMode NearbyMode;
+        public long NearbyExpansionCalls;
+        public long NearbyAdded;
+        public long LastEligibleCacheEndTimestamp;
+        public long FirstEligibleCacheStartTimestamp;
+        public long BestReadyToFulfillStartTimestamp;
+        public long BestReadyToFulfillEndTimestamp;
+        public bool BestReadyToFulfillResult;
+
+        public void BeginEligibleCache(long timestamp, bool isPerTower)
+        {
+            if (FirstEligibleCacheStartTimestamp == 0)
+            {
+                FirstEligibleCacheStartTimestamp = timestamp;
+                PreSelectionElapsedTicks = Math.Max(0, timestamp - StartTimestamp);
+            }
+            else if (LastEligibleCacheEndTimestamp != 0)
+            {
+                CandidateFilteringElapsedTicks += Math.Max(0, timestamp - LastEligibleCacheEndTimestamp);
+                CandidateFilteringCalls = 1;
+            }
+
+            NearbyMode = isPerTower ? NearbyMode.Tower : NearbyMode.Global;
+        }
+
+        public void RecordEligibleCacheEnd(long timestamp)
+        {
+            LastEligibleCacheEndTimestamp = timestamp;
+        }
+
+        public void BeginBestReadyToFulfill(long timestamp, int candidateCount)
+        {
+            if (LastEligibleCacheEndTimestamp != 0)
+            {
+                CandidateFilteringElapsedTicks += Math.Max(0, timestamp - LastEligibleCacheEndTimestamp);
+                CandidateFilteringCalls = 1;
+            }
+            else if (FirstEligibleCacheStartTimestamp == 0)
+                PreSelectionElapsedTicks = Math.Max(0, timestamp - StartTimestamp);
+
+            if (candidateCount >= 0)
+            {
+                FinalCandidateCount = candidateCount;
+                FinalCandidateCountCalls++;
+            }
+
+            BestReadyToFulfillCalls++;
+            BestReadyToFulfillCompletionRecorded = 0;
+            BestReadyToFulfillStartTimestamp = timestamp;
+            BestReadyToFulfillEndTimestamp = 0;
+        }
+
+        public void CompleteBestReadyToFulfill(long timestamp, bool result)
+        {
+            if (Interlocked.CompareExchange(ref BestReadyToFulfillCompletionRecorded, 1, 0) != 0)
+                return;
+
+            BestReadyToFulfillElapsedTicks = Math.Max(0, timestamp - BestReadyToFulfillStartTimestamp);
+            BestReadyToFulfillResult = result;
+            BestReadyToFulfillEndTimestamp = timestamp;
+        }
+
+        public void RecordNearbyDesignationScanned()
+        {
+            NearbyScanned++;
+        }
+
+        public void RecordNearbyDesignationResult(bool accepted)
+        {
+            if (accepted)
+                NearbyAccepted++;
+        }
+
+        public SearchBreakdown CompleteBreakdown(long outerElapsedTicks, long nestedCacheElapsedTicks, long completionTimestamp)
+        {
+            if (BestReadyToFulfillEndTimestamp != 0 && BestReadyToFulfillResult && NearbyDesignations is not null)
+            {
+                NearbyExpansionElapsedTicks = Math.Max(0, completionTimestamp - BestReadyToFulfillEndTimestamp);
+                NearbyExpansionCalls = 1;
+                NearbyAdded = Math.Max(0, NearbyDesignations.Count - NearbyDesignationsInitialCount);
+            }
+            else if (BestReadyToFulfillEndTimestamp == 0 && LastEligibleCacheEndTimestamp != 0)
+            {
+                CandidateFilteringElapsedTicks += Math.Max(0, completionTimestamp - LastEligibleCacheEndTimestamp);
+                CandidateFilteringCalls = 1;
+            }
+
+            var accountedTicks = PreSelectionElapsedTicks + CandidateFilteringElapsedTicks + nestedCacheElapsedTicks + BestReadyToFulfillElapsedTicks + NearbyExpansionElapsedTicks;
+            UnaccountedElapsedTicks = Math.Max(0, outerElapsedTicks - accountedTicks);
+            if (accountedTicks > outerElapsedTicks + TinyResidualRoundingToleranceTicks)
+                UnaccountedElapsedTicks = 0;
+
+            return new SearchBreakdown(
+                PreSelectionElapsedTicks,
+                CandidateFilteringElapsedTicks,
+                BestReadyToFulfillElapsedTicks,
+                NearbyExpansionElapsedTicks,
+                UnaccountedElapsedTicks,
+                FinalCandidateCount,
+                FinalCandidateCountCalls,
+                BestReadyToFulfillCalls,
+                NearbyScanned,
+                NearbyAccepted,
+                NearbyAdded,
+                NearbyExpansionCalls,
+                NearbyMode,
+                CandidateFilteringCalls);
+        }
 
         public void MarkTowerEligibleCacheCall()
         {
@@ -1681,6 +2035,286 @@ public sealed class DumpSearchDiagnosticsService
         public long TotalElapsedTicks => GlobalElapsedTicks + TowerElapsedTicks;
     }
 
+    private readonly struct SearchBreakdown
+    {
+        public SearchBreakdown(
+            long preSelectionElapsedTicks,
+            long candidateFilteringElapsedTicks,
+            long bestReadyToFulfillElapsedTicks,
+            long nearbyExpansionElapsedTicks,
+            long unaccountedElapsedTicks,
+            int finalCandidateCount,
+            int finalCandidateCountCalls,
+            int bestReadyToFulfillCalls,
+            int nearbyScanned,
+            int nearbyAccepted,
+            long nearbyAdded,
+            long nearbyExpansionCalls,
+            NearbyMode nearbyMode,
+            int candidateFilteringCalls = 0)
+        {
+            PreSelectionElapsedTicks = preSelectionElapsedTicks;
+            CandidateFilteringElapsedTicks = candidateFilteringElapsedTicks;
+            BestReadyToFulfillElapsedTicks = bestReadyToFulfillElapsedTicks;
+            NearbyExpansionElapsedTicks = nearbyExpansionElapsedTicks;
+            UnaccountedElapsedTicks = unaccountedElapsedTicks;
+            FinalCandidateCount = finalCandidateCount;
+            FinalCandidateCountCalls = finalCandidateCountCalls;
+            BestReadyToFulfillCalls = bestReadyToFulfillCalls;
+            NearbyScanned = nearbyScanned;
+            NearbyAccepted = nearbyAccepted;
+            NearbyAdded = nearbyAdded;
+            NearbyExpansionCalls = nearbyExpansionCalls;
+            NearbyMode = nearbyMode;
+            CandidateFilteringCalls = candidateFilteringCalls;
+        }
+
+        public long PreSelectionElapsedTicks { get; }
+        public long CandidateFilteringElapsedTicks { get; }
+        public long BestReadyToFulfillElapsedTicks { get; }
+        public long NearbyExpansionElapsedTicks { get; }
+        public long UnaccountedElapsedTicks { get; }
+        public int FinalCandidateCount { get; }
+        public int FinalCandidateCountCalls { get; }
+        public int BestReadyToFulfillCalls { get; }
+        public int NearbyScanned { get; }
+        public int NearbyAccepted { get; }
+        public long NearbyAdded { get; }
+        public long NearbyExpansionCalls { get; }
+        public NearbyMode NearbyMode { get; }
+        public int CandidateFilteringCalls { get; }
+
+        public long GetElapsedTicks(SearchStage stage)
+        {
+            return stage switch
+            {
+                SearchStage.PreSelection => PreSelectionElapsedTicks,
+                SearchStage.CandidateFiltering => CandidateFilteringElapsedTicks,
+                SearchStage.BestReadyToFulfill => BestReadyToFulfillElapsedTicks,
+                SearchStage.NearbyExpansion => NearbyExpansionElapsedTicks,
+                SearchStage.Unaccounted => UnaccountedElapsedTicks,
+                _ => 0,
+            };
+        }
+
+        public long GetCalls(SearchStage stage)
+        {
+            return stage switch
+            {
+                SearchStage.PreSelection => 1,
+                SearchStage.CandidateFiltering => CandidateFilteringCalls,
+                SearchStage.BestReadyToFulfill => BestReadyToFulfillCalls,
+                SearchStage.NearbyExpansion => NearbyExpansionCalls,
+                SearchStage.Unaccounted => 1,
+                _ => 0,
+            };
+        }
+
+    }
+
+    private sealed class SearchBreakdownStats
+    {
+        private readonly long[] m_stageElapsedTicks = new long[(int)SearchStage.Count];
+        private readonly long[] m_stageCalls = new long[(int)SearchStage.Count];
+        private readonly long[] m_stageMaxElapsedTicks = new long[(int)SearchStage.Count];
+        private readonly long[] m_pathStageElapsedTicks = new long[(int)SearchPath.Count * (int)SearchStage.Count];
+        private readonly long[] m_pathStageCalls = new long[(int)SearchPath.Count * (int)SearchStage.Count];
+        private readonly long[] m_pathStageMaxElapsedTicks = new long[(int)SearchPath.Count * (int)SearchStage.Count];
+        private readonly long[] m_pathFinalCandidateCount = new long[(int)SearchPath.Count];
+        private readonly long[] m_pathFinalCandidateCalls = new long[(int)SearchPath.Count];
+        private readonly long[] m_pathFinalCandidateMax = new long[(int)SearchPath.Count];
+        private readonly long[] m_pathNearbyScanned = new long[(int)SearchPath.Count];
+        private readonly long[] m_pathNearbyAccepted = new long[(int)SearchPath.Count];
+        private readonly long[] m_pathNearbyAdded = new long[(int)SearchPath.Count];
+        private readonly long[] m_pathNearbyExpansionCalls = new long[(int)SearchPath.Count];
+        private readonly long[] m_pathNearbyModeCalls = new long[(int)SearchPath.Count * (int)NearbyMode.Count];
+        private long m_finalCandidateCount;
+        private long m_finalCandidateCalls;
+        private long m_finalCandidateMax;
+        private long m_nearbyScanned;
+        private long m_nearbyAccepted;
+        private long m_nearbyAdded;
+        private long m_nearbyExpansionCalls;
+        private readonly long[] m_nearbyModeCalls = new long[(int)NearbyMode.Count];
+
+        public void Record(SearchPath path, SearchBreakdown breakdown)
+        {
+            var pathIndex = (int)path;
+            for (var i = 0; i < (int)SearchStage.Count; i++)
+            {
+                var stage = (SearchStage)i;
+                var elapsedTicks = breakdown.GetElapsedTicks(stage);
+                var calls = breakdown.GetCalls(stage);
+                if (calls > 0)
+                {
+                    Interlocked.Add(ref m_stageElapsedTicks[i], elapsedTicks);
+                    Interlocked.Add(ref m_stageCalls[i], calls);
+                    updateMax(ref m_stageMaxElapsedTicks[i], elapsedTicks);
+                    var pathOffset = pathIndex * (int)SearchStage.Count + i;
+                    Interlocked.Add(ref m_pathStageElapsedTicks[pathOffset], elapsedTicks);
+                    Interlocked.Add(ref m_pathStageCalls[pathOffset], calls);
+                    updateMax(ref m_pathStageMaxElapsedTicks[pathOffset], elapsedTicks);
+                }
+            }
+
+            if (breakdown.FinalCandidateCountCalls > 0)
+            {
+                Interlocked.Add(ref m_finalCandidateCount, breakdown.FinalCandidateCount);
+                Interlocked.Add(ref m_finalCandidateCalls, breakdown.FinalCandidateCountCalls);
+                updateMax(ref m_finalCandidateMax, breakdown.FinalCandidateCount);
+                Interlocked.Add(ref m_pathFinalCandidateCount[pathIndex], breakdown.FinalCandidateCount);
+                Interlocked.Add(ref m_pathFinalCandidateCalls[pathIndex], breakdown.FinalCandidateCountCalls);
+                updateMax(ref m_pathFinalCandidateMax[pathIndex], breakdown.FinalCandidateCount);
+            }
+
+            Interlocked.Add(ref m_nearbyScanned, breakdown.NearbyScanned);
+            Interlocked.Add(ref m_nearbyAccepted, breakdown.NearbyAccepted);
+            Interlocked.Add(ref m_nearbyAdded, breakdown.NearbyAdded);
+            Interlocked.Add(ref m_nearbyExpansionCalls, breakdown.NearbyExpansionCalls);
+            Interlocked.Add(ref m_pathNearbyScanned[pathIndex], breakdown.NearbyScanned);
+            Interlocked.Add(ref m_pathNearbyAccepted[pathIndex], breakdown.NearbyAccepted);
+            Interlocked.Add(ref m_pathNearbyAdded[pathIndex], breakdown.NearbyAdded);
+            Interlocked.Add(ref m_pathNearbyExpansionCalls[pathIndex], breakdown.NearbyExpansionCalls);
+            if (breakdown.NearbyExpansionCalls > 0)
+            {
+                Interlocked.Increment(ref m_nearbyModeCalls[(int)breakdown.NearbyMode]);
+                Interlocked.Increment(ref m_pathNearbyModeCalls[pathIndex * (int)NearbyMode.Count + (int)breakdown.NearbyMode]);
+            }
+        }
+
+        public SearchBreakdownSnapshot Snapshot()
+        {
+            return new SearchBreakdownSnapshot(
+                snapshotCounters(m_stageElapsedTicks),
+                snapshotCounters(m_stageCalls),
+                snapshotCounters(m_stageMaxElapsedTicks),
+                snapshotCounters(m_pathStageElapsedTicks),
+                snapshotCounters(m_pathStageCalls),
+                snapshotCounters(m_pathStageMaxElapsedTicks),
+                read(ref m_finalCandidateCount),
+                read(ref m_finalCandidateCalls),
+                read(ref m_finalCandidateMax),
+                read(ref m_nearbyScanned),
+                read(ref m_nearbyAccepted),
+                read(ref m_nearbyAdded),
+                read(ref m_nearbyExpansionCalls),
+                snapshotCounters(m_nearbyModeCalls),
+                snapshotCounters(m_pathFinalCandidateCount),
+                snapshotCounters(m_pathFinalCandidateCalls),
+                snapshotCounters(m_pathFinalCandidateMax),
+                snapshotCounters(m_pathNearbyScanned),
+                snapshotCounters(m_pathNearbyAccepted),
+                snapshotCounters(m_pathNearbyAdded),
+                snapshotCounters(m_pathNearbyExpansionCalls),
+                snapshotCounters(m_pathNearbyModeCalls));
+        }
+
+        public void Reset()
+        {
+            resetCounters(m_stageElapsedTicks);
+            resetCounters(m_stageCalls);
+            resetCounters(m_stageMaxElapsedTicks);
+            resetCounters(m_pathStageElapsedTicks);
+            resetCounters(m_pathStageCalls);
+            resetCounters(m_pathStageMaxElapsedTicks);
+            resetCounters(m_pathFinalCandidateCount);
+            resetCounters(m_pathFinalCandidateCalls);
+            resetCounters(m_pathFinalCandidateMax);
+            resetCounters(m_pathNearbyScanned);
+            resetCounters(m_pathNearbyAccepted);
+            resetCounters(m_pathNearbyAdded);
+            resetCounters(m_pathNearbyExpansionCalls);
+            resetCounters(m_pathNearbyModeCalls);
+            Interlocked.Exchange(ref m_finalCandidateCount, 0);
+            Interlocked.Exchange(ref m_finalCandidateCalls, 0);
+            Interlocked.Exchange(ref m_finalCandidateMax, 0);
+            Interlocked.Exchange(ref m_nearbyScanned, 0);
+            Interlocked.Exchange(ref m_nearbyAccepted, 0);
+            Interlocked.Exchange(ref m_nearbyAdded, 0);
+            Interlocked.Exchange(ref m_nearbyExpansionCalls, 0);
+            resetCounters(m_nearbyModeCalls);
+        }
+    }
+
+    private sealed class SearchBreakdownSnapshot
+    {
+        public SearchBreakdownSnapshot(
+            long[] stageElapsedTicks,
+            long[] stageCalls,
+            long[] stageMaxElapsedTicks,
+            long[] pathStageElapsedTicks,
+            long[] pathStageCalls,
+            long[] pathStageMaxElapsedTicks,
+            long finalCandidateCount,
+            long finalCandidateCalls,
+            long finalCandidateMax,
+            long nearbyScanned,
+            long nearbyAccepted,
+            long nearbyAdded,
+            long nearbyExpansionCalls,
+            long[] nearbyModeCalls,
+            long[] pathFinalCandidateCount,
+            long[] pathFinalCandidateCalls,
+            long[] pathFinalCandidateMax,
+            long[] pathNearbyScanned,
+            long[] pathNearbyAccepted,
+            long[] pathNearbyAdded,
+            long[] pathNearbyExpansionCalls,
+            long[] pathNearbyModeCalls)
+        {
+            StageElapsedTicks = stageElapsedTicks;
+            StageCalls = stageCalls;
+            StageMaxElapsedTicks = stageMaxElapsedTicks;
+            PathStageElapsedTicks = pathStageElapsedTicks;
+            PathStageCalls = pathStageCalls;
+            PathStageMaxElapsedTicks = pathStageMaxElapsedTicks;
+            FinalCandidateCount = finalCandidateCount;
+            FinalCandidateCalls = finalCandidateCalls;
+            FinalCandidateMax = finalCandidateMax;
+            NearbyScanned = nearbyScanned;
+            NearbyAccepted = nearbyAccepted;
+            NearbyAdded = nearbyAdded;
+            NearbyExpansionCalls = nearbyExpansionCalls;
+            NearbyModeCalls = nearbyModeCalls;
+            PathFinalCandidateCount = pathFinalCandidateCount;
+            PathFinalCandidateCalls = pathFinalCandidateCalls;
+            PathFinalCandidateMax = pathFinalCandidateMax;
+            PathNearbyScanned = pathNearbyScanned;
+            PathNearbyAccepted = pathNearbyAccepted;
+            PathNearbyAdded = pathNearbyAdded;
+            PathNearbyExpansionCalls = pathNearbyExpansionCalls;
+            PathNearbyModeCalls = pathNearbyModeCalls;
+        }
+
+        public long[] StageElapsedTicks { get; }
+        public long[] StageCalls { get; }
+        public long[] StageMaxElapsedTicks { get; }
+        public long[] PathStageElapsedTicks { get; }
+        public long[] PathStageCalls { get; }
+        public long[] PathStageMaxElapsedTicks { get; }
+        public long FinalCandidateCount { get; }
+        public long FinalCandidateCalls { get; }
+        public long FinalCandidateMax { get; }
+        public long NearbyScanned { get; }
+        public long NearbyAccepted { get; }
+        public long NearbyAdded { get; }
+        public long NearbyExpansionCalls { get; }
+        public long[] NearbyModeCalls { get; }
+        public long[] PathFinalCandidateCount { get; }
+        public long[] PathFinalCandidateCalls { get; }
+        public long[] PathFinalCandidateMax { get; }
+        public long[] PathNearbyScanned { get; }
+        public long[] PathNearbyAccepted { get; }
+        public long[] PathNearbyAdded { get; }
+        public long[] PathNearbyExpansionCalls { get; }
+        public long[] PathNearbyModeCalls { get; }
+
+        public long PathStageElapsed(int path, SearchStage stage) => PathStageElapsedTicks[path * (int)SearchStage.Count + (int)stage];
+        public long PathStageCallsFor(int path, SearchStage stage) => PathStageCalls[path * (int)SearchStage.Count + (int)stage];
+        public long PathStageMax(int path, SearchStage stage) => PathStageMaxElapsedTicks[path * (int)SearchStage.Count + (int)stage];
+        public long PathNearbyMode(int path, NearbyMode mode) => PathNearbyModeCalls[path * (int)NearbyMode.Count + (int)mode];
+    }
+
     private enum ProfileState
     {
         Idle,
@@ -1759,10 +2393,11 @@ public sealed class DumpSearchDiagnosticsService
             long residualAccountingAnomalies,
             long lastPfSearchElapsedTicks,
             long peakPfSearchElapsedTicks,
-            long peakPfSearchCalls,
-            long peakPfMaxIndividualSearchElapsedTicks,
-            WorstCallSnapshot? worstCall,
-            ProductSearchSnapshot[] products)
+             long peakPfSearchCalls,
+             long peakPfMaxIndividualSearchElapsedTicks,
+             WorstCallSnapshot? worstCall,
+             SearchBreakdownSnapshot breakdown,
+             ProductSearchSnapshot[] products)
         {
             Label = session.Label;
             Sequence = session.Sequence;
@@ -1794,6 +2429,7 @@ public sealed class DumpSearchDiagnosticsService
             PeakPfSearchCalls = peakPfSearchCalls;
             PeakPfMaxIndividualSearchElapsedTicks = peakPfMaxIndividualSearchElapsedTicks;
             WorstCall = worstCall;
+            Breakdown = breakdown;
             Products = (ProductSearchSnapshot[])products.Clone();
             DominantPath = findDominantPath(PathCalls);
         }
@@ -1828,6 +2464,7 @@ public sealed class DumpSearchDiagnosticsService
         public long PeakPfSearchCalls { get; }
         public long PeakPfMaxIndividualSearchElapsedTicks { get; }
         public WorstCallSnapshot? WorstCall { get; }
+        public SearchBreakdownSnapshot Breakdown { get; }
         public ProductSearchSnapshot[] Products { get; }
         public string DominantPath { get; }
     }
@@ -1876,7 +2513,7 @@ public sealed class DumpSearchDiagnosticsService
     private static ProfileSnapshot snapshotCurrentProfile(ProfileSession session, long actualRecordingTicks)
     {
         var products = snapshotProductStats();
-        products.Sort(static (left, right) => right.Calls.CompareTo(left.Calls));
+        sortProductSnapshots(products);
         var completedCalls = read(ref s_totalTrueResults) + read(ref s_totalFalseResults);
         return new ProfileSnapshot(
             session,
@@ -1903,10 +2540,11 @@ public sealed class DumpSearchDiagnosticsService
             read(ref s_nestedResidualAccountingAnomalies),
             read(ref s_lastPfSearchElapsedTicks),
             read(ref s_peakPfSearchElapsedTicks),
-            read(ref s_peakPfSearchCalls),
-            read(ref s_peakPfMaxIndividualSearchElapsedTicks),
-            Volatile.Read(ref s_worstCall),
-            products.ToArray());
+             read(ref s_peakPfSearchCalls),
+             read(ref s_peakPfMaxIndividualSearchElapsedTicks),
+             Volatile.Read(ref s_worstCall),
+             s_breakdownStats.Snapshot(),
+             products.ToArray());
     }
 
     private static string formatProfileReport(ProfileSnapshot profile)
@@ -1925,10 +2563,14 @@ public sealed class DumpSearchDiagnosticsService
             .Append("calls=").Append(profile.TotalCalls)
             .Append(" (").Append(formatDecimal(callsPerSecond)).Append("/s), cumulative outer search time=")
             .Append(formatMilliseconds(profile.TotalElapsedTicks)).Append(" ms, utilization=")
-            .Append(formatDecimal(utilization)).AppendLine("% (cumulative; concurrent calls may exceed 100%)")
-            .Append("Paths: ").Append(formatCounterSummary(SearchPathNames, profile.PathCalls)).AppendLine()
-            .Append("Callers: ").Append(formatCounterSummary(SearchCallerNames, profile.CallerCalls)).AppendLine()
-            .Append("Eligible caches:").AppendLine()
+             .Append(formatDecimal(utilization)).AppendLine("% (cumulative; concurrent calls may exceed 100%)")
+             .Append("Paths: ").Append(formatCounterSummary(SearchPathNames, profile.PathCalls)).AppendLine()
+             .Append("Callers: ").Append(formatCounterSummary(SearchCallerNames, profile.CallerCalls)).AppendLine()
+             .Append("Stage breakdown: ").Append(formatStageSummary(profile.Breakdown)).AppendLine()
+             .Append("Final m_designationsCache total/searches/max: ").Append(formatCountSummary(profile.Breakdown.FinalCandidateCount, profile.Breakdown.FinalCandidateCalls, profile.Breakdown.FinalCandidateMax)).AppendLine()
+             .Append("Nearby scanned/accepted/added: ").Append(profile.Breakdown.NearbyScanned).Append('/').Append(profile.Breakdown.NearbyAccepted).Append('/').Append(profile.Breakdown.NearbyAdded)
+             .Append("; mode tower/global/unknown=").Append(profile.Breakdown.NearbyModeCalls[(int)NearbyMode.Tower]).Append('/').Append(profile.Breakdown.NearbyModeCalls[(int)NearbyMode.Global]).Append('/').Append(profile.Breakdown.NearbyModeCalls[(int)NearbyMode.Unknown]).AppendLine()
+             .Append("Eligible caches:").AppendLine()
             .Append("  global: calls=").Append(profile.GlobalCacheCalls)
             .Append(", total=").Append(formatMilliseconds(profile.GlobalCacheElapsedTicks))
             .Append(" ms, avg=").Append(formatMicroseconds(averageTicks(profile.GlobalCacheElapsedTicks, profile.GlobalCacheCalls)))
@@ -1941,14 +2583,16 @@ public sealed class DumpSearchDiagnosticsService
             .Append(" ms, avg=").Append(formatMicroseconds(averageTicks(profile.ResidualElapsedTicks, profile.CompletedCalls)))
             .Append(" us, max=").Append(formatMilliseconds(profile.ResidualMaxElapsedTicks))
             .Append(", accounting anomalies=").AppendLine(profile.ResidualAccountingAnomalies.ToString(CultureInfo.InvariantCulture))
-            .Append("Candidates: total=").Append(profile.TotalCandidateDesignations)
-            .Append(", cache invocations=").Append(profile.ObservedCandidateCalls)
+            .Append("Raw eligible-cache candidates: total=").Append(profile.TotalCandidateDesignations)
+            .Append(", cache searches=").Append(profile.ObservedCandidateCalls)
             .Append(", avg=").Append(formatDecimal(average(profile.TotalCandidateDesignations, profile.ObservedCandidateCalls))).AppendLine()
             .Append("PF tick search workload: peak calls/tick=").Append(profile.PeakPfSearchCalls)
             .Append(", peak cumulative=").Append(formatMilliseconds(profile.PeakPfSearchElapsedTicks))
             .Append(" ms, worst individual in peak tick=").Append(formatMilliseconds(profile.PeakPfMaxIndividualSearchElapsedTicks)).AppendLine(" ms")
-            .Append("Latency: ").Append(formatLatencyBuckets(profile.LatencyBuckets)).AppendLine()
-            .Append("Path latency:");
+            .Append("Latency: ").Append(formatLatencyBuckets(profile.LatencyBuckets));
+
+        appendPathBreakdown(builder, profile.Breakdown, profile.PathCalls);
+        builder.AppendLine().Append("Path latency:");
 
         for (var i = 0; i < SearchPathNames.Length; i++)
         {
@@ -1971,6 +2615,51 @@ public sealed class DumpSearchDiagnosticsService
         return builder.ToString();
     }
 
+    private static string formatCountSummary(long total, long calls, long max)
+    {
+        return total.ToString(CultureInfo.InvariantCulture) + "/" + calls.ToString(CultureInfo.InvariantCulture) + "/" + max.ToString(CultureInfo.InvariantCulture) +
+            " avg=" + formatDecimal(average(total, calls));
+    }
+
+    private static string formatStageSummary(SearchBreakdownSnapshot breakdown)
+    {
+        var builder = new StringBuilder(240);
+        for (var i = 0; i < (int)SearchStage.Count && i < SearchStageNames.Length; i++)
+        {
+            var stage = (SearchStage)i;
+            var calls = breakdown.StageCalls[i];
+            if (calls == 0)
+                continue;
+            if (builder.Length > 0)
+                builder.Append(", ");
+            builder.Append(SearchStageNames[i])
+                .Append('=').Append(formatMilliseconds(breakdown.StageElapsedTicks[i]))
+                .Append("ms avg=").Append(formatMilliseconds(averageTicks(breakdown.StageElapsedTicks[i], calls)))
+                .Append(" max=").Append(formatMilliseconds(breakdown.StageMaxElapsedTicks[i])).Append("ms");
+        }
+
+        return builder.Length == 0 ? "none" : builder.ToString();
+    }
+
+    private static string formatStageComparison(SearchBreakdownSnapshot first, SearchBreakdownSnapshot second)
+    {
+        var builder = new StringBuilder(240);
+        for (var i = 0; i < (int)SearchStage.Count && i < SearchStageNames.Length; i++)
+        {
+            var firstAvg = averageTicks(first.StageElapsedTicks[i], first.StageCalls[i]);
+            var secondAvg = averageTicks(second.StageElapsedTicks[i], second.StageCalls[i]);
+            if (first.StageCalls[i] == 0 && second.StageCalls[i] == 0)
+                continue;
+            if (builder.Length > 0)
+                builder.Append(", ");
+            builder.Append(SearchStageNames[i]).Append(" A=").Append(formatMilliseconds(firstAvg))
+                .Append("ms B=").Append(formatMilliseconds(secondAvg))
+                .Append("ms B/A=").Append(formatRatio(secondAvg, firstAvg));
+        }
+
+        return builder.Length == 0 ? "none" : builder.ToString();
+    }
+
     private static string formatProfileComparison(ProfileSnapshot first, ProfileSnapshot second)
     {
         var builder = new StringBuilder(4096)
@@ -1986,15 +2675,20 @@ public sealed class DumpSearchDiagnosticsService
             .Append("  utilization: A=").Append(formatDecimal(utilization(first))).Append("%, B=").Append(formatDecimal(utilization(second))).AppendLine("%")
             .Append("Nested eligible cache: global A=").Append(formatCacheComparison(first.GlobalCacheCalls, first.GlobalCacheElapsedTicks, second.GlobalCacheCalls, second.GlobalCacheElapsedTicks))
             .Append(", per-tower A=").Append(formatCacheComparison(first.TowerCacheCalls, first.TowerCacheElapsedTicks, second.TowerCacheCalls, second.TowerCacheElapsedTicks)).AppendLine()
-            .Append("Residual: A=").Append(formatMilliseconds(first.ResidualElapsedTicks)).Append(" ms total / ").Append(formatMilliseconds(averageTicks(first.ResidualElapsedTicks, first.CompletedCalls))).Append(" ms avg, B=")
-            .Append(formatMilliseconds(second.ResidualElapsedTicks)).Append(" ms total / ").Append(formatMilliseconds(averageTicks(second.ResidualElapsedTicks, second.CompletedCalls))).AppendLine(" ms avg")
-            .Append("Candidates: A avg=").Append(formatDecimal(average(first.TotalCandidateDesignations, first.ObservedCandidateCalls)))
-            .Append(", B avg=").Append(formatDecimal(average(second.TotalCandidateDesignations, second.ObservedCandidateCalls)))
-            .Append(", B/A=").Append(formatRatio(average(second.TotalCandidateDesignations, second.ObservedCandidateCalls), average(first.TotalCandidateDesignations, first.ObservedCandidateCalls))).AppendLine()
-            .Append("Callers A: ").Append(formatPercentageSummary(SearchCallerNames, first.CallerCalls)).AppendLine()
-            .Append("Callers B: ").Append(formatPercentageSummary(SearchCallerNames, second.CallerCalls)).AppendLine()
-            .Append("Paths A: ").Append(formatPercentageSummary(SearchPathNames, first.PathCalls)).AppendLine()
-            .Append("Paths B: ").Append(formatPercentageSummary(SearchPathNames, second.PathCalls));
+             .Append("Residual: A=").Append(formatMilliseconds(first.ResidualElapsedTicks)).Append(" ms total / ").Append(formatMilliseconds(averageTicks(first.ResidualElapsedTicks, first.CompletedCalls))).Append(" ms avg, B=")
+             .Append(formatMilliseconds(second.ResidualElapsedTicks)).Append(" ms total / ").Append(formatMilliseconds(averageTicks(second.ResidualElapsedTicks, second.CompletedCalls))).AppendLine(" ms avg")
+             .Append("Stage averages: ").Append(formatStageComparison(first.Breakdown, second.Breakdown)).AppendLine()
+             .Append("Final m_designationsCache avg/searches: A=").Append(formatDecimal(average(first.Breakdown.FinalCandidateCount, first.Breakdown.FinalCandidateCalls)));
+        builder.Append(", B=").Append(formatDecimal(average(second.Breakdown.FinalCandidateCount, second.Breakdown.FinalCandidateCalls))).AppendLine()
+            .Append("Nearby scanned/accepted/added: A=").Append(first.Breakdown.NearbyScanned).Append('/').Append(first.Breakdown.NearbyAccepted).Append('/').Append(first.Breakdown.NearbyAdded)
+            .Append(", B=").Append(second.Breakdown.NearbyScanned).Append('/').Append(second.Breakdown.NearbyAccepted).Append('/').Append(second.Breakdown.NearbyAdded).AppendLine()
+            .Append("Raw eligible-cache candidates: A avg=").Append(formatDecimal(average(first.TotalCandidateDesignations, first.ObservedCandidateCalls)))
+           .Append(", B avg=").Append(formatDecimal(average(second.TotalCandidateDesignations, second.ObservedCandidateCalls)))
+           .Append(", B/A=").Append(formatRatio(average(second.TotalCandidateDesignations, second.ObservedCandidateCalls), average(first.TotalCandidateDesignations, first.ObservedCandidateCalls))).AppendLine()
+           .Append("Callers A: ").Append(formatPercentageSummary(SearchCallerNames, first.CallerCalls)).AppendLine()
+           .Append("Callers B: ").Append(formatPercentageSummary(SearchCallerNames, second.CallerCalls)).AppendLine()
+           .Append("Paths A: ").Append(formatPercentageSummary(SearchPathNames, first.PathCalls)).AppendLine()
+           .Append("Paths B: ").Append(formatPercentageSummary(SearchPathNames, second.PathCalls));
 
         var firstDirt = findProduct(first.Products, "Product_Dirt");
         var secondDirt = findProduct(second.Products, "Product_Dirt");
@@ -2009,9 +2703,15 @@ public sealed class DumpSearchDiagnosticsService
                 .Append(", outer avg A=").Append(formatMilliseconds(aAvg))
                 .Append(" ms, B=").Append(formatMilliseconds(bAvg))
                 .Append(" ms, B/A=").Append(formatRatio(bAvg, aAvg)).AppendLine()
-                .Append("  candidates/cache: A=").Append(formatDecimal(average(a.CandidateDesignations, a.CandidateCalls)))
-                .Append(", B=").Append(formatDecimal(average(b.CandidateDesignations, b.CandidateCalls)))
-                .Append(", B/A=").Append(formatRatio(average(b.CandidateDesignations, b.CandidateCalls), average(a.CandidateDesignations, a.CandidateCalls)));
+                 .Append("  raw eligible-cache candidates/search: A=").Append(formatDecimal(average(a.CandidateDesignations, a.CandidateCalls)))
+                 .Append(", B=").Append(formatDecimal(average(b.CandidateDesignations, b.CandidateCalls)))
+                 .Append(", B/A=").Append(formatRatio(average(b.CandidateDesignations, b.CandidateCalls), average(a.CandidateDesignations, a.CandidateCalls))).AppendLine()
+                 .Append("  stage averages A: ").Append(formatStageSummary(a.Breakdown)).AppendLine()
+                 .Append("  stage averages B: ").Append(formatStageSummary(b.Breakdown)).AppendLine()
+                 .Append("  final-cache avg A=").Append(formatDecimal(average(a.Breakdown.FinalCandidateCount, a.Breakdown.FinalCandidateCalls)))
+                 .Append(", B=").Append(formatDecimal(average(b.Breakdown.FinalCandidateCount, b.Breakdown.FinalCandidateCalls)))
+                 .Append("; nearby scanned/accepted/added A=").Append(a.Breakdown.NearbyScanned).Append('/').Append(a.Breakdown.NearbyAccepted).Append('/').Append(a.Breakdown.NearbyAdded)
+                 .Append(", B=").Append(b.Breakdown.NearbyScanned).Append('/').Append(b.Breakdown.NearbyAccepted).Append('/').Append(b.Breakdown.NearbyAdded);
         }
 
         return builder.ToString();
@@ -2025,10 +2725,66 @@ public sealed class DumpSearchDiagnosticsService
             .Append(", outer avg=").Append(formatMilliseconds(averageTicks(stats.ElapsedTicks, completed)))
             .Append(" ms, max=").Append(formatMilliseconds(stats.MaxElapsedTicks)).Append(" ms")
             .Append(", global-cache=").Append(stats.GlobalCacheCalls).Append("/").Append(formatMilliseconds(stats.GlobalCacheElapsedTicks)).Append(" ms")
-            .Append(", per-tower-cache=").Append(stats.TowerCacheCalls).Append("/").Append(formatMilliseconds(stats.TowerCacheElapsedTicks)).Append(" ms")
-            .Append(", residual=").Append(formatMilliseconds(stats.ResidualElapsedTicks)).Append(" ms")
-            .Append(", candidates=").Append(formatDecimal(average(stats.CandidateDesignations, stats.CandidateCalls)));
+             .Append(", per-tower-cache=").Append(stats.TowerCacheCalls).Append("/").Append(formatMilliseconds(stats.TowerCacheElapsedTicks)).Append(" ms")
+             .Append(", residual=").Append(formatMilliseconds(stats.ResidualElapsedTicks)).Append(" ms")
+             .Append(", raw-cache-candidates=").Append(formatDecimal(average(stats.CandidateDesignations, stats.CandidateCalls)))
+             .Append(", breakdown=").Append(formatStageSummary(stats.Breakdown))
+             .Append(", final-cache total/searches/max=").Append(formatCountSummary(stats.Breakdown.FinalCandidateCount, stats.Breakdown.FinalCandidateCalls, stats.Breakdown.FinalCandidateMax))
+             .Append(", nearby scanned/accepted/added=").Append(stats.Breakdown.NearbyScanned).Append('/').Append(stats.Breakdown.NearbyAccepted).Append('/').Append(stats.Breakdown.NearbyAdded);
         appendProductPathMetrics(builder, stats);
+    }
+
+    private static void appendPathBreakdown(
+        StringBuilder builder,
+        SearchBreakdownSnapshot breakdown,
+        long[] pathCalls)
+    {
+        builder.Append("\nPath stage breakdown:");
+        var pathCount = Math.Min(SearchPathNames.Length, pathCalls.Length);
+        for (var pathIndex = 0; pathIndex < pathCount; pathIndex++)
+        {
+            if (pathCalls[pathIndex] == 0)
+                continue;
+
+            builder.Append("\n  ").Append(SearchPathNames[pathIndex]).Append(": ");
+            appendPathStageMetrics(builder, breakdown, pathIndex);
+        }
+    }
+
+    private static void appendPathStageMetrics(
+        StringBuilder builder,
+        SearchBreakdownSnapshot breakdown,
+        int pathIndex)
+    {
+        var wroteStage = false;
+        for (var stageIndex = 0; stageIndex < (int)SearchStage.Count; stageIndex++)
+        {
+            var stage = (SearchStage)stageIndex;
+            var stageCalls = breakdown.PathStageCallsFor(pathIndex, stage);
+            if (stageCalls == 0)
+                continue;
+            if (wroteStage)
+                builder.Append(", ");
+            wroteStage = true;
+            builder.Append(SearchStageNames[stageIndex])
+                .Append('=').Append(formatMilliseconds(breakdown.PathStageElapsed(pathIndex, stage)))
+                .Append("ms avg=").Append(formatMilliseconds(averageTicks(breakdown.PathStageElapsed(pathIndex, stage), stageCalls)))
+                .Append(" max=").Append(formatMilliseconds(breakdown.PathStageMax(pathIndex, stage))).Append("ms");
+        }
+
+        builder.Append("; final-cache total/searches/max=")
+            .Append(formatCountSummary(
+                breakdown.PathFinalCandidateCount[pathIndex],
+                breakdown.PathFinalCandidateCalls[pathIndex],
+                breakdown.PathFinalCandidateMax[pathIndex]))
+            .Append("; nearby scanned/accepted/added=")
+            .Append(breakdown.PathNearbyScanned[pathIndex]).Append('/')
+            .Append(breakdown.PathNearbyAccepted[pathIndex]).Append('/')
+            .Append(breakdown.PathNearbyAdded[pathIndex])
+            .Append(" mode tower/global/unknown=")
+            .Append(breakdown.PathNearbyMode(pathIndex, NearbyMode.Tower)).Append('/')
+            .Append(breakdown.PathNearbyMode(pathIndex, NearbyMode.Global)).Append('/')
+            .Append(breakdown.PathNearbyMode(pathIndex, NearbyMode.Unknown));
     }
 
     private static void appendProductPathMetrics(StringBuilder builder, ProductSearchSnapshot stats)
@@ -2049,9 +2805,11 @@ public sealed class DumpSearchDiagnosticsService
                 .Append(" ms; per-tower-cache=").Append(stats.PathTowerCacheCalls[i]).Append('/').Append(formatMilliseconds(stats.PathTowerCacheElapsedTicks[i]))
                 .Append(" ms avg=").Append(formatMicroseconds(averageTicks(stats.PathTowerCacheElapsedTicks[i], stats.PathTowerCacheCalls[i])))
                 .Append(" us max=").Append(formatMilliseconds(stats.PathTowerCacheMaxElapsedTicks[i]))
-                .Append(" ms; residual total=").Append(formatMilliseconds(stats.PathResidualElapsedTicks[i]))
-                .Append(" ms avg=").Append(formatMicroseconds(averageTicks(stats.PathResidualElapsedTicks[i], calls)))
-                .Append(" us max=").Append(formatMilliseconds(stats.PathResidualMaxElapsedTicks[i])).Append(" ms");
+                 .Append(" ms; residual total=").Append(formatMilliseconds(stats.PathResidualElapsedTicks[i]))
+                 .Append(" ms avg=").Append(formatMicroseconds(averageTicks(stats.PathResidualElapsedTicks[i], calls)))
+                 .Append(" us max=").Append(formatMilliseconds(stats.PathResidualMaxElapsedTicks[i])).Append(" ms")
+                 .Append("; breakdown=");
+            appendPathStageMetrics(builder, stats.Breakdown, i);
         }
     }
 
@@ -2230,6 +2988,7 @@ public sealed class DumpSearchDiagnosticsService
         private long m_towerCacheMaxElapsedTicks;
         private long m_residualElapsedTicks;
         private long m_residualMaxElapsedTicks;
+        private readonly SearchBreakdownStats m_breakdown = new();
         private WorstCallSnapshot? m_worstCall;
 
         public ProductSearchStats(string productId)
@@ -2253,6 +3012,7 @@ public sealed class DumpSearchDiagnosticsService
         public long TowerCacheMaxElapsedTicks => read(ref m_towerCacheMaxElapsedTicks);
         public long ResidualElapsedTicks => read(ref m_residualElapsedTicks);
         public long ResidualMaxElapsedTicks => read(ref m_residualMaxElapsedTicks);
+        public SearchBreakdownSnapshot Breakdown => m_breakdown.Snapshot();
         public WorstCallSnapshot? WorstCall => Volatile.Read(ref m_worstCall);
 
         public void RecordCallStart()
@@ -2269,7 +3029,8 @@ public sealed class DumpSearchDiagnosticsService
             long candidateDesignations,
             int candidateCalls,
             CacheSummary cacheSummary,
-            long residualTicks)
+            long residualTicks,
+            SearchBreakdown breakdown)
         {
             Interlocked.Increment(ref m_pathCalls[(int)path]);
             Interlocked.Increment(ref m_callerCalls[(int)caller]);
@@ -2310,6 +3071,7 @@ public sealed class DumpSearchDiagnosticsService
             updateMax(ref m_pathTowerCacheMaxElapsedTicks[pathIndex], cacheSummary.TowerMaxElapsedTicks);
             Interlocked.Add(ref m_pathResidualElapsedTicks[pathIndex], residualTicks);
             updateMax(ref m_pathResidualMaxElapsedTicks[pathIndex], residualTicks);
+            m_breakdown.Record(path, breakdown);
         }
 
         public ProductSearchSnapshot Snapshot()
@@ -2339,6 +3101,7 @@ public sealed class DumpSearchDiagnosticsService
 
         public void Reset()
         {
+            m_breakdown.Reset();
             Interlocked.Exchange(ref m_calls, 0);
             Interlocked.Exchange(ref m_trueResults, 0);
             Interlocked.Exchange(ref m_falseResults, 0);
@@ -2441,6 +3204,7 @@ public sealed class DumpSearchDiagnosticsService
             PathTowerCacheMaxElapsedTicks = counters.PathTowerCacheMaxElapsedTicks;
             PathResidualElapsedTicks = counters.PathResidualElapsedTicks;
             PathResidualMaxElapsedTicks = counters.PathResidualMaxElapsedTicks;
+            Breakdown = source.Breakdown;
         }
 
         public string ProductId { get; }
@@ -2474,5 +3238,6 @@ public sealed class DumpSearchDiagnosticsService
         public long[] PathTowerCacheMaxElapsedTicks { get; }
         public long[] PathResidualElapsedTicks { get; }
         public long[] PathResidualMaxElapsedTicks { get; }
+        public SearchBreakdownSnapshot Breakdown { get; }
     }
 }
