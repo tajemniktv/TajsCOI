@@ -22,4 +22,31 @@
           <AssetBundlesSource>$(UnityProjectDir)\AssetBundles</AssetBundlesSource>
         -->
     </PropertyGroup>
+
+    <ItemGroup>
+        <!-- CoI code mods conventionally use Harmony; the merged package is a single runtime DLL. -->
+        <PackageReference Include="Lib.Harmony" Version="2.4.2"/>
+    </ItemGroup>
+
+    <Target Name="DeployTajsTweaksRuntimeDependencies"
+            AfterTargets="DeployCoiMod"
+            BeforeTargets="CreateCoiReleasePackage"
+            Condition="'$(DeployToModsFolder)' == 'true' and Exists('$(TargetDir)0Harmony.dll')">
+        <Copy SourceFiles="$(TargetDir)0Harmony.dll"
+              DestinationFolder="$(COIModsDir)\$(ModId)"
+              SkipUnchangedFiles="true"
+              OverwriteReadOnlyFiles="true"/>
+    </Target>
+
+    <Target Name="CopyTajsTweaksRuntimeDependenciesToUnity"
+            AfterTargets="CopyCoiDllToUnity"
+            Condition="'$(CopyToUnityProject)' == 'true'
+                  and Exists('$(UnityProjectDir)')
+                  and Exists('$(TargetDir)0Harmony.dll')">
+        <MakeDir Directories="$(UnityProjectDir)\Assets\DLLs"/>
+        <Copy SourceFiles="$(TargetDir)0Harmony.dll"
+              DestinationFolder="$(UnityProjectDir)\Assets\DLLs"
+              SkipUnchangedFiles="true"
+              OverwriteReadOnlyFiles="true"/>
+    </Target>
 </Project>

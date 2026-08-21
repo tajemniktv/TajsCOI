@@ -5,5 +5,19 @@
     "max": 500,
     "is_integer": true,
     "description": "Maximum value accepted by the unlocked simulation speed command."
+  },
+  "dumping_pf_guard_searches_per_truck_per_tick": {
+    "default": 4,
+    "min": 0,
+    "max": 512,
+    "is_integer": true,
+    "description": "Maximum dumping-destination searches allowed for one truck between path-finding simulation updates. 0 disables this limit."
+  },
+  "dumping_pf_guard_searches_total_per_tick": {
+    "default": 64,
+    "min": 0,
+    "max": 512,
+    "is_integer": true,
+    "description": "Maximum dumping-destination searches allowed in total between path-finding simulation updates. 0 disables this limit."
   }
 }
