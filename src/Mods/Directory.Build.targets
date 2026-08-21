@@ -56,22 +56,33 @@
         <ItemGroup>
             <_ManifestLines Remove="@(_ManifestLines)"/>
             <_ManifestLines Include="{"/>
-            <_ManifestLines Include='  &quot;id&quot;: &quot;$(ModId)&quot;,'/>
-            <_ManifestLines Include='  &quot;version&quot;: &quot;$(ModVersion)&quot;,'/>
-            <_ManifestLines Include='  &quot;display_name&quot;: &quot;$(ModDisplayName)&quot;,'/>
-            <_ManifestLines Include='  &quot;description_short&quot;: &quot;$(ModDescription)&quot;,'/>
-            <_ManifestLines Include='  &quot;authors&quot;: &quot;$(ModAuthor)&quot;,'/>
-            <_ManifestLines Include='  &quot;primary_dlls&quot;: [&quot;$(TargetFileName)&quot;],'/>
-            <_ManifestLines Include='  &quot;min_game_version&quot;: &quot;$(MinGameVersion)&quot;,'/>
-            <_ManifestLines Include='  &quot;max_verified_game_version&quot;: &quot;$(MaxVerifiedGameVersion)&quot;,'/>
-            <_ManifestLines Include='  &quot;non_locking_dll_load&quot;: true,'/>
-            <_ManifestLines Include='  &quot;can_add_to_saved_game&quot;: true,'/>
-            <_ManifestLines Include='  &quot;can_remove_from_saved_game&quot;: true'/>
+            <!-- Keep this canonical layout stable: manifest.json is tracked and is also copied into release packages. -->
+            <!-- MSBuild trims leading whitespace in Item Include values, so sentinel tokens are restored below. -->
+            <_ManifestLines Include='__INDENT2__&quot;id&quot;:&quot;$(ModId)&quot;,'/>
+            <_ManifestLines Include='__INDENT2__&quot;version&quot;:&quot;$(ModVersion)&quot;,'/>
+            <_ManifestLines Include='__INDENT2__&quot;display_name&quot;:&quot;$(ModDisplayName)&quot;,'/>
+            <_ManifestLines Include='__INDENT2__&quot;description_short&quot;:&quot;$(ModDescription)&quot;,'/>
+            <_ManifestLines Include='__INDENT2__&quot;authors&quot;:&quot;$(ModAuthor)&quot;,'/>
+            <_ManifestLines Include='__INDENT2__&quot;primary_dlls&quot;:['/>
+            <_ManifestLines Include='__INDENT4__&quot;$(TargetFileName)&quot;'/>
+            <_ManifestLines Include='__INDENT2__],'/>
+            <_ManifestLines Include='__INDENT2__&quot;min_game_version&quot;:&quot;$(MinGameVersion)&quot;,'/>
+            <_ManifestLines Include='__INDENT2__&quot;max_verified_game_version&quot;:&quot;$(MaxVerifiedGameVersion)&quot;,'/>
+            <_ManifestLines Include='__INDENT2__&quot;non_locking_dll_load&quot;:true,'/>
+            <_ManifestLines Include='__INDENT2__&quot;can_add_to_saved_game&quot;:true,'/>
+            <_ManifestLines Include='__INDENT2__&quot;can_remove_from_saved_game&quot;:true'/>
             <_ManifestLines Include="}"/>
         </ItemGroup>
 
+        <ItemGroup>
+            <_ManifestLinesFormatted Remove="@(_ManifestLinesFormatted)"/>
+            <_ManifestLinesFormatted2 Remove="@(_ManifestLinesFormatted2)"/>
+            <_ManifestLinesFormatted Include="@(_ManifestLines->Replace('__INDENT2__','  '))"/>
+            <_ManifestLinesFormatted2 Include="@(_ManifestLinesFormatted->Replace('__INDENT4__','    '))"/>
+        </ItemGroup>
+
         <WriteLinesToFile File="$(MSBuildProjectDirectory)\manifest.json"
-                          Lines="@(_ManifestLines)"
+                          Lines="@(_ManifestLinesFormatted2)"
                           Overwrite="true"
                           Encoding="UTF-8"/>
 
