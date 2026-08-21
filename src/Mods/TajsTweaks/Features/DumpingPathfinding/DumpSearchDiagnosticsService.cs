@@ -52,25 +52,6 @@ public sealed class DumpSearchDiagnosticsService
     private static readonly long[] s_pathCandidateDesignations = new long[(int)SearchPath.Count];
     private static readonly long[] s_pathCandidateCalls = new long[(int)SearchPath.Count];
 
-    private static readonly FieldInfo? s_towersManagerField = AccessTools.Field(
-        typeof(TerrainDumpingManager),
-        "m_towersManager");
-    private static readonly FieldInfo? s_designationsCacheField = AccessTools.Field(
-        typeof(TerrainDumpingManager),
-        "m_designationsCache");
-    private static readonly FieldInfo? s_landEligibleCacheValidField = AccessTools.Field(
-        typeof(TerrainDumpingManager),
-        "m_isEligibleDesignationsCacheValid");
-    private static readonly FieldInfo? s_oceanEligibleCacheValidField = AccessTools.Field(
-        typeof(TerrainDumpingManager),
-        "m_isEligibleOceanDesignationsCacheValid");
-    private static readonly FieldInfo? s_landTowerEligibleCacheField = AccessTools.Field(
-        typeof(TerrainDumpingManager),
-        "m_eligibleDesignationsCached");
-    private static readonly FieldInfo? s_oceanTowerEligibleCacheField = AccessTools.Field(
-        typeof(TerrainDumpingManager),
-        "m_eligibleOceanDesignationsCached");
-
     private static int s_patchesApplied;
     private static int s_tickBoundaryPatchApplied;
     private static int s_pfEnqueuePatchApplied;
@@ -79,7 +60,9 @@ public sealed class DumpSearchDiagnosticsService
     private static int s_prefixErrorLogged;
     private static int s_postfixErrorLogged;
     private static int s_tickErrorLogged;
-    private static int s_optionalPatchErrorLogged;
+    private static int s_finalizerErrorLogged;
+    private static int s_globalCacheDiagnosticsErrorLogged;
+    private static int s_towerCacheDiagnosticsErrorLogged;
 
     private static long s_totalCalls;
     private static long s_totalTrueResults;
@@ -90,17 +73,12 @@ public sealed class DumpSearchDiagnosticsService
     private static long s_lastCalls;
     private static long s_peakCalls;
 
-    private static long s_totalTowerFilterCandidates;
-    private static long s_totalTowerFilterAccepted;
     private static long s_totalCandidateDesignations;
-    private static long s_completedCandidateCalls;
+    private static long s_observedCandidateCalls;
     private static long s_maxCandidateDesignations;
 
-    private static long s_globalEligibleCacheHits;
-    private static long s_globalEligibleCacheMisses;
+    private static long s_globalEligibleCacheCalls;
     private static long s_towerEligibleCacheCalls;
-    private static long s_towerEligibleCacheHits;
-    private static long s_towerEligibleCacheMisses;
 
     private static long s_currentPfEnqueues;
     private static long s_lastPfEnqueues;
@@ -109,6 +87,9 @@ public sealed class DumpSearchDiagnosticsService
 
     [ThreadStatic]
     private static SearchCaller s_currentCaller;
+
+    [ThreadStatic]
+    private static SearchDiagnosticContext? s_currentSearchContext;
 
     public DumpSearchDiagnosticsService()
     {
@@ -122,6 +103,11 @@ public sealed class DumpSearchDiagnosticsService
     {
         var snapshot = snapshotProductStats();
         snapshot.Sort(static (left, right) => right.Calls.CompareTo(left.Calls));
+
+        var pathCalls = snapshotCounters(s_pathCalls);
+        var callerCalls = snapshotCounters(s_callerCalls);
+        var pathCandidateDesignations = snapshotCounters(s_pathCandidateDesignations);
+        var pathCandidateCalls = snapshotCounters(s_pathCandidateCalls);
 
         var totalCalls = read(ref s_totalCalls);
         var completedCalls = read(ref s_totalTrueResults) + read(ref s_totalFalseResults);
@@ -161,31 +147,21 @@ public sealed class DumpSearchDiagnosticsService
             .Append(" ms.");
 
         builder.Append("\nPaths: ")
-            .Append(formatPathCounts())
+            .Append(formatCounterSummary(SearchPathNames, pathCalls))
             .Append("\nCallers: ")
-            .Append(formatCallerCounts())
-            .Append("\nTower filter candidates/accepted=")
-            .Append(read(ref s_totalTowerFilterCandidates))
-            .Append('/')
-            .Append(read(ref s_totalTowerFilterAccepted))
-            .Append(", candidate designations total/calls/max=")
+            .Append(formatCounterSummary(SearchCallerNames, callerCalls))
+            .Append("\nActual eligible-cache calls: global=")
+            .Append(read(ref s_globalEligibleCacheCalls))
+            .Append(", per-tower=")
+            .Append(read(ref s_towerEligibleCacheCalls))
+            .Append(", observed cache candidates total/calls/max=")
             .Append(read(ref s_totalCandidateDesignations))
             .Append('/')
-            .Append(read(ref s_completedCandidateCalls))
+            .Append(read(ref s_observedCandidateCalls))
             .Append('/')
             .Append(read(ref s_maxCandidateDesignations))
-            .Append("\nPath candidate designations total/calls: ")
-            .Append(formatPathCandidateCounts())
-            .Append("\nCaches: global eligible hit/miss=")
-            .Append(read(ref s_globalEligibleCacheHits))
-            .Append('/')
-            .Append(read(ref s_globalEligibleCacheMisses))
-            .Append(", per-tower eligible calls/hit/miss=")
-            .Append(read(ref s_towerEligibleCacheCalls))
-            .Append('/')
-            .Append(read(ref s_towerEligibleCacheHits))
-            .Append('/')
-            .Append(read(ref s_towerEligibleCacheMisses))
+            .Append("\nPath observed cache candidates total/calls: ")
+            .Append(formatCounterSummary(SearchPathNames, pathCandidateDesignations, pathCandidateCalls))
             .Append("\nPF enqueues current/last/peak/total=")
             .Append(read(ref s_currentPfEnqueues))
             .Append('/')
@@ -218,13 +194,13 @@ public sealed class DumpSearchDiagnosticsService
                 .Append(": calls=")
                 .Append(stats.Calls)
                 .Append(" [")
-                .Append(stats.GetPathSummary())
+                .Append(formatCounterSummary(SearchPathNames, stats.PathCalls))
                 .Append("; callers=")
-                .Append(stats.GetCallerSummary())
-                .Append("; tower-filter=")
-                .Append(stats.TowerFilterCandidates)
+                .Append(formatCounterSummary(SearchCallerNames, stats.CallerCalls))
+                .Append("; observed-cache-candidates=")
+                .Append(stats.CandidateDesignations)
                 .Append('/')
-                .Append(stats.TowerFilterAccepted)
+                .Append(stats.CandidateCalls)
                 .Append("], true/false/incomplete=")
                 .Append(stats.TrueResults)
                 .Append('/')
@@ -269,8 +245,7 @@ public sealed class DumpSearchDiagnosticsService
         customCommandName: "tajs_dump_pf_stats_reset")]
     public string ResetPathfindingStats()
     {
-        resetAllStats();
-        return "Dump search diagnostics reset.";
+        return ResetStats();
     }
 
     private static void ensurePatchesApplied()
@@ -308,7 +283,11 @@ public sealed class DumpSearchDiagnosticsService
             {
                 priority = Priority.Last,
             };
-            harmony.Patch(dumpSearch, prefix: prefix, postfix: postfix);
+            harmony.Patch(
+                dumpSearch,
+                prefix: prefix,
+                postfix: postfix,
+                finalizer: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(endDumpSearchContext)));
             Interlocked.Exchange(ref s_patchesApplied, 1);
         }
         catch (Exception ex)
@@ -459,7 +438,8 @@ public sealed class DumpSearchDiagnosticsService
             {
                 harmony.Patch(
                     globalCache,
-                    prefix: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(beforeGlobalEligibleCache)));
+                    prefix: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(beforeGlobalEligibleCache)),
+                    postfix: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(afterGlobalEligibleCache)));
                 Interlocked.Increment(ref s_cachePatchCount);
             }
             catch (Exception ex)
@@ -484,7 +464,8 @@ public sealed class DumpSearchDiagnosticsService
             {
                 harmony.Patch(
                     towerCache,
-                    prefix: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(beforeTowerEligibleCache)));
+                    prefix: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(beforeTowerEligibleCache)),
+                    postfix: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(afterTowerEligibleCache)));
                 Interlocked.Increment(ref s_cachePatchCount);
             }
             catch (Exception ex)
@@ -501,70 +482,115 @@ public sealed class DumpSearchDiagnosticsService
     private static void beforeDumpSearch(
         TerrainDumpingManager __instance,
         Option<LooseProductProto> __1,
-        ulong? __3,
         IIndexable<MineTower>? __5,
         out DumpSearchCallState __state)
     {
         __state = default;
+        var previousContext = s_currentSearchContext;
         try
         {
             var product = __1.ValueOrNull;
-            var path = classifySearch(__instance, product, __3, __5, out var towerFilter);
+            var path = classifySearch(__instance, product, __5);
             var caller = s_currentCaller;
             var productId = product?.Id.Value ?? UnknownProductId;
             var stats = getOrCreateProductStats(productId);
 
-            stats.RecordCall(path, caller, towerFilter.Candidates, towerFilter.Accepted);
-            Interlocked.Increment(ref s_pathCalls[(int)path]);
-            Interlocked.Increment(ref s_callerCalls[(int)caller]);
+            var context = new SearchDiagnosticContext(
+                previousContext,
+                stats,
+                path,
+                caller,
+                Stopwatch.GetTimestamp());
+            s_currentSearchContext = context;
+            stats.RecordCallStart();
             Interlocked.Increment(ref s_totalCalls);
             Interlocked.Increment(ref s_currentCalls);
-            Interlocked.Add(ref s_totalTowerFilterCandidates, towerFilter.Candidates);
-            Interlocked.Add(ref s_totalTowerFilterAccepted, towerFilter.Accepted);
-
-            __state = new DumpSearchCallState(
-                stats,
-                __instance,
-                path,
-                Stopwatch.GetTimestamp());
+            __state = new DumpSearchCallState(context);
         }
         catch (Exception ex)
         {
+            s_currentSearchContext = previousContext;
             logOnce(ref s_prefixErrorLogged, "dump-search diagnostics prefix", ex);
         }
     }
 
     private static void afterDumpSearch(bool __result, DumpSearchCallState __state)
     {
-        if (__state.Stats is null)
+        if (__state.Context is null)
             return;
 
         try
         {
-            var elapsedTicks = Math.Max(0, Stopwatch.GetTimestamp() - __state.StartTimestamp);
-            var candidateCount = getCandidateCount(__state.Manager);
-            __state.Stats.RecordResult(__result, elapsedTicks);
+            completeDumpSearch(__state.Context, hasResult: true, result: __result);
+        }
+        catch (Exception ex)
+        {
+            logOnce(ref s_postfixErrorLogged, "dump-search diagnostics postfix", ex);
+        }
+    }
 
-            if (__result)
+    private static Exception? endDumpSearchContext(Exception? __exception, DumpSearchCallState __state)
+    {
+        var context = __state.Context;
+        if (context is null)
+            return __exception;
+
+        try
+        {
+            if (__exception is not null)
+                completeDumpSearch(context, hasResult: false, result: false);
+        }
+        catch (Exception ex)
+        {
+            logOnce(ref s_finalizerErrorLogged, "dump-search diagnostics finalizer", ex);
+        }
+        finally
+        {
+            s_currentSearchContext = context.Previous;
+        }
+
+        return __exception;
+    }
+
+    private static void completeDumpSearch(SearchDiagnosticContext context, bool hasResult, bool result)
+    {
+        if (Interlocked.CompareExchange(ref context.CompletionRecorded, 1, 0) != 0)
+            return;
+
+        var elapsedTicks = Math.Max(0, Stopwatch.GetTimestamp() - context.StartTimestamp);
+        var path = context.Path;
+        var candidateDesignations = Interlocked.Read(ref context.CandidateDesignations);
+        var candidateCalls = Volatile.Read(ref context.CandidateCalls);
+
+        context.Stats.RecordCompletion(
+            path,
+            context.Caller,
+            hasResult,
+            result,
+            elapsedTicks,
+            candidateDesignations,
+            candidateCalls);
+        Interlocked.Increment(ref s_pathCalls[(int)path]);
+        Interlocked.Increment(ref s_callerCalls[(int)context.Caller]);
+
+        if (hasResult)
+        {
+            if (result)
                 Interlocked.Increment(ref s_totalTrueResults);
             else
                 Interlocked.Increment(ref s_totalFalseResults);
 
             Interlocked.Add(ref s_totalElapsedTicks, elapsedTicks);
             updateMax(ref s_maxElapsedTicks, elapsedTicks);
-
-            if (candidateCount >= 0)
-            {
-                Interlocked.Add(ref s_totalCandidateDesignations, candidateCount);
-                Interlocked.Increment(ref s_completedCandidateCalls);
-                Interlocked.Add(ref s_pathCandidateDesignations[(int)__state.Path], candidateCount);
-                Interlocked.Increment(ref s_pathCandidateCalls[(int)__state.Path]);
-                updateMax(ref s_maxCandidateDesignations, candidateCount);
-            }
         }
-        catch (Exception ex)
+
+        if (candidateCalls > 0)
         {
-            logOnce(ref s_postfixErrorLogged, "dump-search diagnostics postfix", ex);
+            Interlocked.Add(ref s_totalCandidateDesignations, candidateDesignations);
+            Interlocked.Increment(ref s_observedCandidateCalls);
+            Interlocked.Add(ref s_pathCandidateDesignations[(int)path], candidateDesignations);
+            Interlocked.Increment(ref s_pathCandidateCalls[(int)path]);
+            updateMax(ref s_maxCandidateDesignations, candidateDesignations);
         }
     }
 
@@ -591,124 +617,78 @@ public sealed class DumpSearchDiagnosticsService
         }
     }
 
-    private static void beforeGlobalEligibleCache(TerrainDumpingManager __instance, bool __0)
+    private static void beforeGlobalEligibleCache()
     {
         try
         {
-            var validField = __0 ? s_oceanEligibleCacheValidField : s_landEligibleCacheValidField;
-            var cacheWasValid = validField?.GetValue(__instance) is true;
-            if (cacheWasValid)
-                Interlocked.Increment(ref s_globalEligibleCacheHits);
-            else
-                Interlocked.Increment(ref s_globalEligibleCacheMisses);
+            Interlocked.Increment(ref s_globalEligibleCacheCalls);
         }
         catch (Exception ex)
         {
-            logOnce(ref s_optionalPatchErrorLogged, "global eligible-cache diagnostics", ex);
+            logOnce(ref s_globalCacheDiagnosticsErrorLogged, "global eligible-cache diagnostics", ex);
         }
     }
 
-    private static void beforeTowerEligibleCache(TerrainDumpingManager __instance, MineTower __0, bool __1)
+    private static void afterGlobalEligibleCache(LystStruct<TerrainDesignation> __result)
+    {
+        try
+        {
+            s_currentSearchContext?.RecordCandidateDesignations(__result.Count);
+        }
+        catch (Exception ex)
+        {
+            logOnce(ref s_globalCacheDiagnosticsErrorLogged, "global eligible-cache candidate diagnostics", ex);
+        }
+    }
+
+    private static void beforeTowerEligibleCache()
     {
         try
         {
             Interlocked.Increment(ref s_towerEligibleCacheCalls);
-            var field = __1 ? s_oceanTowerEligibleCacheField : s_landTowerEligibleCacheField;
-            var cache = field?.GetValue(__instance) as Dict<MineTower, Lyst<TerrainDesignation>>;
-            var cacheHit = cache is not null && cache.TryGetValue(__0, out _);
-            if (cacheHit)
-                Interlocked.Increment(ref s_towerEligibleCacheHits);
-            else
-                Interlocked.Increment(ref s_towerEligibleCacheMisses);
+            s_currentSearchContext?.MarkTowerEligibleCacheCall();
         }
         catch (Exception ex)
         {
-            logOnce(ref s_optionalPatchErrorLogged, "per-tower eligible-cache diagnostics", ex);
+            logOnce(ref s_towerCacheDiagnosticsErrorLogged, "per-tower eligible-cache diagnostics", ex);
+        }
+    }
+
+    private static void afterTowerEligibleCache(Lyst<TerrainDesignation> __result)
+    {
+        try
+        {
+            s_currentSearchContext?.RecordCandidateDesignations(__result?.Count ?? 0);
+        }
+        catch (Exception ex)
+        {
+            logOnce(ref s_towerCacheDiagnosticsErrorLogged, "per-tower eligible-cache candidate diagnostics", ex);
         }
     }
 
     private static SearchPath classifySearch(
         TerrainDumpingManager dumpingManager,
         LooseProductProto? product,
-        ulong? zoneMask,
-        IIndexable<MineTower>? towersToEnforce,
-        out TowerFilterSnapshot towerFilter)
+        IIndexable<MineTower>? towersToEnforce)
     {
-        towerFilter = default;
         if (product is null)
             return SearchPath.UnknownProduct;
 
         var globalAllowed = dumpingManager.ProductsAllowedToDump.Contains(product);
-        var effectiveZoneMask = zoneMask ?? ulong.MaxValue;
         // This mirrors TerrainDumpingManager's `flag2 = towersToEnforce != null`: an empty,
         // non-null list is still an explicit enforced-tower search, not the global fallback.
         if (towersToEnforce is not null)
         {
-            towerFilter = inspectExplicitTowers(towersToEnforce, product, effectiveZoneMask);
             if (globalAllowed)
                 return SearchPath.ExplicitTower;
 
-            return towerFilter.Accepted > 0
-                ? SearchPath.ExplicitTowerGlobalForbiddenLocal
-                : SearchPath.ExplicitTowerGlobalForbiddenRejected;
+            return SearchPath.ExplicitTowerGlobalForbiddenRejected;
         }
 
         if (globalAllowed)
             return SearchPath.GlobalAllowed;
 
-        // In both reference snapshots, the vanilla `!flag` branch populates its temporary tower
-        // set and then re-enters the per-tower cached-designation path. This is the path whose
-        // cost differs sharply from the global eligible-designation cache in the reproduction.
-        towerFilter = inspectGlobalTowerFilter(dumpingManager, product, effectiveZoneMask);
-        return towerFilter.Accepted > 0
-            ? SearchPath.GlobalForbiddenLocalFallback
-            : SearchPath.GlobalForbiddenNoLocalTower;
-    }
-
-    private static TowerFilterSnapshot inspectExplicitTowers(
-        IIndexable<MineTower> towers,
-        LooseProductProto product,
-        ulong zoneMask)
-    {
-        var accepted = 0;
-        for (var i = 0; i < towers.Count; i++)
-        {
-            var tower = towers[i];
-            if (tower.IsEnabled &&
-                tower.ManagedDumpingDesignations.Count > 0 &&
-                (tower.ZoneMask & zoneMask) != 0L &&
-                tower.DumpableProducts.Contains(product))
-            {
-                accepted++;
-            }
-        }
-
-        return new TowerFilterSnapshot(towers.Count, accepted);
-    }
-
-    private static TowerFilterSnapshot inspectGlobalTowerFilter(
-        TerrainDumpingManager dumpingManager,
-        LooseProductProto product,
-        ulong zoneMask)
-    {
-        if (s_towersManagerField?.GetValue(dumpingManager) is not MineTowersManager towersManager)
-            return default;
-
-        var towers = towersManager.Towers;
-        var accepted = 0;
-        for (var i = 0; i < towers.Count; i++)
-        {
-            var tower = towers[i];
-            if (tower.IsEnabled &&
-                (tower.ZoneMask & zoneMask) != 0L &&
-                (tower.AllowNonAssignedOutput || !tower.HasOutputStorageOrTowerAssigned) &&
-                tower.DumpableProducts.Contains(product))
-            {
-                accepted++;
-            }
-        }
-
-        return new TowerFilterSnapshot(towers.Count, accepted);
+        return SearchPath.GlobalForbiddenNoLocalTower;
     }
 
     private static ProductSearchStats getOrCreateProductStats(string productId)
@@ -720,24 +700,26 @@ public sealed class DumpSearchDiagnosticsService
         return s_productStats.GetOrAdd(productId, created);
     }
 
-    private static List<ProductSearchStats> snapshotProductStats()
+    private static List<ProductSearchSnapshot> snapshotProductStats()
     {
-        var snapshot = new List<ProductSearchStats>();
+        var snapshot = new List<ProductSearchSnapshot>();
         foreach (var stats in s_productStats.Values)
         {
-            if (stats.Calls > 0)
-                snapshot.Add(stats);
+            var productSnapshot = stats.Snapshot();
+            if (productSnapshot.Calls > 0)
+                snapshot.Add(productSnapshot);
         }
 
         return snapshot;
     }
 
-    private static int getCandidateCount(TerrainDumpingManager dumpingManager)
+    private static long[] snapshotCounters(long[] counters)
     {
-        if (s_designationsCacheField?.GetValue(dumpingManager) is Lyst<TerrainDesignation> designations)
-            return designations.Count;
+        var snapshot = new long[counters.Length];
+        for (var i = 0; i < counters.Length; i++)
+            snapshot[i] = Interlocked.Read(ref counters[i]);
 
-        return -1;
+        return snapshot;
     }
 
     private static void resetAllStats()
@@ -762,16 +744,11 @@ public sealed class DumpSearchDiagnosticsService
         Interlocked.Exchange(ref s_currentCalls, 0);
         Interlocked.Exchange(ref s_lastCalls, 0);
         Interlocked.Exchange(ref s_peakCalls, 0);
-        Interlocked.Exchange(ref s_totalTowerFilterCandidates, 0);
-        Interlocked.Exchange(ref s_totalTowerFilterAccepted, 0);
         Interlocked.Exchange(ref s_totalCandidateDesignations, 0);
-        Interlocked.Exchange(ref s_completedCandidateCalls, 0);
+        Interlocked.Exchange(ref s_observedCandidateCalls, 0);
         Interlocked.Exchange(ref s_maxCandidateDesignations, 0);
-        Interlocked.Exchange(ref s_globalEligibleCacheHits, 0);
-        Interlocked.Exchange(ref s_globalEligibleCacheMisses, 0);
+        Interlocked.Exchange(ref s_globalEligibleCacheCalls, 0);
         Interlocked.Exchange(ref s_towerEligibleCacheCalls, 0);
-        Interlocked.Exchange(ref s_towerEligibleCacheHits, 0);
-        Interlocked.Exchange(ref s_towerEligibleCacheMisses, 0);
 
         for (var i = 0; i < s_pathCalls.Length; i++)
             Interlocked.Exchange(ref s_pathCalls[i], 0);
@@ -784,57 +761,17 @@ public sealed class DumpSearchDiagnosticsService
         }
     }
 
-    private static string formatPathCounts()
-    {
-        var builder = new StringBuilder(256);
-        for (var i = 0; i < (int)SearchPath.Count; i++)
-        {
-            if (i > 0)
-                builder.Append(", ");
-            builder.Append(SearchPathNames[i]).Append('=').Append(read(ref s_pathCalls[i]));
-        }
-
-        return builder.ToString();
-    }
-
-    private static string formatCallerCounts()
-    {
-        var builder = new StringBuilder(192);
-        for (var i = 0; i < (int)SearchCaller.Count; i++)
-        {
-            if (i > 0)
-                builder.Append(", ");
-            builder.Append(SearchCallerNames[i]).Append('=').Append(read(ref s_callerCalls[i]));
-        }
-
-        return builder.ToString();
-    }
-
-    private static string formatPathCandidateCounts()
-    {
-        var builder = new StringBuilder(256);
-        for (var i = 0; i < (int)SearchPath.Count; i++)
-        {
-            if (i > 0)
-                builder.Append(", ");
-            builder.Append(SearchPathNames[i])
-                .Append('=')
-                .Append(read(ref s_pathCandidateDesignations[i]))
-                .Append('/')
-                .Append(read(ref s_pathCandidateCalls[i]));
-        }
-
-        return builder.ToString();
-    }
-
-    private static string formatSummary(long[] counters, string[] names)
+    private static string formatCounterSummary(string[] names, long[] primary, long[]? secondary = null)
     {
         var builder = new StringBuilder(160);
-        for (var i = 0; i < names.Length; i++)
+        var count = Math.Min(names.Length, primary.Length);
+        for (var i = 0; i < count; i++)
         {
             if (i > 0)
                 builder.Append(", ");
-            builder.Append(names[i]).Append('=').Append(Interlocked.Read(ref counters[i]));
+            builder.Append(names[i]).Append('=').Append(primary[i]);
+            if (secondary is not null && i < secondary.Length)
+                builder.Append('/').Append(secondary[i]);
         }
 
         return builder.ToString();
@@ -904,7 +841,7 @@ public sealed class DumpSearchDiagnosticsService
 
     private static void logOptionalPatchFailure(string message)
     {
-        logOnce(ref s_optionalPatchErrorLogged, message, null);
+        Log.Error($"TajsTweaks: {message}; diagnostics will remain fail-open.");
     }
 
     private static void logOnce(ref int alreadyLogged, string operation, Exception? exception)
@@ -988,18 +925,6 @@ public sealed class DumpSearchDiagnosticsService
         "DefaultTruckJobProvider.TryGetJobFor",
     };
 
-    private readonly struct TowerFilterSnapshot
-    {
-        public TowerFilterSnapshot(int candidates, int accepted)
-        {
-            Candidates = candidates;
-            Accepted = accepted;
-        }
-
-        public int Candidates { get; }
-        public int Accepted { get; }
-    }
-
     private readonly struct CallerContextState
     {
         public CallerContextState(SearchCaller previous)
@@ -1012,22 +937,52 @@ public sealed class DumpSearchDiagnosticsService
 
     private readonly struct DumpSearchCallState
     {
-        public DumpSearchCallState(
+        public DumpSearchCallState(SearchDiagnosticContext? context)
+        {
+            Context = context;
+        }
+
+        public SearchDiagnosticContext? Context { get; }
+    }
+
+    private sealed class SearchDiagnosticContext
+    {
+        public SearchDiagnosticContext(
+            SearchDiagnosticContext? previous,
             ProductSearchStats stats,
-            TerrainDumpingManager manager,
             SearchPath path,
+            SearchCaller caller,
             long startTimestamp)
         {
+            Previous = previous;
             Stats = stats;
-            Manager = manager;
             Path = path;
+            Caller = caller;
             StartTimestamp = startTimestamp;
         }
 
-        public ProductSearchStats? Stats { get; }
-        public TerrainDumpingManager Manager { get; }
-        public SearchPath Path { get; }
+        public SearchDiagnosticContext? Previous { get; }
+        public ProductSearchStats Stats { get; }
+        public SearchPath Path { get; private set; }
+        public SearchCaller Caller { get; }
         public long StartTimestamp { get; }
+        public long CandidateDesignations;
+        public int CandidateCalls;
+        public int CompletionRecorded;
+
+        public void MarkTowerEligibleCacheCall()
+        {
+            if (Path == SearchPath.GlobalForbiddenNoLocalTower)
+                Path = SearchPath.GlobalForbiddenLocalFallback;
+            else if (Path == SearchPath.ExplicitTowerGlobalForbiddenRejected)
+                Path = SearchPath.ExplicitTowerGlobalForbiddenLocal;
+        }
+
+        public void RecordCandidateDesignations(int count)
+        {
+            Interlocked.Add(ref CandidateDesignations, Math.Max(0, count));
+            Interlocked.Increment(ref CandidateCalls);
+        }
     }
 
     private sealed class ProductSearchStats
@@ -1039,8 +994,8 @@ public sealed class DumpSearchDiagnosticsService
         private long m_falseResults;
         private long m_elapsedTicks;
         private long m_maxElapsedTicks;
-        private long m_towerFilterCandidates;
-        private long m_towerFilterAccepted;
+        private long m_candidateDesignations;
+        private long m_candidateCalls;
 
         public ProductSearchStats(string productId)
         {
@@ -1053,36 +1008,54 @@ public sealed class DumpSearchDiagnosticsService
         public long FalseResults => read(ref m_falseResults);
         public long ElapsedTicks => read(ref m_elapsedTicks);
         public long MaxElapsedTicks => read(ref m_maxElapsedTicks);
-        public long TowerFilterCandidates => read(ref m_towerFilterCandidates);
-        public long TowerFilterAccepted => read(ref m_towerFilterAccepted);
 
-        public void RecordCall(SearchPath path, SearchCaller caller, int towerCandidates, int towerAccepted)
+        public void RecordCallStart()
         {
             Interlocked.Increment(ref m_calls);
+        }
+
+        public void RecordCompletion(
+            SearchPath path,
+            SearchCaller caller,
+            bool hasResult,
+            bool result,
+            long elapsedTicks,
+            long candidateDesignations,
+            int candidateCalls)
+        {
             Interlocked.Increment(ref m_pathCalls[(int)path]);
             Interlocked.Increment(ref m_callerCalls[(int)caller]);
-            Interlocked.Add(ref m_towerFilterCandidates, towerCandidates);
-            Interlocked.Add(ref m_towerFilterAccepted, towerAccepted);
+
+            if (hasResult)
+            {
+                if (result)
+                    Interlocked.Increment(ref m_trueResults);
+                else
+                    Interlocked.Increment(ref m_falseResults);
+                Interlocked.Add(ref m_elapsedTicks, elapsedTicks);
+                updateMax(ref m_maxElapsedTicks, elapsedTicks);
+            }
+
+            if (candidateCalls > 0)
+            {
+                Interlocked.Add(ref m_candidateDesignations, candidateDesignations);
+                Interlocked.Increment(ref m_candidateCalls);
+            }
         }
 
-        public void RecordResult(bool result, long elapsedTicks)
+        public ProductSearchSnapshot Snapshot()
         {
-            if (result)
-                Interlocked.Increment(ref m_trueResults);
-            else
-                Interlocked.Increment(ref m_falseResults);
-            Interlocked.Add(ref m_elapsedTicks, elapsedTicks);
-            updateMax(ref m_maxElapsedTicks, elapsedTicks);
-        }
-
-        public string GetPathSummary()
-        {
-            return formatSummary(m_pathCalls, SearchPathNames);
-        }
-
-        public string GetCallerSummary()
-        {
-            return formatSummary(m_callerCalls, SearchCallerNames);
+            return new ProductSearchSnapshot(
+                ProductId,
+                Calls,
+                TrueResults,
+                FalseResults,
+                ElapsedTicks,
+                MaxElapsedTicks,
+                read(ref m_candidateDesignations),
+                read(ref m_candidateCalls),
+                snapshotCounters(m_pathCalls),
+                snapshotCounters(m_callerCalls));
         }
 
         public void Reset()
@@ -1092,12 +1065,50 @@ public sealed class DumpSearchDiagnosticsService
             Interlocked.Exchange(ref m_falseResults, 0);
             Interlocked.Exchange(ref m_elapsedTicks, 0);
             Interlocked.Exchange(ref m_maxElapsedTicks, 0);
-            Interlocked.Exchange(ref m_towerFilterCandidates, 0);
-            Interlocked.Exchange(ref m_towerFilterAccepted, 0);
+            Interlocked.Exchange(ref m_candidateDesignations, 0);
+            Interlocked.Exchange(ref m_candidateCalls, 0);
             for (var i = 0; i < m_pathCalls.Length; i++)
                 Interlocked.Exchange(ref m_pathCalls[i], 0);
             for (var i = 0; i < m_callerCalls.Length; i++)
                 Interlocked.Exchange(ref m_callerCalls[i], 0);
         }
+    }
+
+    private readonly struct ProductSearchSnapshot
+    {
+        public ProductSearchSnapshot(
+            string productId,
+            long calls,
+            long trueResults,
+            long falseResults,
+            long elapsedTicks,
+            long maxElapsedTicks,
+            long candidateDesignations,
+            long candidateCalls,
+            long[] pathCalls,
+            long[] callerCalls)
+        {
+            ProductId = productId;
+            Calls = calls;
+            TrueResults = trueResults;
+            FalseResults = falseResults;
+            ElapsedTicks = elapsedTicks;
+            MaxElapsedTicks = maxElapsedTicks;
+            CandidateDesignations = candidateDesignations;
+            CandidateCalls = candidateCalls;
+            PathCalls = pathCalls;
+            CallerCalls = callerCalls;
+        }
+
+        public string ProductId { get; }
+        public long Calls { get; }
+        public long TrueResults { get; }
+        public long FalseResults { get; }
+        public long ElapsedTicks { get; }
+        public long MaxElapsedTicks { get; }
+        public long CandidateDesignations { get; }
+        public long CandidateCalls { get; }
+        public long[] PathCalls { get; }
+        public long[] CallerCalls { get; }
     }
 }
