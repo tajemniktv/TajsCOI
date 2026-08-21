@@ -9,8 +9,12 @@ using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using Mafi;
+using Mafi.Collections;
+using Mafi.Collections.ReadonlyCollections;
+using Mafi.Core.Buildings.Mine;
 using Mafi.Core.Console;
 using Mafi.Core.PathFinding;
+using Mafi.Core.Products;
 using Mafi.Core.Terrain.Designation;
 using Mafi.Core.Vehicles.Trucks;
 
@@ -20,8 +24,9 @@ namespace TajsTweaks.Features.DumpingPathfinding;
 
 /// <summary>
 ///     Prevents a single simulation tick from spending an unbounded amount of work repeatedly
-///     searching dumping destinations for the same trucks. This is intentionally a rate limiter,
-///     not a dumping-filter rewrite: skipped searches are retried on a later simulation tick.
+///     searching dumping destinations in the pathological global-off/local-tower path. This is
+///     intentionally a rate limiter, not a dumping-filter rewrite: skipped searches are retried
+///     on a later simulation tick.
 /// </summary>
 [GlobalDependency(RegistrationMode.AsSelf)]
 public sealed class DumpingPathfindingGuardService
@@ -30,7 +35,10 @@ public sealed class DumpingPathfindingGuardService
 
     private static readonly Dictionary<Truck, int> s_searchesPerTruck = new();
 
+    private static readonly FieldInfo? s_looseProductOptionValueField = findLooseProductOptionValueField();
+
     private static bool s_patchesApplied;
+    private static bool s_pfEnqueueDiagnosticsApplied;
     private static long s_epoch;
     private static long s_totalThrottled;
 
@@ -50,64 +58,20 @@ public sealed class DumpingPathfindingGuardService
 
     public DumpingPathfindingGuardService()
     {
-        if (s_patchesApplied)
-            return;
-
-        try
-        {
-            var dumpSearch = findUniqueMethod(typeof(TerrainDumpingManager), "TryFindClosestReadyToDump", 8);
-            var simUpdate = findUniqueMethod(typeof(VehiclePathFindingManager), "SimUpdateInternal", 0);
-
-            if (dumpSearch is null || dumpSearch.ReturnType != typeof(bool))
-            {
-                Log.Info("TajsTweaks: dumping/PF guard disabled; compatible TryFindClosestReadyToDump was not found.");
-                return;
-            }
-
-            if (simUpdate is null)
-            {
-                Log.Info("TajsTweaks: dumping/PF guard disabled; VehiclePathFindingManager.SimUpdateInternal was not found.");
-                return;
-            }
-
-            var harmony = new Harmony(HarmonyId);
-            harmony.Patch(
-                dumpSearch,
-                prefix: new HarmonyMethod(typeof(DumpingPathfindingGuardService), nameof(beforeDumpSearch)));
-            harmony.Patch(
-                simUpdate,
-                prefix: new HarmonyMethod(typeof(DumpingPathfindingGuardService), nameof(beginPathFindingTick)));
-
-            var enqueueTask = findUniqueMethod(typeof(VehiclePathFindingManager), "EnqueueTask", 2);
-            if (enqueueTask is not null)
-            {
-                harmony.Patch(
-                    enqueueTask,
-                    prefix: new HarmonyMethod(typeof(DumpingPathfindingGuardService), nameof(beforePathFindingEnqueue)));
-            }
-
-            s_patchesApplied = true;
-            Log.Info(
-                $"TajsTweaks: dumping/PF guard active; per-truck cap={DumpingPathfindingGuardSettings.SearchesPerTruckPerTick}, " +
-                $"total cap={DumpingPathfindingGuardSettings.TotalSearchesPerTick}, PF enqueue diagnostics={enqueueTask is not null}.");
-        }
-        catch (Exception ex)
-        {
-            Log.Info($"TajsTweaks: dumping/PF guard failed to patch: {ex.GetType().Name}: {ex.Message}");
-        }
+        ensurePatchesApplied();
     }
 
     [ConsoleCommand(
-        documentation: "Shows dumping-search throttling and vehicle path-finding enqueue statistics.",
+        documentation: "Shows guarded dumping-search throttling and vehicle path-finding enqueue statistics.",
         customCommandName: "tajs_dump_pf_stats")]
     public string GetStats()
     {
         return
-            $"Dump/PF guard: active={s_patchesApplied}, epoch={s_epoch}, " +
+            $"Dump/PF guard: active={s_patchesApplied}, epoch={s_epoch}, PF enqueue diagnostics={s_pfEnqueueDiagnosticsApplied}, " +
             $"caps={DumpingPathfindingGuardSettings.SearchesPerTruckPerTick}/truck and {DumpingPathfindingGuardSettings.TotalSearchesPerTick}/tick; " +
-            $"current searches={s_currentDumpSearches}, throttled={s_currentThrottled}, PF enqueues={s_currentPfEnqueues}, max/truck={s_currentMaxSearchesForTruck}; " +
-            $"last searches={s_lastDumpSearches}, throttled={s_lastThrottled}, PF enqueues={s_lastPfEnqueues}, max/truck={s_lastMaxSearchesForTruck}; " +
-            $"peaks searches={s_peakDumpSearches}, throttled={s_peakThrottled}, PF enqueues={s_peakPfEnqueues}; total throttled={s_totalThrottled}.";
+            $"current guarded searches={s_currentDumpSearches}, throttled={s_currentThrottled}, PF enqueues={s_currentPfEnqueues}, max/truck={s_currentMaxSearchesForTruck}; " +
+            $"last guarded searches={s_lastDumpSearches}, throttled={s_lastThrottled}, PF enqueues={s_lastPfEnqueues}, max/truck={s_lastMaxSearchesForTruck}; " +
+            $"peaks guarded searches={s_peakDumpSearches}, throttled={s_peakThrottled}, PF enqueues={s_peakPfEnqueues}; total throttled={s_totalThrottled}.";
     }
 
     [ConsoleCommand(
@@ -115,15 +79,111 @@ public sealed class DumpingPathfindingGuardService
         customCommandName: "tajs_dump_pf_stats_reset")]
     public string ResetStats()
     {
-        s_peakDumpSearches = 0;
-        s_peakPfEnqueues = 0;
-        s_peakThrottled = 0;
-        s_totalThrottled = 0;
+        resetAccumulatedStats();
         return "Dump/PF guard accumulated statistics reset.";
     }
 
-    private static bool beforeDumpSearch(Truck __2, ref TerrainDesignation __4, ref bool __result)
+    private static void ensurePatchesApplied()
     {
+        if (s_patchesApplied)
+            return;
+
+        var dumpSearch = findInstanceMethod(
+            typeof(TerrainDumpingManager),
+            "TryFindClosestReadyToDump",
+            typeof(bool),
+            typeof(Tile2i),
+            typeof(Option<LooseProductProto>),
+            typeof(Truck),
+            typeof(ulong?),
+            typeof(TerrainDesignation).MakeByRefType(),
+            typeof(IIndexable<MineTower>),
+            typeof(bool),
+            typeof(Lyst<TerrainDesignation>));
+        var simUpdate = findInstanceMethod(
+            typeof(VehiclePathFindingManager),
+            "SimUpdateInternal",
+            typeof(void));
+
+        if (dumpSearch is null)
+        {
+            Log.Error(
+                "TajsTweaks: dumping/PF guard disabled; the exact CoI 0.8.7 TryFindClosestReadyToDump signature was not found.");
+            return;
+        }
+
+        if (simUpdate is null)
+        {
+            Log.Error(
+                "TajsTweaks: dumping/PF guard disabled; the exact VehiclePathFindingManager.SimUpdateInternal signature was not found.");
+            return;
+        }
+
+        if (s_looseProductOptionValueField is null)
+        {
+            Log.Error(
+                "TajsTweaks: dumping/PF guard disabled; Option<LooseProductProto> value storage could not be identified safely.");
+            return;
+        }
+
+        var harmony = new Harmony(HarmonyId);
+        try
+        {
+            // Install the reset hook before the limiter. If the limiter patch fails, roll both back.
+            harmony.Patch(
+                simUpdate,
+                prefix: new HarmonyMethod(typeof(DumpingPathfindingGuardService), nameof(beginPathFindingTick)));
+            harmony.Patch(
+                dumpSearch,
+                prefix: new HarmonyMethod(typeof(DumpingPathfindingGuardService), nameof(beforeDumpSearch)));
+        }
+        catch (Exception ex)
+        {
+            rollbackFunctionalPatches(harmony);
+            Log.Error($"TajsTweaks: dumping/PF guard failed to apply functional patches: {ex}");
+            return;
+        }
+
+        s_patchesApplied = true;
+
+        var enqueueTask = findInstanceMethod(
+            typeof(VehiclePathFindingManager),
+            "EnqueueTask",
+            typeof(void),
+            typeof(IManagedVehiclePathFindingTask),
+            typeof(int));
+        if (enqueueTask is not null)
+        {
+            try
+            {
+                harmony.Patch(
+                    enqueueTask,
+                    prefix: new HarmonyMethod(typeof(DumpingPathfindingGuardService), nameof(beforePathFindingEnqueue)));
+                s_pfEnqueueDiagnosticsApplied = true;
+            }
+            catch (Exception ex)
+            {
+                // Diagnostics are optional. Keep the functional guard active if only this patch fails.
+                Log.Error($"TajsTweaks: dumping/PF enqueue diagnostics failed to patch: {ex}");
+            }
+        }
+
+        Log.Info(
+            $"TajsTweaks: dumping/PF guard active; per-truck cap={DumpingPathfindingGuardSettings.SearchesPerTruckPerTick}, " +
+            $"total cap={DumpingPathfindingGuardSettings.TotalSearchesPerTick}, PF enqueue diagnostics={s_pfEnqueueDiagnosticsApplied}.");
+    }
+
+    private static bool beforeDumpSearch(
+        TerrainDumpingManager __instance,
+        Option<LooseProductProto> __1,
+        Truck __2,
+        ref TerrainDesignation __4,
+        IIndexable<MineTower> __5,
+        ref bool __result)
+    {
+        if (!shouldThrottleSearch(__instance, __1, __5))
+            return true;
+
         s_currentDumpSearches++;
 
         if (!s_searchesPerTruck.TryGetValue(__2, out var truckSearches))
@@ -144,11 +204,39 @@ public sealed class DumpingPathfindingGuardService
 
         // TryFind... has an out TerrainDesignation. When Harmony skips the original call we must
         // provide the same safe state that a normal false return would expose to its caller.
-        __4 = default!;
+        __4 = default;
         __result = false;
         s_currentThrottled++;
         s_totalThrottled++;
         return false;
+    }
+
+    private static bool shouldThrottleSearch(
+        TerrainDumpingManager dumpingManager,
+        Option<LooseProductProto> productOption,
+        IIndexable<MineTower> towersToEnforce)
+    {
+        // The target method does not know whether its caller is specifically a storage export.
+        // The safe shared signature of the reproduced bug is narrower and observable here:
+        // this is a tower-enforced search and the product is forbidden by the global dumping filter.
+        if (towersToEnforce.Count == 0)
+            return false;
+
+        var product = s_looseProductOptionValueField?.GetValue(productOption) as LooseProductProto;
+        if (product is null)
+            return false;
+
+        if (dumpingManager.ProductsAllowedToDump is not IEnumerable<LooseProductProto> globallyAllowedProducts)
+            return false;
+
+        foreach (var globallyAllowedProduct in globallyAllowedProducts)
+        {
+            if (ReferenceEquals(globallyAllowedProduct, product) ||
+                EqualityComparer<LooseProductProto>.Default.Equals(globallyAllowedProduct, product))
+                return false;
+        }
+
+        return true;
     }
 
     private static void beforePathFindingEnqueue()
@@ -178,20 +266,67 @@ public sealed class DumpingPathfindingGuardService
         s_epoch++;
     }
 
-    private static MethodInfo? findUniqueMethod(Type type, string name, int parameterCount)
+    private static void resetAccumulatedStats()
     {
-        MethodInfo? found = null;
-        foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+        s_peakDumpSearches = 0;
+        s_peakPfEnqueues = 0;
+        s_peakThrottled = 0;
+        s_totalThrottled = 0;
+    }
+
+    private static void rollbackFunctionalPatches(Harmony harmony)
+    {
+        try
         {
-            if (method.Name != name || method.GetParameters().Length != parameterCount)
+            harmony.UnpatchSelf();
+        }
+        catch (Exception rollbackException)
+        {
+            Log.Error($"TajsTweaks: dumping/PF guard rollback also failed: {rollbackException}");
+        }
+
+        s_patchesApplied = false;
+        s_pfEnqueueDiagnosticsApplied = false;
+    }
+
+    // S3011 is intentionally suppressed only for this compatibility seam. The mod targets a
+    // fixed, exact CoI 0.8.7 signature and fails closed when it is not present. No user-supplied
+    // type or member names are reflected here.
+#pragma warning disable S3011
+    private static MethodInfo? findInstanceMethod(
+        Type type,
+        string name,
+        Type returnType,
+        params Type[] parameterTypes)
+    {
+        var method = type.GetMethod(
+            name,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly,
+            binder: null,
+            types: parameterTypes,
+            modifiers: null);
+
+        return method is { IsStatic: false } && method.ReturnType == returnType
+            ? method
+            : null;
+    }
+
+    private static FieldInfo? findLooseProductOptionValueField()
+    {
+        FieldInfo? found = null;
+        foreach (var field in typeof(Option<LooseProductProto>).GetFields(
+                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+        {
+            if (field.FieldType != typeof(LooseProductProto))
                 continue;
 
             if (found is not null)
                 return null;
 
-            found = method;
+            found = field;
         }
 
         return found;
     }
+#pragma warning restore S3011
 }
