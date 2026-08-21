@@ -39,6 +39,7 @@ public sealed class DumpingPathfindingGuardService
 
     private static bool s_patchesApplied;
     private static bool s_pfEnqueueDiagnosticsApplied;
+    private static bool s_guardFailureLogged;
     private static long s_epoch;
     private static long s_totalThrottled;
 
@@ -178,51 +179,69 @@ public sealed class DumpingPathfindingGuardService
         Option<LooseProductProto> __1,
         Truck __2,
         ref TerrainDesignation? __4,
-        IIndexable<MineTower> __5,
+        IIndexable<MineTower>? __5,
         ref bool __result)
     {
-        if (!shouldThrottleSearch(__instance, __1, __5))
+        try
+        {
+            if (!shouldThrottleSearch(__instance, __1, __5))
+                return true;
+
+            s_currentDumpSearches++;
+
+            if (!s_searchesPerTruck.TryGetValue(__2, out var truckSearches))
+                truckSearches = 0;
+
+            truckSearches++;
+            s_searchesPerTruck[__2] = truckSearches;
+            if (truckSearches > s_currentMaxSearchesForTruck)
+                s_currentMaxSearchesForTruck = truckSearches;
+
+            var perTruckLimit = DumpingPathfindingGuardSettings.SearchesPerTruckPerTick;
+            var totalLimit = DumpingPathfindingGuardSettings.TotalSearchesPerTick;
+
+            var exceedsPerTruckLimit = perTruckLimit > 0 && truckSearches > perTruckLimit;
+            var exceedsTotalLimit = totalLimit > 0 && s_currentDumpSearches > totalLimit;
+            if (!exceedsPerTruckLimit && !exceedsTotalLimit)
+                return true;
+
+            // TryFind... has an out TerrainDesignation. When Harmony skips the original call we must
+            // provide the same safe state that a normal false return would expose to its caller.
+            __4 = null;
+            __result = false;
+            s_currentThrottled++;
+            s_totalThrottled++;
+            return false;
+        }
+        catch (Exception ex)
+        {
+            // Harmony prefix failures propagate into the truck's simulation update. This guard is
+            // a mitigation only, so any unexpected predicate/instrumentation failure must fail open
+            // and let the original CoI search run rather than breaking vehicle logistics.
+            if (!s_guardFailureLogged)
+            {
+                s_guardFailureLogged = true;
+                Log.Error($"TajsTweaks: dumping/PF guard failed during a search and will fail open for this call: {ex}");
+            }
+
             return true;
-
-        s_currentDumpSearches++;
-
-        if (!s_searchesPerTruck.TryGetValue(__2, out var truckSearches))
-            truckSearches = 0;
-
-        truckSearches++;
-        s_searchesPerTruck[__2] = truckSearches;
-        if (truckSearches > s_currentMaxSearchesForTruck)
-            s_currentMaxSearchesForTruck = truckSearches;
-
-        var perTruckLimit = DumpingPathfindingGuardSettings.SearchesPerTruckPerTick;
-        var totalLimit = DumpingPathfindingGuardSettings.TotalSearchesPerTick;
-
-        var exceedsPerTruckLimit = perTruckLimit > 0 && truckSearches > perTruckLimit;
-        var exceedsTotalLimit = totalLimit > 0 && s_currentDumpSearches > totalLimit;
-        if (!exceedsPerTruckLimit && !exceedsTotalLimit)
-            return true;
-
-        // TryFind... has an out TerrainDesignation. When Harmony skips the original call we must
-        // provide the same safe state that a normal false return would expose to its caller.
-        __4 = null;
-        __result = false;
-        s_currentThrottled++;
-        s_totalThrottled++;
-        return false;
+        }
     }
 
     private static bool shouldThrottleSearch(
         TerrainDumpingManager dumpingManager,
         Option<LooseProductProto> productOption,
-        IIndexable<MineTower> towersToEnforce)
+        IIndexable<MineTower>? towersToEnforce)
     {
+        // Null is a legitimate value for the global/non-tower search path. Only explicit,
+        // non-empty tower-enforced searches are candidates for the local/global mismatch guard.
+        if (towersToEnforce is null || towersToEnforce.Count == 0)
+            return false;
+
         // The target method does not know whether its caller is specifically a storage export.
         // The reproduced pathological state that is observable here is narrower:
         // the search is tower-enforced, at least one enforced tower accepts the product locally,
         // and that same product is forbidden by the global dumping filter.
-        if (towersToEnforce.Count == 0)
-            return false;
-
         var product = s_looseProductOptionValueField?.GetValue(productOption) as LooseProductProto;
         if (product is null || !anyTowerAcceptsDumpOf(towersToEnforce, product))
             return false;
