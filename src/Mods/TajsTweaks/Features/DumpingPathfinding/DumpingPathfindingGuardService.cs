@@ -278,7 +278,7 @@ public sealed class DumpingPathfindingGuardService
     {
         try
         {
-            harmony.UnpatchSelf();
+            harmony.UnpatchAll(HarmonyId);
         }
         catch (Exception rollbackException)
         {
@@ -302,9 +302,9 @@ public sealed class DumpingPathfindingGuardService
         var method = type.GetMethod(
             name,
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly,
-            binder: null,
+            binder: Type.DefaultBinder,
             types: parameterTypes,
-            modifiers: null);
+            modifiers: Array.Empty<ParameterModifier>());
 
         return method is { IsStatic: false } && method.ReturnType == returnType
             ? method
