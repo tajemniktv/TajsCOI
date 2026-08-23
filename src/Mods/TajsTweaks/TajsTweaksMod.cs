@@ -12,42 +12,43 @@ using TajsTweaks.Infrastructure;
 
 #endregion
 
-namespace TajsTweaks;
-
-/// <summary>
-///     Root mod class. Keep this boring.
-///     Content/prototypes can be registered here; runtime systems should generally
-///     live in focused GlobalDependency services.
-/// </summary>
-public sealed class TajsTweaksMod : DataOnlyMod
+namespace TajsTweaks
 {
-    public TajsTweaksMod(ModManifest manifest) : base(manifest)
+    /// <summary>
+    ///     Root mod class. Keep this boring.
+    ///     Content/prototypes can be registered here; runtime systems should generally
+    ///     live in focused GlobalDependency services.
+    /// </summary>
+    public sealed class TajsTweaksMod : DataOnlyMod
     {
-        BuildMetadata.Initialize(manifest);
-        Log.Info("TajsTweaks: constructed");
-    }
-
-    public override void RegisterPrototypes(ProtoRegistrator registrator)
-    {
-        var jsonConfig = JsonConfig;
-        UnlockedSpeedSettings.Update(jsonConfig.GetInt(UnlockedSpeedSettings.ConfigKey));
-
-        jsonConfig.OnValueChanged += paramName =>
+        public TajsTweaksMod(ModManifest manifest) : base(manifest)
         {
-            if (paramName == UnlockedSpeedSettings.ConfigKey)
+            BuildMetadata.Initialize(manifest);
+            Log.Info("TajsTweaks: constructed");
+        }
+
+        public override void RegisterPrototypes(ProtoRegistrator registrator)
+        {
+            ModJsonConfig jsonConfig = JsonConfig;
+            UnlockedSpeedSettings.Update(jsonConfig.GetInt(UnlockedSpeedSettings.ConfigKey));
+
+            jsonConfig.OnValueChanged += paramName =>
             {
-                UnlockedSpeedSettings.Update(jsonConfig.GetInt(UnlockedSpeedSettings.ConfigKey));
-            }
-        };
+                if (paramName == UnlockedSpeedSettings.ConfigKey)
+                {
+                    UnlockedSpeedSettings.Update(jsonConfig.GetInt(UnlockedSpeedSettings.ConfigKey));
+                }
+            };
 
-        // Add prototype/data registration here as features are added.
-        // Example: `registrator.RegisterData<MyMachineData>();`
-    }
+            // Add prototype/data registration here as features are added.
+            // Example: `registrator.RegisterData<MyMachineData>();`
+        }
 
-    public override void MigrateJsonConfig(
-        VersionSlim savedVersion,
-        Dict<string, object> savedValues)
-    {
-        // Add config migrations here if/when config.json evolves.
+        public override void MigrateJsonConfig(
+            VersionSlim savedVersion,
+            Dict<string, object> savedValues)
+        {
+            // Add config migrations here if/when config.json evolves.
+        }
     }
 }
