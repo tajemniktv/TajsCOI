@@ -3,7 +3,7 @@
     <IsCoiMod>true</IsCoiMod>
 
     <ModId>TajsProfiler</ModId>
-    <ModVersion>0.1.0</ModVersion>
+    <ModVersion>0.2.0</ModVersion>
     <ModDisplayName>Taj's Profiler</ModDisplayName>
     <ModDescription>Behavior-neutral runtime diagnostics for Captain of Industry.</ModDescription>
     <ModAuthor>TajemnikTV</ModAuthor>
@@ -21,5 +21,11 @@
       <Private>false</Private>
     </ProjectReference>
     <PackageReference Include="Lib.Harmony" Version="2.4.2" ExcludeAssets="runtime"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>TajsCOI.Tests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 </Project>

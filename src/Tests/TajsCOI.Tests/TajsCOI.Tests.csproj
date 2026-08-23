@@ -22,6 +22,7 @@
 
     <ProjectReference Include="..\..\Libraries\TajsCOI.Common\TajsCOI.Common.csproj"/>
     <ProjectReference Include="..\..\Mods\TajsCore\TajsCore.csproj"/>
+    <ProjectReference Include="..\..\Mods\TajsProfiler\TajsProfiler.csproj"/>
 
     <Reference Include="Mafi">
       <HintPath>$(COIManagedDir)\Mafi.dll</HintPath>

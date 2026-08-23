@@ -144,6 +144,19 @@ The dumping/pathfinding diagnostics originally developed inside `TajsTweaks` are
 
 Profiler instrumentation should be behavior-neutral and cheap when disabled. Deep probes should be opt-in where practical.
 
+The runtime baseline probe provides bounded named snapshots for save/load timing, managed and Unity memory, GC collections, and product-renderer GPU/slot telemetry:
+
+```text
+tajs_runtime_profile_capture <label>
+tajs_runtime_profiles
+tajs_runtime_profile_show <label>
+tajs_runtime_profile_compare <before> <after>
+tajs_runtime_profile_clear
+tajs_runtime_profile_reset
+```
+
+Capture before and after a representative operation. Comparisons subtract cumulative counters, while worst-event values remain explicitly non-subtractive.
+
 ### TajsPerformance
 
 `TajsPerformance` is the standalone host for **proven performance fixes**. Its initial scaffold intentionally registers no fixes.
