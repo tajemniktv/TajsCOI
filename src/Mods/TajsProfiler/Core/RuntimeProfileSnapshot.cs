@@ -19,7 +19,8 @@ namespace TajsCOI.Profiler.Core
             long unityGraphicsBytes,
             ProductRendererMetric products,
             IReadOnlyDictionary<string, StageMetric> stages,
-            IReadOnlyList<GcPassMetric> gcPasses)
+            IReadOnlyList<GcPassMetric> gcPasses,
+            long gcPassSequence)
         {
             Label = label;
             Sequence = sequence;
@@ -31,6 +32,7 @@ namespace TajsCOI.Profiler.Core
             Products = products;
             Stages = stages;
             GcPasses = gcPasses;
+            GcPassSequence = gcPassSequence;
         }
 
         internal string Label { get; }
@@ -43,6 +45,7 @@ namespace TajsCOI.Profiler.Core
         internal ProductRendererMetric Products { get; }
         internal IReadOnlyDictionary<string, StageMetric> Stages { get; }
         internal IReadOnlyList<GcPassMetric> GcPasses { get; }
+        internal long GcPassSequence { get; }
     }
 
     internal readonly struct ProductRendererMetric

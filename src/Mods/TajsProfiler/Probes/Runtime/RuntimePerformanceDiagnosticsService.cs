@@ -214,6 +214,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                         .Append(", reserve used/capacity=").Append(second.Products.ReserveBufferUsed - first.Products.ReserveBufferUsed).Append('/')
                         .Append(second.Products.ReserveBufferCapacity - first.Products.ReserveBufferCapacity);
                 }
+                AppendGcInterval(builder, first, second);
                 return builder.ToString();
             }
         }
@@ -262,7 +263,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 unityGraphics,
                 ReadProductsRenderer(),
                 stages,
-                SnapshotGcPasses());
+                SnapshotGcPasses(),
+                Interlocked.Read(ref s_gcPassSequence));
         }
 
         private ProductRendererMetric ReadProductsRenderer()
@@ -896,6 +898,50 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 .Append(", GC0/1/2=").Append(metric.Gen0Collections).Append('/')
                 .Append(metric.Gen1Collections).Append('/').Append(metric.Gen2Collections);
         }
+
+        private static void AppendGcInterval(
+            StringBuilder builder,
+            RuntimeProfileSnapshot first,
+            RuntimeProfileSnapshot second)
+        {
+            IReadOnlyList<GcPassMetric> passes = SelectGcPassInterval(
+                second.GcPasses,
+                first.GcPassSequence,
+                second.GcPassSequence);
+            long expectedCount = Math.Max(0, second.GcPassSequence - first.GcPassSequence);
+            if (passes.Count == 0)
+            {
+                builder.Append(expectedCount == 0
+                    ? "\nScene-cleanup GC interval: no passes."
+                    : "\nScene-cleanup GC interval: unavailable (bounded pass history rolled over).");
+                return;
+            }
+
+            long totalTicks = passes.Sum(x => x.ElapsedTicks);
+            long maxTicks = passes.Max(x => x.ElapsedTicks);
+            long reclaimed = passes.Sum(x => x.ReclaimedBytes);
+            int dryPasses = passes.Count(x => x.ReclaimedBytes <= 16L * 1024 * 1024);
+            builder.Append("\nScene-cleanup GC interval: passes=").Append(passes.Count);
+            if (passes.Count < expectedCount)
+            {
+                builder.Append('/').Append(expectedCount).Append(" (history truncated)");
+            }
+            builder.Append(", total=")
+                .Append((totalTicks * 1000.0 / Stopwatch.Frequency).ToString("F2", CultureInfo.InvariantCulture)).Append(" ms")
+                .Append(", max=")
+                .Append((maxTicks * 1000.0 / Stopwatch.Frequency).ToString("F2", CultureInfo.InvariantCulture)).Append(" ms")
+                .Append(", reclaimed=").Append(FormatBytes(reclaimed))
+                .Append(", vanilla-dry passes=").Append(dryPasses);
+        }
+
+        internal static IReadOnlyList<GcPassMetric> SelectGcPassInterval(
+            IReadOnlyList<GcPassMetric> available,
+            long afterSequence,
+            long throughSequence) =>
+            available
+                .Where(x => x.Sequence > afterSequence && x.Sequence <= throughSequence)
+                .OrderBy(x => x.Sequence)
+                .ToArray();
 
         private static void ReadUnityMemory(out long allocated, out long reserved, out long graphics)
         {

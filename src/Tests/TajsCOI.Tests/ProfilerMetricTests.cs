@@ -167,5 +167,22 @@ namespace TajsCOI.Tests
             Assert.Equal(600 * 100.0 / 2_048, metric.Utilization, 8);
             Assert.Equal(1_120_256, metric.GpuBytes);
         }
+
+        [Fact]
+        public void GcPassComparisonSelectsOnlyCaptureInterval()
+        {
+            var passes = new List<GcPassMetric>
+            {
+                new(4, 10, 100, 90, 0, 0, 1),
+                new(5, 20, 100, 80, 0, 0, 1),
+                new(6, 30, 100, 70, 0, 0, 1),
+                new(7, 40, 100, 60, 0, 0, 1),
+            };
+
+            IReadOnlyList<GcPassMetric> interval = RuntimePerformanceDiagnosticsService
+                .SelectGcPassInterval(passes, afterSequence: 4, throughSequence: 6);
+
+            Assert.Equal(new long[] { 5, 6 }, interval.Select(x => x.Sequence));
+        }
     }
 }
