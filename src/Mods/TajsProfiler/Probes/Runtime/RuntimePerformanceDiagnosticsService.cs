@@ -32,6 +32,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
     {
         private const string HarmonyId = "TajsCOI.Profiler.RuntimePerformance";
         private const int MaxHistory = 16;
+        private const int MaxGcPassHistory = 32;
 
         internal const string SaveSerialization = "save.serialization";
         internal const string SaveFinalize = "save.compression-write-total";
@@ -61,10 +62,13 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private static readonly object s_historyGate = new();
         private static readonly object s_patchGate = new();
         private static readonly List<RuntimeProfileSnapshot> s_history = new(MaxHistory);
+        private static readonly object s_gcPassGate = new();
+        private static readonly List<GcPassMetric> s_gcPassHistory = new(MaxGcPassHistory);
 
         private static ITajsLogger? s_log;
         private static int s_callbackErrorLogged;
         private static long s_sequence;
+        private static long s_gcPassSequence;
         private static bool s_patchAttempted;
         private static PatchSummary s_patchSummary;
 
@@ -72,6 +76,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         [ThreadStatic]
         private static int s_saveDataDepth;
+
+        [ThreadStatic]
+        private static GcPassState? s_gcPassState;
 
         public RuntimePerformanceDiagnosticsService(DependencyResolver resolver, ITajsRuntime runtime)
         {
@@ -236,7 +243,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 unityReserved,
                 unityGraphics,
                 ReadProductsRenderer(),
-                stages);
+                stages,
+                SnapshotGcPasses());
         }
 
         private ProductRendererMetric ReadProductsRenderer()
@@ -301,8 +309,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 required += PatchTimed(harmony, "Mafi.DependencyResolver", "Mafi", "DeserializeInto", LoadDeserialization) ? 1 : 0;
                 required += PatchIterator(harmony, "Mafi.Serialization.BlobReader", "Mafi", "FinalizeLoadingTimeSliced", LoadResolverFinalization) ? 1 : 0;
                 optional += PatchTimed(harmony, "Mafi.Unity.Main", "Mafi.Unity", "collectGarbageDrainingFinalizers", SceneGarbageCollection) ? 1 : 0;
+                optional += PatchSceneGcPasses(harmony) ? 1 : 0;
 
-                s_patchSummary = new PatchSummary(9, required, 1, optional);
+                s_patchSummary = new PatchSummary(9, required, 2, optional);
                 s_patchAttempted = true;
                 return s_patchSummary;
             }
@@ -412,6 +421,145 @@ namespace TajsCOI.Profiler.Probes.Runtime
             {
                 LogCallbackFailure(exception, "patch nested save checksum");
                 return false;
+            }
+        }
+
+        private static bool PatchSceneGcPasses(Harmony harmony)
+        {
+            try
+            {
+                MethodInfo? target = FindType("Mafi.Unity.Main", "Mafi.Unity")?.GetMethod(
+                    "collectGarbageDrainingFinalizers",
+                    BindingFlags.Static | BindingFlags.NonPublic);
+                if (target is null)
+                {
+                    return false;
+                }
+
+                harmony.Patch(
+                    target,
+                    transpiler: new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), nameof(InstrumentGcPasses)));
+                return true;
+            }
+            catch (Exception exception)
+            {
+                LogCallbackFailure(exception, "patch per-pass scene GC");
+                return false;
+            }
+        }
+
+        private static IEnumerable<CodeInstruction> InstrumentGcPasses(IEnumerable<CodeInstruction> instructions)
+        {
+            MethodInfo collect = AccessTools.Method(
+                typeof(GC),
+                nameof(GC.Collect),
+                new[] { typeof(int), typeof(GCCollectionMode), typeof(bool), typeof(bool) });
+            MethodInfo wait = AccessTools.Method(typeof(GC), nameof(GC.WaitForPendingFinalizers), Type.EmptyTypes);
+            MethodInfo measuredCollect = AccessTools.Method(
+                typeof(RuntimePerformanceDiagnosticsService),
+                nameof(CollectGarbageMeasured));
+            MethodInfo measuredWait = AccessTools.Method(
+                typeof(RuntimePerformanceDiagnosticsService),
+                nameof(WaitForPendingFinalizersMeasured));
+            int collectReplacements = 0;
+            int waitReplacements = 0;
+            var result = new List<CodeInstruction>();
+
+            foreach (CodeInstruction instruction in instructions)
+            {
+                var replacement = new CodeInstruction(instruction);
+                if (instruction.Calls(collect))
+                {
+                    replacement.operand = measuredCollect;
+                    collectReplacements++;
+                }
+                else if (instruction.Calls(wait))
+                {
+                    replacement.operand = measuredWait;
+                    waitReplacements++;
+                }
+                result.Add(replacement);
+            }
+
+            if (collectReplacements != 1 || waitReplacements != 1)
+            {
+                throw new InvalidOperationException(
+                    $"Expected one GC.Collect and one WaitForPendingFinalizers call, found {collectReplacements} and {waitReplacements}.");
+            }
+            return result;
+        }
+
+        private static void CollectGarbageMeasured(int generation, GCCollectionMode mode, bool blocking, bool compacting)
+        {
+            try
+            {
+                s_gcPassState = new GcPassState(
+                    Stopwatch.GetTimestamp(),
+                    GC.GetTotalMemory(false),
+                    GC.CollectionCount(0),
+                    GC.CollectionCount(1),
+                    GC.CollectionCount(2));
+            }
+            catch (Exception exception)
+            {
+                s_gcPassState = null;
+                LogCallbackFailure(exception, "per-pass GC prefix");
+            }
+
+            try
+            {
+                GC.Collect(generation, mode, blocking, compacting);
+            }
+            catch
+            {
+                s_gcPassState = null;
+                throw;
+            }
+        }
+
+        private static void WaitForPendingFinalizersMeasured()
+        {
+            try
+            {
+                GC.WaitForPendingFinalizers();
+            }
+            finally
+            {
+                RecordGcPass();
+            }
+        }
+
+        private static void RecordGcPass()
+        {
+            GcPassState? state = s_gcPassState;
+            s_gcPassState = null;
+            if (state is null)
+            {
+                return;
+            }
+
+            try
+            {
+                var metric = new GcPassMetric(
+                    Interlocked.Increment(ref s_gcPassSequence),
+                    Stopwatch.GetTimestamp() - state.StartTicks,
+                    state.BeforeBytes,
+                    GC.GetTotalMemory(false),
+                    GC.CollectionCount(0) - state.Gen0,
+                    GC.CollectionCount(1) - state.Gen1,
+                    GC.CollectionCount(2) - state.Gen2);
+                lock (s_gcPassGate)
+                {
+                    if (s_gcPassHistory.Count == MaxGcPassHistory)
+                    {
+                        s_gcPassHistory.RemoveAt(0);
+                    }
+                    s_gcPassHistory.Add(metric);
+                }
+            }
+            catch (Exception exception)
+            {
+                LogCallbackFailure(exception, "per-pass GC result");
             }
         }
 
@@ -573,6 +721,21 @@ namespace TajsCOI.Profiler.Probes.Runtime
             {
                 builder.Append("\nProducts renderer: unavailable (").Append(products.Reason.Trim()).Append(')');
             }
+
+            if (snapshot.GcPasses.Count > 0)
+            {
+                builder.Append("\nRecent scene-cleanup GC passes:");
+                foreach (GcPassMetric pass in snapshot.GcPasses)
+                {
+                    builder.Append("\n  #").Append(pass.Sequence)
+                        .Append(": ").Append(pass.ElapsedMilliseconds.ToString("F2", CultureInfo.InvariantCulture)).Append(" ms")
+                        .Append(", reclaimed=").Append(FormatBytes(pass.ReclaimedBytes))
+                        .Append(", before/after=").Append(FormatBytes(pass.BeforeBytes)).Append('/')
+                        .Append(FormatBytes(pass.AfterBytes))
+                        .Append(", GC0/1/2=").Append(pass.Gen0Collections).Append('/')
+                        .Append(pass.Gen1Collections).Append('/').Append(pass.Gen2Collections);
+                }
+            }
             return builder.ToString();
         }
 
@@ -671,6 +834,14 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private static RuntimeProfileSnapshot? FindLocked(string label) =>
             s_history.FirstOrDefault(x => string.Equals(x.Label, label, StringComparison.Ordinal));
 
+        private static IReadOnlyList<GcPassMetric> SnapshotGcPasses()
+        {
+            lock (s_gcPassGate)
+            {
+                return s_gcPassHistory.ToArray();
+            }
+        }
+
         private static void LogCallbackFailure(Exception exception, string operation)
         {
             if (Interlocked.Exchange(ref s_callbackErrorLogged, 1) == 0)
@@ -703,6 +874,24 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private sealed class CallbackState
         {
             internal int Recorded;
+        }
+
+        private sealed class GcPassState
+        {
+            internal GcPassState(long startTicks, long beforeBytes, int gen0, int gen1, int gen2)
+            {
+                StartTicks = startTicks;
+                BeforeBytes = beforeBytes;
+                Gen0 = gen0;
+                Gen1 = gen1;
+                Gen2 = gen2;
+            }
+
+            internal long StartTicks { get; }
+            internal long BeforeBytes { get; }
+            internal int Gen0 { get; }
+            internal int Gen1 { get; }
+            internal int Gen2 { get; }
         }
 
         private readonly struct PatchSummary

@@ -3,6 +3,9 @@
 // All Rights Reserved.
 
 using System.Reflection;
+using System.Collections.Generic;
+using System.Linq;
+using System;
 using HarmonyLib;
 using Mafi.Core.SaveGame;
 using TajsCOI.Profiler.Core;
@@ -77,6 +80,30 @@ namespace TajsCOI.Tests
             {
                 new Harmony("TajsCOI.Profiler.RuntimePerformance").UnpatchAll("TajsCOI.Profiler.RuntimePerformance");
             }
+        }
+
+        [Fact]
+        public void SceneGcTranspilerReplacesOnlyTheTwoFrameworkCalls()
+        {
+            MethodInfo collect = typeof(GC).GetMethod(
+                nameof(GC.Collect),
+                new[] { typeof(int), typeof(GCCollectionMode), typeof(bool), typeof(bool) })!;
+            MethodInfo wait = typeof(GC).GetMethod(nameof(GC.WaitForPendingFinalizers), Type.EmptyTypes)!;
+            MethodInfo transpiler = typeof(RuntimePerformanceDiagnosticsService).GetMethod(
+                "InstrumentGcPasses",
+                BindingFlags.Static | BindingFlags.NonPublic)!;
+            var input = new List<CodeInstruction>
+            {
+                new(System.Reflection.Emit.OpCodes.Nop),
+                new(System.Reflection.Emit.OpCodes.Call, collect),
+                new(System.Reflection.Emit.OpCodes.Call, wait),
+            };
+
+            var output = ((IEnumerable<CodeInstruction>)transpiler.Invoke(null, new object[] { input })!).ToList();
+
+            Assert.Equal(3, output.Count);
+            Assert.Equal("CollectGarbageMeasured", ((MethodInfo)output[1].operand).Name);
+            Assert.Equal("WaitForPendingFinalizersMeasured", ((MethodInfo)output[2].operand).Name);
         }
     }
 }

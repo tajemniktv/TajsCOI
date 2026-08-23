@@ -18,7 +18,8 @@ namespace TajsCOI.Profiler.Core
             long unityReservedBytes,
             long unityGraphicsBytes,
             ProductRendererMetric products,
-            IReadOnlyDictionary<string, StageMetric> stages)
+            IReadOnlyDictionary<string, StageMetric> stages,
+            IReadOnlyList<GcPassMetric> gcPasses)
         {
             Label = label;
             Sequence = sequence;
@@ -29,6 +30,7 @@ namespace TajsCOI.Profiler.Core
             UnityGraphicsBytes = unityGraphicsBytes;
             Products = products;
             Stages = stages;
+            GcPasses = gcPasses;
         }
 
         internal string Label { get; }
@@ -40,6 +42,7 @@ namespace TajsCOI.Profiler.Core
         internal long UnityGraphicsBytes { get; }
         internal ProductRendererMetric Products { get; }
         internal IReadOnlyDictionary<string, StageMetric> Stages { get; }
+        internal IReadOnlyList<GcPassMetric> GcPasses { get; }
     }
 
     internal readonly struct ProductRendererMetric
@@ -80,5 +83,29 @@ namespace TajsCOI.Profiler.Core
         internal string Reason { get; }
         internal int UnusedSlots => Math.Max(0, CapacitySlots - UsedSlots);
         internal double Utilization => CapacitySlots > 0 ? UsedSlots * 100.0 / CapacitySlots : 0.0;
+    }
+
+    internal readonly struct GcPassMetric
+    {
+        internal GcPassMetric(long sequence, long elapsedTicks, long beforeBytes, long afterBytes, int gen0, int gen1, int gen2)
+        {
+            Sequence = sequence;
+            ElapsedTicks = elapsedTicks;
+            BeforeBytes = beforeBytes;
+            AfterBytes = afterBytes;
+            Gen0Collections = gen0;
+            Gen1Collections = gen1;
+            Gen2Collections = gen2;
+        }
+
+        internal long Sequence { get; }
+        internal long ElapsedTicks { get; }
+        internal long BeforeBytes { get; }
+        internal long AfterBytes { get; }
+        internal long ReclaimedBytes => BeforeBytes - AfterBytes;
+        internal int Gen0Collections { get; }
+        internal int Gen1Collections { get; }
+        internal int Gen2Collections { get; }
+        internal double ElapsedMilliseconds => ElapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }
 }
