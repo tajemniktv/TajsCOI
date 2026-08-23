@@ -29,21 +29,21 @@ using Mafi.Core.Vehicles.Trucks.JobProviders;
 
 #endregion
 
-namespace TajsTweaks.Features.DumpingPathfinding
+namespace TajsCOI.Profiler.Probes.Dumping
 {
     /// <summary>
     ///     Records low-overhead runtime statistics for dumping-destination searches. This service is
     ///     intentionally diagnostics-only: it never suppresses, retries, reorders, or changes a
     ///     vanilla dumping search result. Any instrumentation failure fails open for that call.
-    ///     The 0.8.2c and 0.8.7 reference snapshots contain the same search structure. In particular,
-    ///     a globally-forbidden product with no explicit tower list is promoted into the local-tower
-    ///     path when one or more MineTowers accept it. That fallback is the primary forensic distinction
-    ///     recorded here.
+    ///     The 0.8.7a search retains the instrumented 0.8.7 signatures while adding vanilla tower-filter
+    ///     caching and bounded nearby expansion. A globally-forbidden product with no explicit tower list
+    ///     can still enter the local-tower fallback when one or more MineTowers accept it; that path remains
+    ///     the primary forensic distinction recorded here.
     /// </summary>
     [GlobalDependency(RegistrationMode.AsSelf)]
     public sealed class DumpSearchDiagnosticsService
     {
-        private const string HarmonyId = "tajemniktv.tajstweaks.dump-search-diagnostics";
+        private const string HarmonyId = "TajsCOI.Profiler.Dumping";
         private const string UnknownProductId = "<none>";
         private const int MaxProductsInConsoleReport = 12;
         private const int MaxProfileHistory = 16;
@@ -134,7 +134,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
         [ThreadStatic]
         private static EligibleCacheDiagnosticContext? s_currentEligibleCacheContext;
 
-        private static readonly string[] SearchPathNames =
+        private static readonly string[] s_searchPathNames =
         {
             "unknown",
             "global-allowed",
@@ -145,17 +145,17 @@ namespace TajsTweaks.Features.DumpingPathfinding
             "explicit-tower-global-forbidden-rejected",
         };
 
-        private static readonly string[] SearchStageNames =
+        private static readonly string[] s_searchStageNames =
         {
             "pre-selection", "candidate-filtering", "TryFindBestReadyToFulfill", "nearby-expansion", "unaccounted",
         };
 
-        private static readonly string[] LatencyBucketNames =
+        private static readonly string[] s_latencyBucketNames =
         {
             "<0.1ms", "0.1-1ms", "1-5ms", "5-10ms", "10-25ms", "25-50ms", "50-100ms", "100-250ms", ">=250ms",
         };
 
-        private static readonly string[] SearchCallerNames =
+        private static readonly string[] s_searchCallerNames =
         {
             "other", "VehicleBuffersRegistry.balanceBuffers", "DumpingJob", "DefaultTruckJobProvider.TryGetJobFor",
         };
@@ -163,7 +163,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
         public DumpSearchDiagnosticsService(IGameConsole console)
         {
             s_console = console;
-            ensurePatchesApplied();
+            EnsurePatchesApplied();
         }
 
         [ConsoleCommand(
@@ -171,44 +171,44 @@ namespace TajsTweaks.Features.DumpingPathfinding
             customCommandName: "tajs_dump_search_stats")]
         public string GetStats()
         {
-            List<ProductSearchSnapshot> snapshot = snapshotProductStats();
-            sortProductSnapshots(snapshot);
+            List<ProductSearchSnapshot> snapshot = SnapshotProductStats();
+            SortProductSnapshots(snapshot);
 
-            long[] pathCalls = snapshotCounters(s_pathCalls);
-            long[] callerCalls = snapshotCounters(s_callerCalls);
-            long[] pathCandidateDesignations = snapshotCounters(s_pathCandidateDesignations);
-            long[] pathCandidateCalls = snapshotCounters(s_pathCandidateCalls);
+            long[] pathCalls = SnapshotCounters(s_pathCalls);
+            long[] callerCalls = SnapshotCounters(s_callerCalls);
+            long[] pathCandidateDesignations = SnapshotCounters(s_pathCandidateDesignations);
+            long[] pathCandidateCalls = SnapshotCounters(s_pathCandidateCalls);
             SearchBreakdownSnapshot breakdown = s_breakdownStats.Snapshot();
 
-            long totalCalls = read(ref s_totalCalls);
-            long completedCalls = read(ref s_totalTrueResults) + read(ref s_totalFalseResults);
+            long totalCalls = Read(ref s_totalCalls);
+            long completedCalls = Read(ref s_totalTrueResults) + Read(ref s_totalFalseResults);
             long incompleteCalls = Math.Max(0, totalCalls - completedCalls);
-            double totalMs = stopwatchTicksToMilliseconds(read(ref s_totalElapsedTicks));
+            double totalMs = StopwatchTicksToMilliseconds(Read(ref s_totalElapsedTicks));
             double avgUs = completedCalls > 0
-                ? stopwatchTicksToMicroseconds(read(ref s_totalElapsedTicks)) / completedCalls
+                ? StopwatchTicksToMicroseconds(Read(ref s_totalElapsedTicks)) / completedCalls
                 : 0.0;
 
             var builder = new StringBuilder(2048);
             builder.Append("Dump search diagnostics: active=")
-                .Append(readInt(ref s_patchesApplied) != 0)
+                .Append(ReadInt(ref s_patchesApplied) != 0)
                 .Append(", functional limiter=disabled, tick buckets=")
-                .Append(readInt(ref s_tickBoundaryPatchApplied) != 0)
+                .Append(ReadInt(ref s_tickBoundaryPatchApplied) != 0)
                 .Append(", PF enqueue diagnostics=")
-                .Append(readInt(ref s_pfEnqueuePatchApplied) != 0)
+                .Append(ReadInt(ref s_pfEnqueuePatchApplied) != 0)
                 .Append(", breakdown patches=")
-                .Append(readInt(ref s_breakdownPatchCount))
+                .Append(ReadInt(ref s_breakdownPatchCount))
                 .Append("; calls current/last/peak=")
-                .Append(read(ref s_currentCalls))
+                .Append(Read(ref s_currentCalls))
                 .Append('/')
-                .Append(read(ref s_lastCalls))
+                .Append(Read(ref s_lastCalls))
                 .Append('/')
-                .Append(read(ref s_peakCalls))
+                .Append(Read(ref s_peakCalls))
                 .Append("; total=")
                 .Append(totalCalls)
                 .Append("; returned true/false/incomplete=")
-                .Append(read(ref s_totalTrueResults))
+                .Append(Read(ref s_totalTrueResults))
                 .Append('/')
-                .Append(read(ref s_totalFalseResults))
+                .Append(Read(ref s_totalFalseResults))
                 .Append('/')
                 .Append(incompleteCalls)
                 .Append("; completed-call time=")
@@ -216,50 +216,50 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 .Append(" ms, avg=")
                 .Append(avgUs.ToString("F1"))
                 .Append(" us, max=")
-                .Append(stopwatchTicksToMilliseconds(read(ref s_maxElapsedTicks)).ToString("F3"))
+                .Append(StopwatchTicksToMilliseconds(Read(ref s_maxElapsedTicks)).ToString("F3"))
                 .Append(" ms.");
 
-            long globalCacheCalls = read(ref s_globalEligibleCacheCalls);
-            long towerCacheCalls = read(ref s_towerEligibleCacheCalls);
+            long globalCacheCalls = Read(ref s_globalEligibleCacheCalls);
+            long towerCacheCalls = Read(ref s_towerEligibleCacheCalls);
             builder.Append("\nPaths: ")
-                .Append(formatCounterSummary(SearchPathNames, pathCalls))
+                .Append(FormatCounterSummary(s_searchPathNames, pathCalls))
                 .Append("\nCallers: ")
-                .Append(formatCounterSummary(SearchCallerNames, callerCalls))
+                .Append(FormatCounterSummary(s_searchCallerNames, callerCalls))
                 .Append("\nEligible-cache timing: global calls=")
                 .Append(globalCacheCalls)
                 .Append(", total=")
-                .Append(stopwatchTicksToMilliseconds(read(ref s_globalEligibleCacheElapsedTicks)).ToString("F2"))
+                .Append(StopwatchTicksToMilliseconds(Read(ref s_globalEligibleCacheElapsedTicks)).ToString("F2"))
                 .Append(" ms, avg=")
-                .Append(formatMicroseconds(averageTicks(read(ref s_globalEligibleCacheElapsedTicks), globalCacheCalls)))
+                .Append(FormatMicroseconds(AverageTicks(Read(ref s_globalEligibleCacheElapsedTicks), globalCacheCalls)))
                 .Append(" us, max=")
-                .Append(formatMilliseconds(read(ref s_globalEligibleCacheMaxElapsedTicks)))
+                .Append(FormatMilliseconds(Read(ref s_globalEligibleCacheMaxElapsedTicks)))
                 .Append(" ms; per-tower calls=")
                 .Append(towerCacheCalls)
                 .Append(", total=")
-                .Append(stopwatchTicksToMilliseconds(read(ref s_towerEligibleCacheElapsedTicks)).ToString("F2"))
+                .Append(StopwatchTicksToMilliseconds(Read(ref s_towerEligibleCacheElapsedTicks)).ToString("F2"))
                 .Append(" ms, avg=")
-                .Append(formatMicroseconds(averageTicks(read(ref s_towerEligibleCacheElapsedTicks), towerCacheCalls)))
+                .Append(FormatMicroseconds(AverageTicks(Read(ref s_towerEligibleCacheElapsedTicks), towerCacheCalls)))
                 .Append(" us, max=")
-                .Append(formatMilliseconds(read(ref s_towerEligibleCacheMaxElapsedTicks)))
+                .Append(FormatMilliseconds(Read(ref s_towerEligibleCacheMaxElapsedTicks)))
                 .Append(" ms")
                 .Append("\nResidual after eligible-cache calls: total=")
-                .Append(formatMilliseconds(read(ref s_nestedResidualElapsedTicks)))
+                .Append(FormatMilliseconds(Read(ref s_nestedResidualElapsedTicks)))
                 .Append(" ms, avg=")
-                .Append(formatMicroseconds(averageTicks(read(ref s_nestedResidualElapsedTicks), completedCalls)))
+                .Append(FormatMicroseconds(AverageTicks(Read(ref s_nestedResidualElapsedTicks), completedCalls)))
                 .Append(" us, max=")
-                .Append(formatMilliseconds(read(ref s_nestedResidualMaxElapsedTicks)))
+                .Append(FormatMilliseconds(Read(ref s_nestedResidualMaxElapsedTicks)))
                 .Append(", accounting anomalies=")
-                .Append(read(ref s_nestedResidualAccountingAnomalies))
+                .Append(Read(ref s_nestedResidualAccountingAnomalies))
                 .Append(", raw eligible-cache candidates total/searches/max=")
-                .Append(read(ref s_totalCandidateDesignations))
+                .Append(Read(ref s_totalCandidateDesignations))
                 .Append('/')
-                .Append(read(ref s_observedCandidateCalls))
+                .Append(Read(ref s_observedCandidateCalls))
                 .Append('/')
-                .Append(read(ref s_maxCandidateDesignations))
+                .Append(Read(ref s_maxCandidateDesignations))
                 .Append("\nBreakdown: ")
-                .Append(formatStageSummary(breakdown))
+                .Append(FormatStageSummary(breakdown))
                 .Append("\nBreakdown counts: final m_designationsCache total/searches/max=")
-                .Append(formatCountSummary(breakdown.FinalCandidateCount, breakdown.FinalCandidateCalls, breakdown.FinalCandidateMax))
+                .Append(FormatCountSummary(breakdown.FinalCandidateCount, breakdown.FinalCandidateCalls, breakdown.FinalCandidateMax))
                 .Append(", nearby scanned/accepted/added=")
                 .Append(breakdown.NearbyScanned)
                 .Append('/')
@@ -273,34 +273,34 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 .Append('/')
                 .Append(breakdown.NearbyModeCalls[(int)NearbyMode.Unknown])
                 .Append("\nPath raw eligible-cache candidates total/searches: ")
-                .Append(formatCounterSummary(SearchPathNames, pathCandidateDesignations, pathCandidateCalls))
+                .Append(FormatCounterSummary(s_searchPathNames, pathCandidateDesignations, pathCandidateCalls))
                 .Append("\nPF enqueues current/last/peak/total=")
-                .Append(read(ref s_currentPfEnqueues))
+                .Append(Read(ref s_currentPfEnqueues))
                 .Append('/')
-                .Append(read(ref s_lastPfEnqueues))
+                .Append(Read(ref s_lastPfEnqueues))
                 .Append('/')
-                .Append(read(ref s_peakPfEnqueues))
+                .Append(Read(ref s_peakPfEnqueues))
                 .Append('/')
-                .Append(read(ref s_totalPfEnqueues))
+                .Append(Read(ref s_totalPfEnqueues))
                 .Append("; search time current/last/peak=")
-                .Append(formatMilliseconds(read(ref s_currentPfSearchElapsedTicks)))
+                .Append(FormatMilliseconds(Read(ref s_currentPfSearchElapsedTicks)))
                 .Append('/')
-                .Append(formatMilliseconds(read(ref s_lastPfSearchElapsedTicks)))
+                .Append(FormatMilliseconds(Read(ref s_lastPfSearchElapsedTicks)))
                 .Append('/')
-                .Append(formatMilliseconds(read(ref s_peakPfSearchElapsedTicks)))
+                .Append(FormatMilliseconds(Read(ref s_peakPfSearchElapsedTicks)))
                 .Append(" ms, peak tick calls=")
-                .Append(read(ref s_peakPfSearchCalls))
+                .Append(Read(ref s_peakPfSearchCalls))
                 .Append(", peak-tick worst individual=")
-                .Append(formatMilliseconds(read(ref s_peakPfMaxIndividualSearchElapsedTicks)))
+                .Append(FormatMilliseconds(Read(ref s_peakPfMaxIndividualSearchElapsedTicks)))
                 .Append(" ms.")
                 .Append("\nOuter latency buckets: ")
-                .Append(formatLatencyBuckets(s_latencyBuckets));
-            appendPathBreakdown(builder, breakdown, pathCalls);
+                .Append(FormatLatencyBuckets(s_latencyBuckets));
+            AppendPathBreakdown(builder, breakdown, pathCalls);
 
             WorstCallSnapshot? worstCall = Volatile.Read(ref s_worstCall);
             if (worstCall is not null)
             {
-                appendWorstCall(builder, worstCall);
+                AppendWorstCall(builder, worstCall);
             }
 
             if (snapshot.Count == 0)
@@ -317,7 +317,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 long completed = stats.TrueResults + stats.FalseResults;
                 long incomplete = Math.Max(0, stats.Calls - completed);
                 double productAvgUs = completed > 0
-                    ? stopwatchTicksToMicroseconds(stats.ElapsedTicks) / completed
+                    ? StopwatchTicksToMicroseconds(stats.ElapsedTicks) / completed
                     : 0.0;
 
                 builder.Append("\n  ")
@@ -325,9 +325,9 @@ namespace TajsTweaks.Features.DumpingPathfinding
                     .Append(": calls=")
                     .Append(stats.Calls)
                     .Append(" [")
-                    .Append(formatCounterSummary(SearchPathNames, stats.PathCalls))
+                    .Append(FormatCounterSummary(s_searchPathNames, stats.PathCalls))
                     .Append("; callers=")
-                    .Append(formatCounterSummary(SearchCallerNames, stats.CallerCalls))
+                    .Append(FormatCounterSummary(s_searchCallerNames, stats.CallerCalls))
                     .Append("; raw eligible-cache candidates total/cache-searches=")
                     .Append(stats.CandidateDesignations)
                     .Append('/')
@@ -339,35 +339,35 @@ namespace TajsTweaks.Features.DumpingPathfinding
                     .Append('/')
                     .Append(incomplete)
                     .Append(", time=")
-                    .Append(stopwatchTicksToMilliseconds(stats.ElapsedTicks).ToString("F2"))
+                    .Append(StopwatchTicksToMilliseconds(stats.ElapsedTicks).ToString("F2"))
                     .Append(" ms, avg=")
                     .Append(productAvgUs.ToString("F1"))
                     .Append(" us, max=")
-                    .Append(stopwatchTicksToMilliseconds(stats.MaxElapsedTicks).ToString("F3"))
+                    .Append(StopwatchTicksToMilliseconds(stats.MaxElapsedTicks).ToString("F3"))
                     .Append(" ms; cache global=")
                     .Append(stats.GlobalCacheCalls)
                     .Append('/')
-                    .Append(formatMilliseconds(stats.GlobalCacheElapsedTicks))
+                    .Append(FormatMilliseconds(stats.GlobalCacheElapsedTicks))
                     .Append(" ms avg=")
-                    .Append(formatMicroseconds(averageTicks(stats.GlobalCacheElapsedTicks, stats.GlobalCacheCalls)))
+                    .Append(FormatMicroseconds(AverageTicks(stats.GlobalCacheElapsedTicks, stats.GlobalCacheCalls)))
                     .Append(" us max=")
-                    .Append(formatMilliseconds(stats.GlobalCacheMaxElapsedTicks))
+                    .Append(FormatMilliseconds(stats.GlobalCacheMaxElapsedTicks))
                     .Append(" ms; tower=")
                     .Append(stats.TowerCacheCalls)
                     .Append('/')
-                    .Append(formatMilliseconds(stats.TowerCacheElapsedTicks))
+                    .Append(FormatMilliseconds(stats.TowerCacheElapsedTicks))
                     .Append(" ms avg=")
-                    .Append(formatMicroseconds(averageTicks(stats.TowerCacheElapsedTicks, stats.TowerCacheCalls)))
+                    .Append(FormatMicroseconds(AverageTicks(stats.TowerCacheElapsedTicks, stats.TowerCacheCalls)))
                     .Append(" us max=")
-                    .Append(formatMilliseconds(stats.TowerCacheMaxElapsedTicks))
+                    .Append(FormatMilliseconds(stats.TowerCacheMaxElapsedTicks))
                     .Append(" ms; residual=")
-                    .Append(formatMilliseconds(stats.ResidualElapsedTicks))
+                    .Append(FormatMilliseconds(stats.ResidualElapsedTicks))
                     .Append(" ms, latency=")
-                    .Append(formatLatencyBuckets(stats.LatencyBuckets));
-                builder.Append("; breakdown=").Append(formatStageSummary(stats.Breakdown));
+                    .Append(FormatLatencyBuckets(stats.LatencyBuckets));
+                builder.Append("; breakdown=").Append(FormatStageSummary(stats.Breakdown));
                 builder.Append("; final-cache total/searches/max=")
                     .Append(
-                        formatCountSummary(
+                        FormatCountSummary(
                             stats.Breakdown.FinalCandidateCount,
                             stats.Breakdown.FinalCandidateCalls,
                             stats.Breakdown.FinalCandidateMax));
@@ -383,7 +383,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                     .Append(stats.Breakdown.NearbyModeCalls[(int)NearbyMode.Global])
                     .Append('/')
                     .Append(stats.Breakdown.NearbyModeCalls[(int)NearbyMode.Unknown]);
-                appendProductPathMetrics(builder, stats);
+                AppendProductPathMetrics(builder, stats);
             }
 
             if (snapshot.Count > count)
@@ -406,7 +406,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             customCommandName: "tajs_dump_search_stats_reset")]
         public string ResetStats()
         {
-            resetAllStats();
+            ResetAllStats();
             return "Dump search diagnostics reset.";
         }
 
@@ -422,11 +422,11 @@ namespace TajsTweaks.Features.DumpingPathfinding
         {
             double requestedSeconds = seconds;
             double requestedWarmupSeconds = warmupSeconds.HasValue ? warmupSeconds.Value : 0.0;
-            if (!isValidProfileDuration(requestedSeconds, 0.25, 300.0))
+            if (!IsValidProfileDuration(requestedSeconds, 0.25, 300.0))
             {
                 return "Dump profile rejected: duration must be finite and between 0.25 and 300 seconds.";
             }
-            if (!isValidProfileDuration(requestedWarmupSeconds, 0.0, 300.0))
+            if (!IsValidProfileDuration(requestedWarmupSeconds, 0.0, 300.0))
             {
                 return "Dump profile rejected: warmup must be finite and between 0 and 300 seconds.";
             }
@@ -442,7 +442,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 active = s_activeProfile;
                 if (active is not null)
                 {
-                    return $"Dump profile rejected: '{active.Label}' is already {describeProfileState(active.State)}.";
+                    return $"Dump profile rejected: '{active.Label}' is already {DescribeProfileState(active.State)}.";
                 }
 
                 if (normalizedLabel is null)
@@ -451,14 +451,14 @@ namespace TajsTweaks.Features.DumpingPathfinding
                     {
                         normalizedLabel = "run-" + Interlocked.Increment(ref s_nextAutomaticLabel).ToString(CultureInfo.InvariantCulture);
                     }
-                    while (findProfileLocked(normalizedLabel) is not null);
+                    while (FindProfileLocked(normalizedLabel) is not null);
                 }
-                else if (findProfileLocked(normalizedLabel) is not null)
+                else if (FindProfileLocked(normalizedLabel) is not null)
                 {
                     return $"Dump profile rejected: completed profile label '{normalizedLabel}' already exists.";
                 }
 
-                resetAllStats();
+                ResetAllStats();
                 long now = Stopwatch.GetTimestamp();
                 ProfileState sessionState = requestedWarmupSeconds > 0.0 ? ProfileState.WarmingUp : ProfileState.Recording;
                 long recordingStart = sessionState == ProfileState.Recording ? now : 0L;
@@ -475,8 +475,8 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
 
             return requestedWarmupSeconds > 0.0
-                ? $"Dump profile '{active.Label}' armed: warmup={formatSeconds(requestedWarmupSeconds)}, recording={formatSeconds(requestedSeconds)}."
-                : $"Dump profile '{active.Label}' recording for {formatSeconds(requestedSeconds)}.";
+                ? $"Dump profile '{active.Label}' armed: warmup={FormatSeconds(requestedWarmupSeconds)}, recording={FormatSeconds(requestedSeconds)}."
+                : $"Dump profile '{active.Label}' recording for {FormatSeconds(requestedSeconds)}.";
         }
 
         [ConsoleCommand(
@@ -493,11 +493,11 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 }
 
                 long now = Stopwatch.GetTimestamp();
-                double elapsed = stopwatchTicksToSeconds(Math.Max(0, now - active.StartTimestamp));
+                double elapsed = StopwatchTicksToSeconds(Math.Max(0, now - active.StartTimestamp));
                 long deadline = active.State == ProfileState.WarmingUp ? active.WarmupEndTimestamp : active.RecordingEndTimestamp;
-                double remaining = deadline == 0L ? 0.0 : Math.Max(0.0, stopwatchTicksToSeconds(deadline - now));
+                double remaining = deadline == 0L ? 0.0 : Math.Max(0.0, StopwatchTicksToSeconds(deadline - now));
                 return
-                    $"Dump profile status: {describeProfileState(active.State)}, label='{active.Label}', requested={formatSeconds(active.RequestedSeconds)}, warmup={formatSeconds(active.WarmupSeconds)}, elapsed={formatSeconds(elapsed)}, remaining={formatSeconds(remaining)}, calls={read(ref s_totalCalls)}.";
+                    $"Dump profile status: {DescribeProfileState(active.State)}, label='{active.Label}', requested={FormatSeconds(active.RequestedSeconds)}, warmup={FormatSeconds(active.WarmupSeconds)}, elapsed={FormatSeconds(elapsed)}, remaining={FormatSeconds(remaining)}, calls={Read(ref s_totalCalls)}.";
             }
         }
 
@@ -514,10 +514,10 @@ namespace TajsTweaks.Features.DumpingPathfinding
                     return "Dump profile stop: no active profile.";
                 }
 
-                completed = finishProfileLocked(Stopwatch.GetTimestamp());
+                completed = FinishProfileLocked(Stopwatch.GetTimestamp());
             }
 
-            publishCompletedProfile(completed, false);
+            PublishCompletedProfile(completed, false);
             return $"Dump profile '{completed.Label}' stopped and stored.";
         }
 
@@ -560,20 +560,20 @@ namespace TajsTweaks.Features.DumpingPathfinding
                         .Append(" [sequence=")
                         .Append(profile.Sequence)
                         .Append("] duration=")
-                        .Append(formatSeconds(profile.ActualRecordingSeconds))
+                        .Append(FormatSeconds(profile.ActualRecordingSeconds))
                         .Append(", calls=")
                         .Append(profile.TotalCalls)
                         .Append(", search=")
-                        .Append(formatMilliseconds(profile.TotalElapsedTicks))
+                        .Append(FormatMilliseconds(profile.TotalElapsedTicks))
                         .Append(" ms, dominant=")
                         .Append(profile.DominantPath);
 
-                    ProductSearchSnapshot? dirt = findProduct(profile.Products, "Product_Dirt");
+                    ProductSearchSnapshot? dirt = FindProduct(profile.Products, "Product_Dirt");
                     if (dirt is not null)
                     {
                         ProductSearchSnapshot dirtValue = dirt.Value;
                         builder.Append(", Product_Dirt avg=")
-                            .Append(formatMicroseconds(averageTicks(dirtValue.ElapsedTicks, dirtValue.CompletedCalls)))
+                            .Append(FormatMicroseconds(AverageTicks(dirtValue.ElapsedTicks, dirtValue.CompletedCalls)))
                             .Append(" us");
                     }
                 }
@@ -594,10 +594,10 @@ namespace TajsTweaks.Features.DumpingPathfinding
 
             lock (s_profileGate)
             {
-                ProfileSnapshot? profile = findProfileLocked(label.Trim());
+                ProfileSnapshot? profile = FindProfileLocked(label.Trim());
                 return profile is null
                     ? $"Dump profile show: no completed profile named '{label.Trim()}'."
-                    : formatProfileReport(profile);
+                    : FormatProfileReport(profile);
             }
         }
 
@@ -626,25 +626,25 @@ namespace TajsTweaks.Features.DumpingPathfinding
 
             lock (s_profileGate)
             {
-                ProfileSnapshot? first = findProfileLocked(labelA.Trim());
-                ProfileSnapshot? second = findProfileLocked(labelB.Trim());
+                ProfileSnapshot? first = FindProfileLocked(labelA.Trim());
+                ProfileSnapshot? second = FindProfileLocked(labelB.Trim());
                 if (first is null || second is null)
                 {
                     return $"Dump profile compare: missing profile(s); A='{labelA.Trim()}', B='{labelB.Trim()}'.";
                 }
 
-                return formatProfileComparison(first, second);
+                return FormatProfileComparison(first, second);
             }
         }
 
-        private static void ensurePatchesApplied()
+        private static void EnsurePatchesApplied()
         {
-            if (readInt(ref s_patchesApplied) != 0)
+            if (ReadInt(ref s_patchesApplied) != 0)
             {
                 return;
             }
 
-            MethodInfo? dumpSearch = findInstanceMethod(
+            MethodInfo? dumpSearch = FindInstanceMethod(
                 typeof(TerrainDumpingManager),
                 "TryFindClosestReadyToDump",
                 typeof(bool),
@@ -659,7 +659,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
 
             if (dumpSearch is null)
             {
-                Log.Error("TajsTweaks: dump-search diagnostics disabled; exact CoI 0.8.7 dumping-search signature was not found.");
+                Log.Error("TajsProfiler: dump-search diagnostics disabled; expected CoI 0.8.7/0.8.7a dumping-search signature was not found.");
                 return;
             }
 
@@ -668,13 +668,13 @@ namespace TajsTweaks.Features.DumpingPathfinding
             {
                 var prefix = new HarmonyMethod(
                     typeof(DumpSearchDiagnosticsService),
-                    nameof(beforeDumpSearch)) { priority = Priority.First };
-                var postfix = new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(afterDumpSearch)) { priority = Priority.Last };
+                    nameof(BeforeDumpSearch)) { priority = Priority.First };
+                var postfix = new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(AfterDumpSearch)) { priority = Priority.Last };
                 harmony.Patch(
                     dumpSearch,
                     prefix,
                     postfix,
-                    finalizer: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(endDumpSearchContext)));
+                    finalizer: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(EndDumpSearchContext)));
                 Interlocked.Exchange(ref s_patchesApplied, 1);
             }
             catch (Exception ex)
@@ -685,33 +685,33 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 }
                 catch (Exception rollbackException)
                 {
-                    Log.Error($"TajsTweaks: dump-search diagnostics rollback also failed: {rollbackException}");
+                    Log.Error($"TajsProfiler: dump-search diagnostics rollback also failed: {rollbackException}");
                 }
 
-                Log.Error($"TajsTweaks: dump-search diagnostics failed to patch dumping search: {ex}");
+                Log.Error($"TajsProfiler: dump-search diagnostics failed to patch dumping search: {ex}");
                 return;
             }
 
-            patchTickBoundary(harmony);
-            patchPathFindingEnqueue(harmony);
-            patchCallerMethods(harmony);
-            patchCacheMethods(harmony);
-            patchBreakdownMethods(harmony);
+            PatchTickBoundary(harmony);
+            PatchPathFindingEnqueue(harmony);
+            PatchCallerMethods(harmony);
+            PatchCacheMethods(harmony);
+            PatchBreakdownMethods(harmony);
 
             Log.Info(
-                $"TajsTweaks: dump-search diagnostics active; functional limiter disabled, PF tick buckets={readInt(ref s_tickBoundaryPatchApplied) != 0}, " +
-                $"PF enqueue diagnostics={readInt(ref s_pfEnqueuePatchApplied) != 0}, caller patches={readInt(ref s_callerPatchCount)}, cache patches={readInt(ref s_cachePatchCount)}, breakdown patches={readInt(ref s_breakdownPatchCount)}.");
+                $"TajsProfiler: dump-search diagnostics active; functional limiter disabled, PF tick buckets={ReadInt(ref s_tickBoundaryPatchApplied) != 0}, " +
+                $"PF enqueue diagnostics={ReadInt(ref s_pfEnqueuePatchApplied) != 0}, caller patches={ReadInt(ref s_callerPatchCount)}, cache patches={ReadInt(ref s_cachePatchCount)}, breakdown patches={ReadInt(ref s_breakdownPatchCount)}.");
         }
 
-        private static void patchTickBoundary(Harmony harmony)
+        private static void PatchTickBoundary(Harmony harmony)
         {
-            MethodInfo? simUpdate = findInstanceMethod(
+            MethodInfo? simUpdate = FindInstanceMethod(
                 typeof(VehiclePathFindingManager),
                 "SimUpdateInternal",
                 typeof(void));
             if (simUpdate is null)
             {
-                logOptionalPatchFailure("VehiclePathFindingManager.SimUpdateInternal was not found");
+                LogOptionalPatchFailure("VehiclePathFindingManager.SimUpdateInternal was not found");
                 return;
             }
 
@@ -719,18 +719,18 @@ namespace TajsTweaks.Features.DumpingPathfinding
             {
                 harmony.Patch(
                     simUpdate,
-                    new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(beginPathFindingTick)));
+                    new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(BeginPathFindingTick)));
                 Interlocked.Exchange(ref s_tickBoundaryPatchApplied, 1);
             }
             catch (Exception ex)
             {
-                logOptionalPatchFailure($"PF tick boundary patch failed: {ex}");
+                LogOptionalPatchFailure($"PF tick boundary patch failed: {ex}");
             }
         }
 
-        private static void patchPathFindingEnqueue(Harmony harmony)
+        private static void PatchPathFindingEnqueue(Harmony harmony)
         {
-            MethodInfo? enqueueTask = findInstanceMethod(
+            MethodInfo? enqueueTask = FindInstanceMethod(
                 typeof(VehiclePathFindingManager),
                 "EnqueueTask",
                 typeof(void),
@@ -738,7 +738,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 typeof(int));
             if (enqueueTask is null)
             {
-                logOptionalPatchFailure("VehiclePathFindingManager.EnqueueTask was not found");
+                LogOptionalPatchFailure("VehiclePathFindingManager.EnqueueTask was not found");
                 return;
             }
 
@@ -746,41 +746,41 @@ namespace TajsTweaks.Features.DumpingPathfinding
             {
                 harmony.Patch(
                     enqueueTask,
-                    new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(beforePathFindingEnqueue)));
+                    new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(BeforePathFindingEnqueue)));
                 Interlocked.Exchange(ref s_pfEnqueuePatchApplied, 1);
             }
             catch (Exception ex)
             {
-                logOptionalPatchFailure($"PF enqueue diagnostics patch failed: {ex}");
+                LogOptionalPatchFailure($"PF enqueue diagnostics patch failed: {ex}");
             }
         }
 
-        private static void patchCallerMethods(Harmony harmony)
+        private static void PatchCallerMethods(Harmony harmony)
         {
-            patchCaller(
+            PatchCaller(
                 harmony,
-                findInstanceMethod(
+                FindInstanceMethod(
                     typeof(VehicleBuffersRegistry),
                     "balanceBuffers",
                     typeof(void),
                     typeof(Percent)),
-                nameof(beginVehicleBuffersBalanceBuffers),
+                nameof(BeginVehicleBuffersBalanceBuffers),
                 "VehicleBuffersRegistry.balanceBuffers");
 
-            patchCaller(
+            PatchCaller(
                 harmony,
-                findInstanceMethod(
+                FindInstanceMethod(
                     typeof(DefaultTruckJobProvider),
                     "TryGetJobFor",
                     typeof(bool),
                     typeof(Truck)),
-                nameof(beginDefaultTruckJobProvider),
+                nameof(BeginDefaultTruckJobProvider),
                 "DefaultTruckJobProvider.TryGetJobFor");
 
-            patchCaller(
+            PatchCaller(
                 harmony,
-                findUniqueInstanceMethod(typeof(DumpingJob), "handleFindMoreDesignations", 0),
-                nameof(beginDumpingJob),
+                FindUniqueInstanceMethod(typeof(DumpingJob), "handleFindMoreDesignations", 0),
+                nameof(BeginDumpingJob),
                 "DumpingJob.handleFindMoreDesignations");
 
             List<MethodInfo> factoryMethods = AccessTools.GetDeclaredMethods(typeof(DumpingJob.Factory));
@@ -788,16 +788,16 @@ namespace TajsTweaks.Features.DumpingPathfinding
             {
                 if (method.Name == "TryCreateAndEnqueueJob" && !method.IsStatic)
                 {
-                    patchCaller(harmony, method, nameof(beginDumpingJob), "DumpingJob.Factory.TryCreateAndEnqueueJob");
+                    PatchCaller(harmony, method, nameof(BeginDumpingJob), "DumpingJob.Factory.TryCreateAndEnqueueJob");
                 }
             }
         }
 
-        private static void patchCaller(Harmony harmony, MethodInfo? method, string prefixName, string label)
+        private static void PatchCaller(Harmony harmony, MethodInfo? method, string prefixName, string label)
         {
             if (method is null)
             {
-                logOptionalPatchFailure($"caller patch target not found: {label}");
+                LogOptionalPatchFailure($"caller patch target not found: {label}");
                 return;
             }
 
@@ -806,18 +806,18 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 harmony.Patch(
                     method,
                     new HarmonyMethod(typeof(DumpSearchDiagnosticsService), prefixName),
-                    finalizer: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(endCallerContext)));
+                    finalizer: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(EndCallerContext)));
                 Interlocked.Increment(ref s_callerPatchCount);
             }
             catch (Exception ex)
             {
-                logOptionalPatchFailure($"caller patch failed for {label}: {ex}");
+                LogOptionalPatchFailure($"caller patch failed for {label}: {ex}");
             }
         }
 
-        private static void patchCacheMethods(Harmony harmony)
+        private static void PatchCacheMethods(Harmony harmony)
         {
-            MethodInfo? globalCache = findInstanceMethod(
+            MethodInfo? globalCache = FindInstanceMethod(
                 typeof(TerrainDumpingManager),
                 "getAllEligibleCached",
                 typeof(LystStruct<TerrainDesignation>),
@@ -828,22 +828,22 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 {
                     harmony.Patch(
                         globalCache,
-                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(beforeGlobalEligibleCache)),
-                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(afterGlobalEligibleCache)),
-                        finalizer: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(endEligibleCacheContext)));
+                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(BeforeGlobalEligibleCache)),
+                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(AfterGlobalEligibleCache)),
+                        finalizer: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(EndEligibleCacheContext)));
                     Interlocked.Increment(ref s_cachePatchCount);
                 }
                 catch (Exception ex)
                 {
-                    logOptionalPatchFailure($"global eligible-cache patch failed: {ex}");
+                    LogOptionalPatchFailure($"global eligible-cache patch failed: {ex}");
                 }
             }
             else
             {
-                logOptionalPatchFailure("TerrainDumpingManager.getAllEligibleCached was not found");
+                LogOptionalPatchFailure("TerrainDumpingManager.getAllEligibleCached was not found");
             }
 
-            MethodInfo? towerCache = findInstanceMethod(
+            MethodInfo? towerCache = FindInstanceMethod(
                 typeof(TerrainDumpingManager),
                 "getAllEligibleCachedFor",
                 typeof(Lyst<TerrainDesignation>),
@@ -855,23 +855,23 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 {
                     harmony.Patch(
                         towerCache,
-                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(beforeTowerEligibleCache)),
-                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(afterTowerEligibleCache)),
-                        finalizer: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(endEligibleCacheContext)));
+                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(BeforeTowerEligibleCache)),
+                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(AfterTowerEligibleCache)),
+                        finalizer: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(EndEligibleCacheContext)));
                     Interlocked.Increment(ref s_cachePatchCount);
                 }
                 catch (Exception ex)
                 {
-                    logOptionalPatchFailure($"per-tower eligible-cache patch failed: {ex}");
+                    LogOptionalPatchFailure($"per-tower eligible-cache patch failed: {ex}");
                 }
             }
             else
             {
-                logOptionalPatchFailure("TerrainDumpingManager.getAllEligibleCachedFor was not found");
+                LogOptionalPatchFailure("TerrainDumpingManager.getAllEligibleCachedFor was not found");
             }
         }
 
-        private static void beforeDumpSearch(
+        private static void BeforeDumpSearch(
             TerrainDumpingManager __instance,
             Option<LooseProductProto> __1,
             IIndexable<MineTower>? __5,
@@ -882,12 +882,12 @@ namespace TajsTweaks.Features.DumpingPathfinding
             SearchDiagnosticContext? previousContext = s_currentSearchContext;
             try
             {
-                serviceProfileDeadlineAtSearchBoundary();
+                ServiceProfileDeadlineAtSearchBoundary();
                 LooseProductProto? product = __1.ValueOrNull;
-                SearchPath path = classifySearch(__instance, product, __5);
+                SearchPath path = ClassifySearch(__instance, product, __5);
                 SearchCaller caller = s_currentCaller;
                 string productId = product?.Id.Value ?? UnknownProductId;
-                ProductSearchStats stats = getOrCreateProductStats(productId);
+                ProductSearchStats stats = GetOrCreateProductStats(productId);
 
                 var context = new SearchDiagnosticContext(
                     previousContext,
@@ -909,9 +909,9 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static void patchBreakdownMethods(Harmony harmony)
+        private static void PatchBreakdownMethods(Harmony harmony)
         {
-            MethodInfo? bestSelection = findInstanceMethod(
+            MethodInfo? bestSelection = FindInstanceMethod(
                 typeof(TerrainDesignationsManager),
                 "TryFindBestReadyToFulfill",
                 typeof(bool),
@@ -923,7 +923,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 typeof(bool));
             if (bestSelection is null)
             {
-                logOptionalPatchFailure("TerrainDesignationsManager.TryFindBestReadyToFulfill was not found");
+                LogOptionalPatchFailure("TerrainDesignationsManager.TryFindBestReadyToFulfill was not found");
             }
             else
             {
@@ -931,18 +931,18 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 {
                     harmony.Patch(
                         bestSelection,
-                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(beforeBestReadyToFulfill)),
-                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(afterBestReadyToFulfill)),
-                        finalizer: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(endBestReadyToFulfill)));
+                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(BeforeBestReadyToFulfill)),
+                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(AfterBestReadyToFulfill)),
+                        finalizer: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(EndBestReadyToFulfill)));
                     Interlocked.Increment(ref s_breakdownPatchCount);
                 }
                 catch (Exception ex)
                 {
-                    logOptionalPatchFailure($"best-designation timing patch failed: {ex}");
+                    LogOptionalPatchFailure($"best-designation timing patch failed: {ex}");
                 }
             }
 
-            MethodInfo? nearbyEligibility = findInstanceMethod(
+            MethodInfo? nearbyEligibility = FindInstanceMethod(
                 typeof(TerrainDumpingManager),
                 "isEligibleAsNearbyFor",
                 typeof(bool),
@@ -951,7 +951,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 typeof(bool));
             if (nearbyEligibility is null)
             {
-                logOptionalPatchFailure("TerrainDumpingManager.isEligibleAsNearbyFor was not found");
+                LogOptionalPatchFailure("TerrainDumpingManager.isEligibleAsNearbyFor was not found");
             }
             else
             {
@@ -959,18 +959,18 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 {
                     harmony.Patch(
                         nearbyEligibility,
-                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(beforeNearbyEligibility)),
-                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(afterNearbyEligibility)));
+                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(BeforeNearbyEligibility)),
+                        new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(AfterNearbyEligibility)));
                     Interlocked.Increment(ref s_breakdownPatchCount);
                 }
                 catch (Exception ex)
                 {
-                    logOptionalPatchFailure($"nearby-designation diagnostics patch failed: {ex}");
+                    LogOptionalPatchFailure($"nearby-designation diagnostics patch failed: {ex}");
                 }
             }
         }
 
-        private static void afterDumpSearch(bool __result, DumpSearchCallState __state)
+        private static void AfterDumpSearch(bool __result, DumpSearchCallState __state)
         {
             if (__state.Context is null)
             {
@@ -979,7 +979,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
 
             try
             {
-                completeDumpSearch(__state.Context, true, __result);
+                CompleteDumpSearch(__state.Context, true, __result);
             }
             catch (Exception ex)
             {
@@ -987,7 +987,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static Exception? endDumpSearchContext(Exception? __exception, DumpSearchCallState __state)
+        private static Exception? EndDumpSearchContext(Exception? __exception, DumpSearchCallState __state)
         {
             SearchDiagnosticContext? context = __state.Context;
             if (context is null)
@@ -999,7 +999,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             {
                 if (__exception is not null)
                 {
-                    completeDumpSearch(context, false, false);
+                    CompleteDumpSearch(context, false, false);
                 }
             }
             catch (Exception ex)
@@ -1014,7 +1014,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return __exception;
         }
 
-        private static void completeDumpSearch(SearchDiagnosticContext context, bool hasResult, bool result)
+        private static void CompleteDumpSearch(SearchDiagnosticContext context, bool hasResult, bool result)
         {
             if (Interlocked.CompareExchange(ref context.CompletionRecorded, 1, 0) != 0)
             {
@@ -1026,7 +1026,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             long candidateDesignations = Interlocked.Read(ref context.CandidateDesignations);
             int candidateCalls = Volatile.Read(ref context.CandidateCalls);
             CacheSummary cacheSummary = context.GetCacheSummary();
-            long residualTicks = calculateResidualTicks(elapsedTicks, cacheSummary.TotalElapsedTicks);
+            long residualTicks = CalculateResidualTicks(elapsedTicks, cacheSummary.TotalElapsedTicks);
             SearchBreakdown breakdown = context.CompleteBreakdown(
                 elapsedTicks,
                 cacheSummary.TotalElapsedTicks,
@@ -1046,13 +1046,13 @@ namespace TajsTweaks.Features.DumpingPathfinding
             s_breakdownStats.Record(path, breakdown);
             Interlocked.Increment(ref s_pathCalls[(int)path]);
             Interlocked.Increment(ref s_callerCalls[(int)context.Caller]);
-            Interlocked.Increment(ref s_latencyBuckets[getLatencyBucket(elapsedTicks)]);
-            Interlocked.Increment(ref s_pathLatencyBuckets[(int)path * LatencyBucketCount + getLatencyBucket(elapsedTicks)]);
+            Interlocked.Increment(ref s_latencyBuckets[GetLatencyBucket(elapsedTicks)]);
+            Interlocked.Increment(ref s_pathLatencyBuckets[(int)path * LatencyBucketCount + GetLatencyBucket(elapsedTicks)]);
             Interlocked.Add(ref s_nestedResidualElapsedTicks, residualTicks);
-            updateMax(ref s_nestedResidualMaxElapsedTicks, residualTicks);
-            updateWorstCall(context, elapsedTicks, candidateDesignations, candidateCalls, cacheSummary, residualTicks);
+            UpdateMax(ref s_nestedResidualMaxElapsedTicks, residualTicks);
+            UpdateWorstCall(context, elapsedTicks, candidateDesignations, candidateCalls, cacheSummary, residualTicks);
             Interlocked.Add(ref s_currentPfSearchElapsedTicks, elapsedTicks);
-            updateMax(ref s_currentPfMaxIndividualSearchElapsedTicks, elapsedTicks);
+            UpdateMax(ref s_currentPfMaxIndividualSearchElapsedTicks, elapsedTicks);
 
             if (hasResult)
             {
@@ -1066,7 +1066,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 }
 
                 Interlocked.Add(ref s_totalElapsedTicks, elapsedTicks);
-                updateMax(ref s_maxElapsedTicks, elapsedTicks);
+                UpdateMax(ref s_maxElapsedTicks, elapsedTicks);
             }
 
             if (candidateCalls > 0)
@@ -1075,21 +1075,21 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 Interlocked.Increment(ref s_observedCandidateCalls);
                 Interlocked.Add(ref s_pathCandidateDesignations[(int)path], candidateDesignations);
                 Interlocked.Increment(ref s_pathCandidateCalls[(int)path]);
-                updateMax(ref s_maxCandidateDesignations, candidateDesignations);
+                UpdateMax(ref s_maxCandidateDesignations, candidateDesignations);
             }
         }
 
-        private static void beforePathFindingEnqueue()
+        private static void BeforePathFindingEnqueue()
         {
             Interlocked.Increment(ref s_currentPfEnqueues);
             Interlocked.Increment(ref s_totalPfEnqueues);
         }
 
-        private static void beginPathFindingTick()
+        private static void BeginPathFindingTick()
         {
             try
             {
-                serviceProfileDeadline();
+                ServiceProfileDeadline();
                 long currentCalls = Interlocked.Exchange(ref s_currentCalls, 0);
                 long currentPfEnqueues = Interlocked.Exchange(ref s_currentPfEnqueues, 0);
                 long currentSearchElapsed = Interlocked.Exchange(ref s_currentPfSearchElapsedTicks, 0);
@@ -1098,9 +1098,9 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 Interlocked.Exchange(ref s_lastPfEnqueues, currentPfEnqueues);
                 Interlocked.Exchange(ref s_lastPfSearchElapsedTicks, currentSearchElapsed);
                 Interlocked.Exchange(ref s_lastPfMaxIndividualSearchElapsedTicks, currentMaxIndividualSearch);
-                updateMax(ref s_peakCalls, currentCalls);
-                updateMax(ref s_peakPfEnqueues, currentPfEnqueues);
-                long previousPeakSearchElapsed = read(ref s_peakPfSearchElapsedTicks);
+                UpdateMax(ref s_peakCalls, currentCalls);
+                UpdateMax(ref s_peakPfEnqueues, currentPfEnqueues);
+                long previousPeakSearchElapsed = Read(ref s_peakPfSearchElapsedTicks);
                 if (currentSearchElapsed > previousPeakSearchElapsed)
                 {
                     Interlocked.Exchange(ref s_peakPfSearchElapsedTicks, currentSearchElapsed);
@@ -1114,7 +1114,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static void beforeGlobalEligibleCache(out EligibleCacheCallState __state)
+        private static void BeforeGlobalEligibleCache(out EligibleCacheCallState __state)
         {
             __state = default;
             try
@@ -1124,7 +1124,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                     s_currentSearchContext,
                     false,
                     Stopwatch.GetTimestamp());
-                context.OuterSearch?.BeginEligibleCache(context.StartTimestamp, false);
+                context.OuterSearch?.BeginEligibleCache(context.StartTimestamp);
                 s_currentEligibleCacheContext = context;
                 __state = new EligibleCacheCallState(context);
             }
@@ -1134,12 +1134,12 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static void afterGlobalEligibleCache(
+        private static void AfterGlobalEligibleCache(
             LystStruct<TerrainDesignation> __result,
             EligibleCacheCallState __state) =>
-            completeEligibleCache(__state.Context, __result.Count, true);
+            CompleteEligibleCache(__state.Context, __result.Count, true);
 
-        private static void beforeTowerEligibleCache(out EligibleCacheCallState __state)
+        private static void BeforeTowerEligibleCache(out EligibleCacheCallState __state)
         {
             __state = default;
             try
@@ -1149,7 +1149,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                     s_currentSearchContext,
                     true,
                     Stopwatch.GetTimestamp());
-                context.OuterSearch?.BeginEligibleCache(context.StartTimestamp, true);
+                context.OuterSearch?.BeginEligibleCache(context.StartTimestamp);
                 s_currentEligibleCacheContext = context;
                 __state = new EligibleCacheCallState(context);
             }
@@ -1159,12 +1159,12 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static void afterTowerEligibleCache(
+        private static void AfterTowerEligibleCache(
             Lyst<TerrainDesignation> __result,
             EligibleCacheCallState __state) =>
-            completeEligibleCache(__state.Context, __result?.Count ?? 0, true);
+            CompleteEligibleCache(__state.Context, __result?.Count ?? 0, true);
 
-        private static Exception? endEligibleCacheContext(
+        private static Exception? EndEligibleCacheContext(
             Exception? __exception,
             EligibleCacheCallState __state)
         {
@@ -1178,7 +1178,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             {
                 if (__exception is not null)
                 {
-                    completeEligibleCache(context, 0, false);
+                    CompleteEligibleCache(context, 0, false);
                 }
             }
             catch (Exception ex)
@@ -1193,7 +1193,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return __exception;
         }
 
-        private static void completeEligibleCache(
+        private static void CompleteEligibleCache(
             EligibleCacheDiagnosticContext? context,
             int candidateCount,
             bool hasResult)
@@ -1211,13 +1211,13 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 {
                     Interlocked.Increment(ref s_towerEligibleCacheCalls);
                     Interlocked.Add(ref s_towerEligibleCacheElapsedTicks, elapsedTicks);
-                    updateMax(ref s_towerEligibleCacheMaxElapsedTicks, elapsedTicks);
+                    UpdateMax(ref s_towerEligibleCacheMaxElapsedTicks, elapsedTicks);
                 }
                 else
                 {
                     Interlocked.Increment(ref s_globalEligibleCacheCalls);
                     Interlocked.Add(ref s_globalEligibleCacheElapsedTicks, elapsedTicks);
-                    updateMax(ref s_globalEligibleCacheMaxElapsedTicks, elapsedTicks);
+                    UpdateMax(ref s_globalEligibleCacheMaxElapsedTicks, elapsedTicks);
                 }
 
                 SearchDiagnosticContext? outer = context.OuterSearch;
@@ -1248,7 +1248,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static void beforeBestReadyToFulfill(
+        private static void BeforeBestReadyToFulfill(
             IEnumerable<TerrainDesignation> __0,
             out BestReadyToFulfillCallState __state)
         {
@@ -1272,7 +1272,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static void afterBestReadyToFulfill(bool __result, BestReadyToFulfillCallState __state)
+        private static void AfterBestReadyToFulfill(bool __result, BestReadyToFulfillCallState __state)
         {
             try
             {
@@ -1284,7 +1284,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static Exception? endBestReadyToFulfill(Exception? __exception, BestReadyToFulfillCallState __state)
+        private static Exception? EndBestReadyToFulfill(Exception? __exception, BestReadyToFulfillCallState __state)
         {
             if (__exception is not null)
             {
@@ -1301,9 +1301,9 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return __exception;
         }
 
-        private static void beforeNearbyEligibility() => s_currentSearchContext?.RecordNearbyDesignationScanned();
+        private static void BeforeNearbyEligibility() => s_currentSearchContext?.RecordNearbyDesignationScanned();
 
-        private static void afterNearbyEligibility(bool __result)
+        private static void AfterNearbyEligibility(bool __result)
         {
             try
             {
@@ -1315,7 +1315,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static void serviceProfileDeadline()
+        private static void ServiceProfileDeadline()
         {
             ProfileSnapshot? completed = null;
             try
@@ -1331,20 +1331,20 @@ namespace TajsTweaks.Features.DumpingPathfinding
                     long now = Stopwatch.GetTimestamp();
                     if (active.State == ProfileState.WarmingUp && now >= active.WarmupEndTimestamp)
                     {
-                        resetAllStats();
+                        ResetAllStats();
                         active.BeginRecording(now);
                         Volatile.Write(ref s_profileState, (int)ProfileState.Recording);
                     }
 
                     if (active.State == ProfileState.Recording && now >= active.RecordingEndTimestamp)
                     {
-                        completed = finishProfileLocked(now);
+                        completed = FinishProfileLocked(now);
                     }
                 }
 
                 if (completed is not null)
                 {
-                    publishCompletedProfile(completed, true);
+                    PublishCompletedProfile(completed, true);
                 }
             }
             catch (Exception ex)
@@ -1353,7 +1353,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static void serviceProfileDeadlineAtSearchBoundary()
+        private static void ServiceProfileDeadlineAtSearchBoundary()
         {
             if ((ProfileState)Volatile.Read(ref s_profileState) != ProfileState.Recording)
             {
@@ -1368,15 +1368,15 @@ namespace TajsTweaks.Features.DumpingPathfinding
 
             // Finalize before admitting a search that starts after the recording window.
             // The normal pathfinding-tick hook remains the fallback when no search arrives.
-            serviceProfileDeadline();
+            ServiceProfileDeadline();
         }
 
-        private static ProfileSnapshot finishProfileLocked(long now)
+        private static ProfileSnapshot FinishProfileLocked(long now)
         {
             ProfileSession active = s_activeProfile ?? throw new InvalidOperationException("No active dump profile.");
             if (active.State == ProfileState.WarmingUp)
             {
-                resetAllStats();
+                ResetAllStats();
             }
             long recordingStart = active.State == ProfileState.Recording
                 ? active.RecordingStartTimestamp
@@ -1384,7 +1384,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             long actualRecordingTicks = active.State == ProfileState.Recording
                 ? Math.Max(0, now - recordingStart)
                 : 0L;
-            ProfileSnapshot snapshot = snapshotCurrentProfile(active, actualRecordingTicks);
+            ProfileSnapshot snapshot = SnapshotCurrentProfile(active, actualRecordingTicks);
 
             s_activeProfile = null;
             Volatile.Write(ref s_profileState, (int)ProfileState.Idle);
@@ -1396,12 +1396,12 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return snapshot;
         }
 
-        private static void publishCompletedProfile(ProfileSnapshot profile, bool automatic)
+        private static void PublishCompletedProfile(ProfileSnapshot profile, bool automatic)
         {
             try
             {
-                string prefix = automatic ? "[TajsTweaks] " : string.Empty;
-                s_console?.WriteLine(prefix + formatProfileReport(profile), ColorRgba.White);
+                string prefix = automatic ? "[TajsProfiler] " : string.Empty;
+                s_console?.WriteLine(prefix + FormatProfileReport(profile), ColorRgba.White);
             }
             catch (Exception ex)
             {
@@ -1409,7 +1409,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static long calculateResidualTicks(long outerTicks, long nestedTicks)
+        private static long CalculateResidualTicks(long outerTicks, long nestedTicks)
         {
             long residual = outerTicks - nestedTicks;
             if (residual < 0 && residual >= -TinyResidualRoundingToleranceTicks)
@@ -1429,7 +1429,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return residual;
         }
 
-        private static SearchPath classifySearch(
+        private static SearchPath ClassifySearch(
             TerrainDumpingManager dumpingManager,
             LooseProductProto? product,
             IIndexable<MineTower>? towersToEnforce)
@@ -1460,7 +1460,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return SearchPath.GlobalForbiddenNoLocalTower;
         }
 
-        private static ProductSearchStats getOrCreateProductStats(string productId)
+        private static ProductSearchStats GetOrCreateProductStats(string productId)
         {
             if (s_productStats.TryGetValue(productId, out ProductSearchStats? stats))
             {
@@ -1471,7 +1471,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return s_productStats.GetOrAdd(productId, created);
         }
 
-        private static List<ProductSearchSnapshot> snapshotProductStats()
+        private static List<ProductSearchSnapshot> SnapshotProductStats()
         {
             var snapshot = new List<ProductSearchSnapshot>();
             foreach (ProductSearchStats stats in s_productStats.Values)
@@ -1486,7 +1486,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return snapshot;
         }
 
-        private static void sortProductSnapshots(List<ProductSearchSnapshot> snapshots)
+        private static void SortProductSnapshots(List<ProductSearchSnapshot> snapshots)
         {
             snapshots.Sort(static (left, right) =>
             {
@@ -1495,7 +1495,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             });
         }
 
-        private static long[] snapshotCounters(long[] counters)
+        private static long[] SnapshotCounters(long[] counters)
         {
             long[] snapshot = new long[counters.Length];
             for (int i = 0; i < counters.Length; i++)
@@ -1506,7 +1506,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return snapshot;
         }
 
-        private static void resetCounters(long[] counters)
+        private static void ResetCounters(long[] counters)
         {
             for (int i = 0; i < counters.Length; i++)
             {
@@ -1514,9 +1514,9 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static void resetAllStats()
+        private static void ResetAllStats()
         {
-            resetDumpSearchStats();
+            ResetDumpSearchStats();
             Interlocked.Exchange(ref s_currentPfEnqueues, 0);
             Interlocked.Exchange(ref s_lastPfEnqueues, 0);
             Interlocked.Exchange(ref s_peakPfEnqueues, 0);
@@ -1530,7 +1530,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             Interlocked.Exchange(ref s_peakPfSearchCalls, 0);
         }
 
-        private static void resetDumpSearchStats()
+        private static void ResetDumpSearchStats()
         {
             foreach (ProductSearchStats stats in s_productStats.Values)
             {
@@ -1583,7 +1583,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static string formatCounterSummary(string[] names, long[] primary, long[]? secondary = null)
+        private static string FormatCounterSummary(string[] names, long[] primary, long[]? secondary = null)
         {
             var builder = new StringBuilder(160);
             int count = Math.Min(names.Length, primary.Length);
@@ -1603,7 +1603,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return builder.ToString();
         }
 
-        private static MethodInfo? findInstanceMethod(
+        private static MethodInfo? FindInstanceMethod(
             Type type,
             string name,
             Type returnType,
@@ -1621,7 +1621,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 : null;
         }
 
-        private static MethodInfo? findUniqueInstanceMethod(Type type, string name, int parameterCount)
+        private static MethodInfo? FindUniqueInstanceMethod(Type type, string name, int parameterCount)
         {
             MethodInfo? found = null;
             foreach (MethodInfo method in AccessTools.GetDeclaredMethods(type))
@@ -1641,29 +1641,29 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return found;
         }
 
-        private static void beginVehicleBuffersBalanceBuffers(out CallerContextState __state) =>
-            __state = enterCaller(SearchCaller.VehicleBuffersRegistryBalanceBuffers);
+        private static void BeginVehicleBuffersBalanceBuffers(out CallerContextState __state) =>
+            __state = EnterCaller(SearchCaller.VehicleBuffersRegistryBalanceBuffers);
 
-        private static void beginDefaultTruckJobProvider(out CallerContextState __state) =>
-            __state = enterCaller(SearchCaller.DefaultTruckJobProvider);
+        private static void BeginDefaultTruckJobProvider(out CallerContextState __state) =>
+            __state = EnterCaller(SearchCaller.DefaultTruckJobProvider);
 
-        private static void beginDumpingJob(out CallerContextState __state) => __state = enterCaller(SearchCaller.DumpingJob);
+        private static void BeginDumpingJob(out CallerContextState __state) => __state = EnterCaller(SearchCaller.DumpingJob);
 
-        private static CallerContextState enterCaller(SearchCaller caller)
+        private static CallerContextState EnterCaller(SearchCaller caller)
         {
             var state = new CallerContextState(s_currentCaller);
             s_currentCaller = caller;
             return state;
         }
 
-        private static Exception? endCallerContext(Exception? __exception, CallerContextState __state)
+        private static Exception? EndCallerContext(Exception? __exception, CallerContextState __state)
         {
             s_currentCaller = __state.Previous;
             return __exception;
         }
 
-        private static void logOptionalPatchFailure(string message) =>
-            Log.Error($"TajsTweaks: {message}; diagnostics will remain fail-open.");
+        private static void LogOptionalPatchFailure(string message) =>
+            Log.Error($"TajsProfiler: {message}; diagnostics will remain fail-open.");
 
         private static void logOnce(ref int alreadyLogged, string operation, Exception? exception)
         {
@@ -1673,16 +1673,16 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
 
             string suffix = exception is null ? string.Empty : $": {exception}";
-            Log.Error($"TajsTweaks: {operation}; diagnostics will remain fail-open{suffix}");
+            Log.Error($"TajsProfiler: {operation}; diagnostics will remain fail-open{suffix}");
         }
 
-        private static long read(ref long value) => Interlocked.Read(ref value);
+        private static long Read(ref long value) => Interlocked.Read(ref value);
 
-        private static int readInt(ref int value) => Volatile.Read(ref value);
+        private static int ReadInt(ref int value) => Volatile.Read(ref value);
 
-        private static void updateMax(ref long target, long value)
+        private static void UpdateMax(ref long target, long value)
         {
-            long current = read(ref target);
+            long current = Read(ref target);
             while (value > current)
             {
                 long previous = Interlocked.CompareExchange(ref target, value, current);
@@ -1694,11 +1694,11 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static double stopwatchTicksToMilliseconds(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
+        private static double StopwatchTicksToMilliseconds(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
 
-        private static double stopwatchTicksToMicroseconds(long ticks) => ticks * 1_000_000.0 / Stopwatch.Frequency;
+        private static double StopwatchTicksToMicroseconds(long ticks) => ticks * 1_000_000.0 / Stopwatch.Frequency;
 
-        private static void updateWorstCall(
+        private static void UpdateWorstCall(
             SearchDiagnosticContext context,
             long elapsedTicks,
             long candidateDesignations,
@@ -1727,11 +1727,11 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 cacheSummary.GlobalCalls,
                 cacheSummary.TowerCalls);
 
-            updateWorstCall(ref s_worstCall, candidate);
+            UpdateWorstCall(ref s_worstCall, candidate);
             context.Stats.RecordWorst(candidate);
         }
 
-        private static void updateWorstCall(ref WorstCallSnapshot? target, WorstCallSnapshot candidate)
+        private static void UpdateWorstCall(ref WorstCallSnapshot? target, WorstCallSnapshot candidate)
         {
             while (true)
             {
@@ -1747,9 +1747,9 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
         }
 
-        private static int getLatencyBucket(long elapsedTicks)
+        private static int GetLatencyBucket(long elapsedTicks)
         {
-            double milliseconds = stopwatchTicksToMilliseconds(elapsedTicks);
+            double milliseconds = StopwatchTicksToMilliseconds(elapsedTicks);
             if (milliseconds < 0.1)
             {
                 return 0;
@@ -1785,10 +1785,10 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return 8;
         }
 
-        private static string formatLatencyBuckets(long[] buckets)
+        private static string FormatLatencyBuckets(long[] buckets)
         {
             var builder = new StringBuilder(180);
-            for (int i = 0; i < Math.Min(LatencyBucketNames.Length, buckets.Length); i++)
+            for (int i = 0; i < Math.Min(s_latencyBucketNames.Length, buckets.Length); i++)
             {
                 if (buckets[i] == 0)
                 {
@@ -1798,89 +1798,89 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 {
                     builder.Append(", ");
                 }
-                builder.Append(LatencyBucketNames[i]).Append('=').Append(buckets[i]);
+                builder.Append(s_latencyBucketNames[i]).Append('=').Append(buckets[i]);
             }
 
             return builder.Length == 0 ? "none" : builder.ToString();
         }
 
-        private static ProfileSnapshot snapshotCurrentProfile(ProfileSession session, long actualRecordingTicks)
+        private static ProfileSnapshot SnapshotCurrentProfile(ProfileSession session, long actualRecordingTicks)
         {
-            List<ProductSearchSnapshot> products = snapshotProductStats();
-            sortProductSnapshots(products);
-            long completedCalls = read(ref s_totalTrueResults) + read(ref s_totalFalseResults);
+            List<ProductSearchSnapshot> products = SnapshotProductStats();
+            SortProductSnapshots(products);
+            long completedCalls = Read(ref s_totalTrueResults) + Read(ref s_totalFalseResults);
             return new ProfileSnapshot(
                 session,
                 actualRecordingTicks,
-                read(ref s_totalCalls),
+                Read(ref s_totalCalls),
                 completedCalls,
-                read(ref s_totalElapsedTicks),
-                snapshotCounters(s_pathCalls),
-                snapshotCounters(s_callerCalls),
-                snapshotCounters(s_pathCandidateDesignations),
-                snapshotCounters(s_pathCandidateCalls),
-                snapshotCounters(s_pathLatencyBuckets),
-                snapshotCounters(s_latencyBuckets),
-                read(ref s_totalCandidateDesignations),
-                read(ref s_observedCandidateCalls),
-                read(ref s_globalEligibleCacheCalls),
-                read(ref s_globalEligibleCacheElapsedTicks),
-                read(ref s_globalEligibleCacheMaxElapsedTicks),
-                read(ref s_towerEligibleCacheCalls),
-                read(ref s_towerEligibleCacheElapsedTicks),
-                read(ref s_towerEligibleCacheMaxElapsedTicks),
-                read(ref s_nestedResidualElapsedTicks),
-                read(ref s_nestedResidualMaxElapsedTicks),
-                read(ref s_nestedResidualAccountingAnomalies),
-                read(ref s_lastPfSearchElapsedTicks),
-                read(ref s_peakPfSearchElapsedTicks),
-                read(ref s_peakPfSearchCalls),
-                read(ref s_peakPfMaxIndividualSearchElapsedTicks),
+                Read(ref s_totalElapsedTicks),
+                SnapshotCounters(s_pathCalls),
+                SnapshotCounters(s_callerCalls),
+                SnapshotCounters(s_pathCandidateDesignations),
+                SnapshotCounters(s_pathCandidateCalls),
+                SnapshotCounters(s_pathLatencyBuckets),
+                SnapshotCounters(s_latencyBuckets),
+                Read(ref s_totalCandidateDesignations),
+                Read(ref s_observedCandidateCalls),
+                Read(ref s_globalEligibleCacheCalls),
+                Read(ref s_globalEligibleCacheElapsedTicks),
+                Read(ref s_globalEligibleCacheMaxElapsedTicks),
+                Read(ref s_towerEligibleCacheCalls),
+                Read(ref s_towerEligibleCacheElapsedTicks),
+                Read(ref s_towerEligibleCacheMaxElapsedTicks),
+                Read(ref s_nestedResidualElapsedTicks),
+                Read(ref s_nestedResidualMaxElapsedTicks),
+                Read(ref s_nestedResidualAccountingAnomalies),
+                Read(ref s_lastPfSearchElapsedTicks),
+                Read(ref s_peakPfSearchElapsedTicks),
+                Read(ref s_peakPfSearchCalls),
+                Read(ref s_peakPfMaxIndividualSearchElapsedTicks),
                 Volatile.Read(ref s_worstCall),
                 s_breakdownStats.Snapshot(),
                 products.ToArray());
         }
 
-        private static string formatProfileReport(ProfileSnapshot profile)
+        private static string FormatProfileReport(ProfileSnapshot profile)
         {
             double callsPerSecond = profile.ActualRecordingSeconds > 0.0
                 ? profile.TotalCalls / profile.ActualRecordingSeconds
                 : 0.0;
             double utilization = profile.ActualRecordingSeconds > 0.0
-                ? stopwatchTicksToSeconds(profile.TotalElapsedTicks) / profile.ActualRecordingSeconds * 100.0
+                ? StopwatchTicksToSeconds(profile.TotalElapsedTicks) / profile.ActualRecordingSeconds * 100.0
                 : 0.0;
             var builder = new StringBuilder(4096);
             builder.Append("Dump profile \"")
                 .Append(profile.Label)
                 .AppendLine("\" complete")
                 .Append("requested=")
-                .Append(formatSeconds(profile.RequestedSeconds))
+                .Append(FormatSeconds(profile.RequestedSeconds))
                 .Append(" actual=")
-                .Append(formatSeconds(profile.ActualRecordingSeconds))
+                .Append(FormatSeconds(profile.ActualRecordingSeconds))
                 .Append(" warmup=")
-                .Append(formatSeconds(profile.WarmupSeconds))
+                .Append(FormatSeconds(profile.WarmupSeconds))
                 .AppendLine()
                 .Append("calls=")
                 .Append(profile.TotalCalls)
                 .Append(" (")
-                .Append(formatDecimal(callsPerSecond))
+                .Append(FormatDecimal(callsPerSecond))
                 .Append("/s), cumulative outer search time=")
-                .Append(formatMilliseconds(profile.TotalElapsedTicks))
+                .Append(FormatMilliseconds(profile.TotalElapsedTicks))
                 .Append(" ms, utilization=")
-                .Append(formatDecimal(utilization))
+                .Append(FormatDecimal(utilization))
                 .AppendLine("% (cumulative; concurrent calls may exceed 100%)")
                 .Append("Paths: ")
-                .Append(formatCounterSummary(SearchPathNames, profile.PathCalls))
+                .Append(FormatCounterSummary(s_searchPathNames, profile.PathCalls))
                 .AppendLine()
                 .Append("Callers: ")
-                .Append(formatCounterSummary(SearchCallerNames, profile.CallerCalls))
+                .Append(FormatCounterSummary(s_searchCallerNames, profile.CallerCalls))
                 .AppendLine()
                 .Append("Stage breakdown: ")
-                .Append(formatStageSummary(profile.Breakdown))
+                .Append(FormatStageSummary(profile.Breakdown))
                 .AppendLine()
                 .Append("Final m_designationsCache total/searches/max: ")
                 .Append(
-                    formatCountSummary(
+                    FormatCountSummary(
                         profile.Breakdown.FinalCandidateCount,
                         profile.Breakdown.FinalCandidateCalls,
                         profile.Breakdown.FinalCandidateMax))
@@ -1903,27 +1903,27 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 .Append("  global: calls=")
                 .Append(profile.GlobalCacheCalls)
                 .Append(", total=")
-                .Append(formatMilliseconds(profile.GlobalCacheElapsedTicks))
+                .Append(FormatMilliseconds(profile.GlobalCacheElapsedTicks))
                 .Append(" ms, avg=")
-                .Append(formatMicroseconds(averageTicks(profile.GlobalCacheElapsedTicks, profile.GlobalCacheCalls)))
+                .Append(FormatMicroseconds(AverageTicks(profile.GlobalCacheElapsedTicks, profile.GlobalCacheCalls)))
                 .Append(" us, max=")
-                .Append(formatMilliseconds(profile.GlobalCacheMaxElapsedTicks))
+                .Append(FormatMilliseconds(profile.GlobalCacheMaxElapsedTicks))
                 .AppendLine(" ms")
                 .Append("  per-tower: calls=")
                 .Append(profile.TowerCacheCalls)
                 .Append(", total=")
-                .Append(formatMilliseconds(profile.TowerCacheElapsedTicks))
+                .Append(FormatMilliseconds(profile.TowerCacheElapsedTicks))
                 .Append(" ms, avg=")
-                .Append(formatMicroseconds(averageTicks(profile.TowerCacheElapsedTicks, profile.TowerCacheCalls)))
+                .Append(FormatMicroseconds(AverageTicks(profile.TowerCacheElapsedTicks, profile.TowerCacheCalls)))
                 .Append(" us, max=")
-                .Append(formatMilliseconds(profile.TowerCacheMaxElapsedTicks))
+                .Append(FormatMilliseconds(profile.TowerCacheMaxElapsedTicks))
                 .AppendLine(" ms")
                 .Append("Residual after eligible-cache calls: total=")
-                .Append(formatMilliseconds(profile.ResidualElapsedTicks))
+                .Append(FormatMilliseconds(profile.ResidualElapsedTicks))
                 .Append(" ms, avg=")
-                .Append(formatMicroseconds(averageTicks(profile.ResidualElapsedTicks, profile.CompletedCalls)))
+                .Append(FormatMicroseconds(AverageTicks(profile.ResidualElapsedTicks, profile.CompletedCalls)))
                 .Append(" us, max=")
-                .Append(formatMilliseconds(profile.ResidualMaxElapsedTicks))
+                .Append(FormatMilliseconds(profile.ResidualMaxElapsedTicks))
                 .Append(", accounting anomalies=")
                 .AppendLine(profile.ResidualAccountingAnomalies.ToString(CultureInfo.InvariantCulture))
                 .Append("Raw eligible-cache candidates: total=")
@@ -1931,41 +1931,41 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 .Append(", cache searches=")
                 .Append(profile.ObservedCandidateCalls)
                 .Append(", avg=")
-                .Append(formatDecimal(average(profile.TotalCandidateDesignations, profile.ObservedCandidateCalls)))
+                .Append(FormatDecimal(Average(profile.TotalCandidateDesignations, profile.ObservedCandidateCalls)))
                 .AppendLine()
                 .Append("PF tick search workload: peak calls/tick=")
                 .Append(profile.PeakPfSearchCalls)
                 .Append(", peak cumulative=")
-                .Append(formatMilliseconds(profile.PeakPfSearchElapsedTicks))
+                .Append(FormatMilliseconds(profile.PeakPfSearchElapsedTicks))
                 .Append(" ms, worst individual in peak tick=")
-                .Append(formatMilliseconds(profile.PeakPfMaxIndividualSearchElapsedTicks))
+                .Append(FormatMilliseconds(profile.PeakPfMaxIndividualSearchElapsedTicks))
                 .AppendLine(" ms")
                 .Append("Latency: ")
-                .Append(formatLatencyBuckets(profile.LatencyBuckets));
+                .Append(FormatLatencyBuckets(profile.LatencyBuckets));
 
-            appendPathBreakdown(builder, profile.Breakdown, profile.PathCalls);
+            AppendPathBreakdown(builder, profile.Breakdown, profile.PathCalls);
             builder.AppendLine().Append("Path latency:");
 
-            for (int i = 0; i < SearchPathNames.Length; i++)
+            for (int i = 0; i < s_searchPathNames.Length; i++)
             {
                 long[] pathBuckets = new long[LatencyBucketCount];
                 Array.Copy(profile.PathLatencyBuckets, i * LatencyBucketCount, pathBuckets, 0, LatencyBucketCount);
-                if (hasNonZero(pathBuckets))
+                if (HasNonZero(pathBuckets))
                 {
-                    builder.Append("\n  ").Append(SearchPathNames[i]).Append(": ").Append(formatLatencyBuckets(pathBuckets));
+                    builder.Append("\n  ").Append(s_searchPathNames[i]).Append(": ").Append(FormatLatencyBuckets(pathBuckets));
                 }
             }
 
             if (profile.WorstCall is not null)
             {
-                appendWorstCall(builder, profile.WorstCall);
+                AppendWorstCall(builder, profile.WorstCall);
             }
 
             builder.AppendLine().Append("Products:");
             int count = Math.Min(profile.Products.Length, MaxProductsInConsoleReport);
             for (int i = 0; i < count; i++)
             {
-                appendProductReport(builder, profile.Products[i]);
+                AppendProductReport(builder, profile.Products[i]);
             }
             if (profile.Products.Length > count)
             {
@@ -1975,17 +1975,17 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return builder.ToString();
         }
 
-        private static string formatCountSummary(long total, long calls, long max)
+        private static string FormatCountSummary(long total, long calls, long max)
         {
             return total.ToString(CultureInfo.InvariantCulture) + "/" + calls.ToString(CultureInfo.InvariantCulture) + "/" +
                    max.ToString(CultureInfo.InvariantCulture) +
-                   " avg=" + formatDecimal(average(total, calls));
+                   " avg=" + FormatDecimal(Average(total, calls));
         }
 
-        private static string formatStageSummary(SearchBreakdownSnapshot breakdown)
+        private static string FormatStageSummary(SearchBreakdownSnapshot breakdown)
         {
             var builder = new StringBuilder(240);
-            for (int i = 0; i < (int)SearchStage.Count && i < SearchStageNames.Length; i++)
+            for (int i = 0; i < (int)SearchStage.Count && i < s_searchStageNames.Length; i++)
             {
                 var stage = (SearchStage)i;
                 long calls = breakdown.StageCalls[i];
@@ -1997,26 +1997,26 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 {
                     builder.Append(", ");
                 }
-                builder.Append(SearchStageNames[i])
+                builder.Append(s_searchStageNames[i])
                     .Append('=')
-                    .Append(formatMilliseconds(breakdown.StageElapsedTicks[i]))
+                    .Append(FormatMilliseconds(breakdown.StageElapsedTicks[i]))
                     .Append("ms avg=")
-                    .Append(formatMilliseconds(averageTicks(breakdown.StageElapsedTicks[i], calls)))
+                    .Append(FormatMilliseconds(AverageTicks(breakdown.StageElapsedTicks[i], calls)))
                     .Append(" max=")
-                    .Append(formatMilliseconds(breakdown.StageMaxElapsedTicks[i]))
+                    .Append(FormatMilliseconds(breakdown.StageMaxElapsedTicks[i]))
                     .Append("ms");
             }
 
             return builder.Length == 0 ? "none" : builder.ToString();
         }
 
-        private static string formatStageComparison(SearchBreakdownSnapshot first, SearchBreakdownSnapshot second)
+        private static string FormatStageComparison(SearchBreakdownSnapshot first, SearchBreakdownSnapshot second)
         {
             var builder = new StringBuilder(240);
-            for (int i = 0; i < (int)SearchStage.Count && i < SearchStageNames.Length; i++)
+            for (int i = 0; i < (int)SearchStage.Count && i < s_searchStageNames.Length; i++)
             {
-                double firstAvg = averageTicks(first.StageElapsedTicks[i], first.StageCalls[i]);
-                double secondAvg = averageTicks(second.StageElapsedTicks[i], second.StageCalls[i]);
+                double firstAvg = AverageTicks(first.StageElapsedTicks[i], first.StageCalls[i]);
+                double secondAvg = AverageTicks(second.StageElapsedTicks[i], second.StageCalls[i]);
                 if (first.StageCalls[i] == 0 && second.StageCalls[i] == 0)
                 {
                     continue;
@@ -2025,19 +2025,19 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 {
                     builder.Append(", ");
                 }
-                builder.Append(SearchStageNames[i])
+                builder.Append(s_searchStageNames[i])
                     .Append(" A=")
-                    .Append(formatMilliseconds(firstAvg))
+                    .Append(FormatMilliseconds(firstAvg))
                     .Append("ms B=")
-                    .Append(formatMilliseconds(secondAvg))
+                    .Append(FormatMilliseconds(secondAvg))
                     .Append("ms B/A=")
-                    .Append(formatRatio(secondAvg, firstAvg));
+                    .Append(FormatRatio(secondAvg, firstAvg));
             }
 
             return builder.Length == 0 ? "none" : builder.ToString();
         }
 
-        private static string formatProfileComparison(ProfileSnapshot first, ProfileSnapshot second)
+        private static string FormatProfileComparison(ProfileSnapshot first, ProfileSnapshot second)
         {
             StringBuilder builder = new StringBuilder(4096)
                 .Append("Dump profile comparison: A=\"")
@@ -2046,70 +2046,70 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 .Append(second.Label)
                 .AppendLine("\"")
                 .Append("A actual=")
-                .Append(formatSeconds(first.ActualRecordingSeconds))
+                .Append(FormatSeconds(first.ActualRecordingSeconds))
                 .Append(", calls=")
                 .Append(first.TotalCalls)
                 .Append(", calls/sec=")
-                .Append(formatDecimal(callsPerSecond(first)))
+                .Append(FormatDecimal(CallsPerSecond(first)))
                 .AppendLine()
                 .Append("B actual=")
-                .Append(formatSeconds(second.ActualRecordingSeconds))
+                .Append(FormatSeconds(second.ActualRecordingSeconds))
                 .Append(", calls=")
                 .Append(second.TotalCalls)
                 .Append(", calls/sec=")
-                .Append(formatDecimal(callsPerSecond(second)))
+                .Append(FormatDecimal(CallsPerSecond(second)))
                 .AppendLine()
                 .Append("Outer search: A avg=")
-                .Append(formatMilliseconds(averageTicks(first.TotalElapsedTicks, first.CompletedCalls)))
+                .Append(FormatMilliseconds(AverageTicks(first.TotalElapsedTicks, first.CompletedCalls)))
                 .Append(" ms, B avg=")
-                .Append(formatMilliseconds(averageTicks(second.TotalElapsedTicks, second.CompletedCalls)))
+                .Append(FormatMilliseconds(AverageTicks(second.TotalElapsedTicks, second.CompletedCalls)))
                 .Append(" ms, B/A=")
                 .Append(
-                    formatRatio(
+                    FormatRatio(
                         second.TotalElapsedTicks / (double)Math.Max(1, second.CompletedCalls),
                         first.TotalElapsedTicks / (double)Math.Max(1, first.CompletedCalls)))
                 .AppendLine()
                 .Append("  total wall time: A=")
-                .Append(formatMilliseconds(first.TotalElapsedTicks))
+                .Append(FormatMilliseconds(first.TotalElapsedTicks))
                 .Append(" ms, B=")
-                .Append(formatMilliseconds(second.TotalElapsedTicks))
+                .Append(FormatMilliseconds(second.TotalElapsedTicks))
                 .AppendLine(" ms")
                 .Append("  utilization: A=")
-                .Append(formatDecimal(utilization(first)))
+                .Append(FormatDecimal(Utilization(first)))
                 .Append("%, B=")
-                .Append(formatDecimal(utilization(second)))
+                .Append(FormatDecimal(Utilization(second)))
                 .AppendLine("%")
                 .Append("Nested eligible cache: global A=")
                 .Append(
-                    formatCacheComparison(
+                    FormatCacheComparison(
                         first.GlobalCacheCalls,
                         first.GlobalCacheElapsedTicks,
                         second.GlobalCacheCalls,
                         second.GlobalCacheElapsedTicks))
                 .Append(", per-tower A=")
                 .Append(
-                    formatCacheComparison(
+                    FormatCacheComparison(
                         first.TowerCacheCalls,
                         first.TowerCacheElapsedTicks,
                         second.TowerCacheCalls,
                         second.TowerCacheElapsedTicks))
                 .AppendLine()
                 .Append("Residual: A=")
-                .Append(formatMilliseconds(first.ResidualElapsedTicks))
+                .Append(FormatMilliseconds(first.ResidualElapsedTicks))
                 .Append(" ms total / ")
-                .Append(formatMilliseconds(averageTicks(first.ResidualElapsedTicks, first.CompletedCalls)))
+                .Append(FormatMilliseconds(AverageTicks(first.ResidualElapsedTicks, first.CompletedCalls)))
                 .Append(" ms avg, B=")
-                .Append(formatMilliseconds(second.ResidualElapsedTicks))
+                .Append(FormatMilliseconds(second.ResidualElapsedTicks))
                 .Append(" ms total / ")
-                .Append(formatMilliseconds(averageTicks(second.ResidualElapsedTicks, second.CompletedCalls)))
+                .Append(FormatMilliseconds(AverageTicks(second.ResidualElapsedTicks, second.CompletedCalls)))
                 .AppendLine(" ms avg")
                 .Append("Stage averages: ")
-                .Append(formatStageComparison(first.Breakdown, second.Breakdown))
+                .Append(FormatStageComparison(first.Breakdown, second.Breakdown))
                 .AppendLine()
                 .Append("Final m_designationsCache avg/searches: A=")
-                .Append(formatDecimal(average(first.Breakdown.FinalCandidateCount, first.Breakdown.FinalCandidateCalls)));
+                .Append(FormatDecimal(Average(first.Breakdown.FinalCandidateCount, first.Breakdown.FinalCandidateCalls)));
             builder.Append(", B=")
-                .Append(formatDecimal(average(second.Breakdown.FinalCandidateCount, second.Breakdown.FinalCandidateCalls)))
+                .Append(FormatDecimal(Average(second.Breakdown.FinalCandidateCount, second.Breakdown.FinalCandidateCalls)))
                 .AppendLine()
                 .Append("Nearby scanned/accepted/added: A=")
                 .Append(first.Breakdown.NearbyScanned)
@@ -2125,65 +2125,65 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 .Append(second.Breakdown.NearbyAdded)
                 .AppendLine()
                 .Append("Raw eligible-cache candidates: A avg=")
-                .Append(formatDecimal(average(first.TotalCandidateDesignations, first.ObservedCandidateCalls)))
+                .Append(FormatDecimal(Average(first.TotalCandidateDesignations, first.ObservedCandidateCalls)))
                 .Append(", B avg=")
-                .Append(formatDecimal(average(second.TotalCandidateDesignations, second.ObservedCandidateCalls)))
+                .Append(FormatDecimal(Average(second.TotalCandidateDesignations, second.ObservedCandidateCalls)))
                 .Append(", B/A=")
                 .Append(
-                    formatRatio(
-                        average(second.TotalCandidateDesignations, second.ObservedCandidateCalls),
-                        average(first.TotalCandidateDesignations, first.ObservedCandidateCalls)))
+                    FormatRatio(
+                        Average(second.TotalCandidateDesignations, second.ObservedCandidateCalls),
+                        Average(first.TotalCandidateDesignations, first.ObservedCandidateCalls)))
                 .AppendLine()
                 .Append("Callers A: ")
-                .Append(formatPercentageSummary(SearchCallerNames, first.CallerCalls))
+                .Append(FormatPercentageSummary(s_searchCallerNames, first.CallerCalls))
                 .AppendLine()
                 .Append("Callers B: ")
-                .Append(formatPercentageSummary(SearchCallerNames, second.CallerCalls))
+                .Append(FormatPercentageSummary(s_searchCallerNames, second.CallerCalls))
                 .AppendLine()
                 .Append("Paths A: ")
-                .Append(formatPercentageSummary(SearchPathNames, first.PathCalls))
+                .Append(FormatPercentageSummary(s_searchPathNames, first.PathCalls))
                 .AppendLine()
                 .Append("Paths B: ")
-                .Append(formatPercentageSummary(SearchPathNames, second.PathCalls));
+                .Append(FormatPercentageSummary(s_searchPathNames, second.PathCalls));
 
-            ProductSearchSnapshot? firstDirt = findProduct(first.Products, "Product_Dirt");
-            ProductSearchSnapshot? secondDirt = findProduct(second.Products, "Product_Dirt");
+            ProductSearchSnapshot? firstDirt = FindProduct(first.Products, "Product_Dirt");
+            ProductSearchSnapshot? secondDirt = FindProduct(second.Products, "Product_Dirt");
             if (firstDirt is not null || secondDirt is not null)
             {
                 ProductSearchSnapshot a = firstDirt ?? default;
                 ProductSearchSnapshot b = secondDirt ?? default;
-                double aAvg = averageTicks(a.ElapsedTicks, a.CompletedCalls);
-                double bAvg = averageTicks(b.ElapsedTicks, b.CompletedCalls);
+                double aAvg = AverageTicks(a.ElapsedTicks, a.CompletedCalls);
+                double bAvg = AverageTicks(b.ElapsedTicks, b.CompletedCalls);
                 builder.AppendLine()
                     .Append("Product_Dirt: A calls=")
                     .Append(a.Calls)
                     .Append(", B calls=")
                     .Append(b.Calls)
                     .Append(", outer avg A=")
-                    .Append(formatMilliseconds(aAvg))
+                    .Append(FormatMilliseconds(aAvg))
                     .Append(" ms, B=")
-                    .Append(formatMilliseconds(bAvg))
+                    .Append(FormatMilliseconds(bAvg))
                     .Append(" ms, B/A=")
-                    .Append(formatRatio(bAvg, aAvg))
+                    .Append(FormatRatio(bAvg, aAvg))
                     .AppendLine()
                     .Append("  raw eligible-cache candidates/search: A=")
-                    .Append(formatDecimal(average(a.CandidateDesignations, a.CandidateCalls)))
+                    .Append(FormatDecimal(Average(a.CandidateDesignations, a.CandidateCalls)))
                     .Append(", B=")
-                    .Append(formatDecimal(average(b.CandidateDesignations, b.CandidateCalls)))
+                    .Append(FormatDecimal(Average(b.CandidateDesignations, b.CandidateCalls)))
                     .Append(", B/A=")
                     .Append(
-                        formatRatio(average(b.CandidateDesignations, b.CandidateCalls), average(a.CandidateDesignations, a.CandidateCalls)))
+                        FormatRatio(Average(b.CandidateDesignations, b.CandidateCalls), Average(a.CandidateDesignations, a.CandidateCalls)))
                     .AppendLine()
                     .Append("  stage averages A: ")
-                    .Append(formatStageSummary(a.Breakdown))
+                    .Append(FormatStageSummary(a.Breakdown))
                     .AppendLine()
                     .Append("  stage averages B: ")
-                    .Append(formatStageSummary(b.Breakdown))
+                    .Append(FormatStageSummary(b.Breakdown))
                     .AppendLine()
                     .Append("  final-cache avg A=")
-                    .Append(formatDecimal(average(a.Breakdown.FinalCandidateCount, a.Breakdown.FinalCandidateCalls)))
+                    .Append(FormatDecimal(Average(a.Breakdown.FinalCandidateCount, a.Breakdown.FinalCandidateCalls)))
                     .Append(", B=")
-                    .Append(formatDecimal(average(b.Breakdown.FinalCandidateCount, b.Breakdown.FinalCandidateCalls)))
+                    .Append(FormatDecimal(Average(b.Breakdown.FinalCandidateCount, b.Breakdown.FinalCandidateCalls)))
                     .Append("; nearby scanned/accepted/added A=")
                     .Append(a.Breakdown.NearbyScanned)
                     .Append('/')
@@ -2201,7 +2201,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return builder.ToString();
         }
 
-        private static void appendProductReport(StringBuilder builder, ProductSearchSnapshot stats)
+        private static void AppendProductReport(StringBuilder builder, ProductSearchSnapshot stats)
         {
             long completed = stats.TrueResults + stats.FalseResults;
             builder.Append("\n  ")
@@ -2209,30 +2209,30 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 .Append(": calls=")
                 .Append(stats.Calls)
                 .Append(", outer avg=")
-                .Append(formatMilliseconds(averageTicks(stats.ElapsedTicks, completed)))
+                .Append(FormatMilliseconds(AverageTicks(stats.ElapsedTicks, completed)))
                 .Append(" ms, max=")
-                .Append(formatMilliseconds(stats.MaxElapsedTicks))
+                .Append(FormatMilliseconds(stats.MaxElapsedTicks))
                 .Append(" ms")
                 .Append(", global-cache=")
                 .Append(stats.GlobalCacheCalls)
                 .Append("/")
-                .Append(formatMilliseconds(stats.GlobalCacheElapsedTicks))
+                .Append(FormatMilliseconds(stats.GlobalCacheElapsedTicks))
                 .Append(" ms")
                 .Append(", per-tower-cache=")
                 .Append(stats.TowerCacheCalls)
                 .Append("/")
-                .Append(formatMilliseconds(stats.TowerCacheElapsedTicks))
+                .Append(FormatMilliseconds(stats.TowerCacheElapsedTicks))
                 .Append(" ms")
                 .Append(", residual=")
-                .Append(formatMilliseconds(stats.ResidualElapsedTicks))
+                .Append(FormatMilliseconds(stats.ResidualElapsedTicks))
                 .Append(" ms")
                 .Append(", raw-cache-candidates=")
-                .Append(formatDecimal(average(stats.CandidateDesignations, stats.CandidateCalls)))
+                .Append(FormatDecimal(Average(stats.CandidateDesignations, stats.CandidateCalls)))
                 .Append(", breakdown=")
-                .Append(formatStageSummary(stats.Breakdown))
+                .Append(FormatStageSummary(stats.Breakdown))
                 .Append(", final-cache total/searches/max=")
                 .Append(
-                    formatCountSummary(
+                    FormatCountSummary(
                         stats.Breakdown.FinalCandidateCount,
                         stats.Breakdown.FinalCandidateCalls,
                         stats.Breakdown.FinalCandidateMax))
@@ -2242,16 +2242,16 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 .Append(stats.Breakdown.NearbyAccepted)
                 .Append('/')
                 .Append(stats.Breakdown.NearbyAdded);
-            appendProductPathMetrics(builder, stats);
+            AppendProductPathMetrics(builder, stats);
         }
 
-        private static void appendPathBreakdown(
+        private static void AppendPathBreakdown(
             StringBuilder builder,
             SearchBreakdownSnapshot breakdown,
             long[] pathCalls)
         {
             builder.Append("\nPath stage breakdown:");
-            int pathCount = Math.Min(SearchPathNames.Length, pathCalls.Length);
+            int pathCount = Math.Min(s_searchPathNames.Length, pathCalls.Length);
             for (int pathIndex = 0; pathIndex < pathCount; pathIndex++)
             {
                 if (pathCalls[pathIndex] == 0)
@@ -2259,12 +2259,12 @@ namespace TajsTweaks.Features.DumpingPathfinding
                     continue;
                 }
 
-                builder.Append("\n  ").Append(SearchPathNames[pathIndex]).Append(": ");
-                appendPathStageMetrics(builder, breakdown, pathIndex);
+                builder.Append("\n  ").Append(s_searchPathNames[pathIndex]).Append(": ");
+                AppendPathStageMetrics(builder, breakdown, pathIndex);
             }
         }
 
-        private static void appendPathStageMetrics(
+        private static void AppendPathStageMetrics(
             StringBuilder builder,
             SearchBreakdownSnapshot breakdown,
             int pathIndex)
@@ -2283,19 +2283,19 @@ namespace TajsTweaks.Features.DumpingPathfinding
                     builder.Append(", ");
                 }
                 wroteStage = true;
-                builder.Append(SearchStageNames[stageIndex])
+                builder.Append(s_searchStageNames[stageIndex])
                     .Append('=')
-                    .Append(formatMilliseconds(breakdown.PathStageElapsed(pathIndex, stage)))
+                    .Append(FormatMilliseconds(breakdown.PathStageElapsed(pathIndex, stage)))
                     .Append("ms avg=")
-                    .Append(formatMilliseconds(averageTicks(breakdown.PathStageElapsed(pathIndex, stage), stageCalls)))
+                    .Append(FormatMilliseconds(AverageTicks(breakdown.PathStageElapsed(pathIndex, stage), stageCalls)))
                     .Append(" max=")
-                    .Append(formatMilliseconds(breakdown.PathStageMax(pathIndex, stage)))
+                    .Append(FormatMilliseconds(breakdown.PathStageMax(pathIndex, stage)))
                     .Append("ms");
             }
 
             builder.Append("; final-cache total/searches/max=")
                 .Append(
-                    formatCountSummary(
+                    FormatCountSummary(
                         breakdown.PathFinalCandidateCount[pathIndex],
                         breakdown.PathFinalCandidateCalls[pathIndex],
                         breakdown.PathFinalCandidateMax[pathIndex]))
@@ -2313,9 +2313,9 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 .Append(breakdown.PathNearbyMode(pathIndex, NearbyMode.Unknown));
         }
 
-        private static void appendProductPathMetrics(StringBuilder builder, ProductSearchSnapshot stats)
+        private static void AppendProductPathMetrics(StringBuilder builder, ProductSearchSnapshot stats)
         {
-            for (int i = 0; i < SearchPathNames.Length && i < stats.PathCalls.Length; i++)
+            for (int i = 0; i < s_searchPathNames.Length && i < stats.PathCalls.Length; i++)
             {
                 long calls = stats.PathCalls[i];
                 if (calls == 0)
@@ -2324,73 +2324,73 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 }
 
                 builder.Append("\n    ")
-                    .Append(SearchPathNames[i])
+                    .Append(s_searchPathNames[i])
                     .Append(": outer=")
                     .Append(calls)
                     .Append('/')
-                    .Append(formatMilliseconds(stats.PathElapsedTicks[i]))
+                    .Append(FormatMilliseconds(stats.PathElapsedTicks[i]))
                     .Append(" ms avg=")
-                    .Append(formatMilliseconds(averageTicks(stats.PathElapsedTicks[i], calls)))
+                    .Append(FormatMilliseconds(AverageTicks(stats.PathElapsedTicks[i], calls)))
                     .Append(" ms max=")
-                    .Append(formatMilliseconds(stats.PathMaxElapsedTicks[i]))
+                    .Append(FormatMilliseconds(stats.PathMaxElapsedTicks[i]))
                     .Append("; global-cache=")
                     .Append(stats.PathGlobalCacheCalls[i])
                     .Append('/')
-                    .Append(formatMilliseconds(stats.PathGlobalCacheElapsedTicks[i]))
+                    .Append(FormatMilliseconds(stats.PathGlobalCacheElapsedTicks[i]))
                     .Append(" ms avg=")
-                    .Append(formatMicroseconds(averageTicks(stats.PathGlobalCacheElapsedTicks[i], stats.PathGlobalCacheCalls[i])))
+                    .Append(FormatMicroseconds(AverageTicks(stats.PathGlobalCacheElapsedTicks[i], stats.PathGlobalCacheCalls[i])))
                     .Append(" us max=")
-                    .Append(formatMilliseconds(stats.PathGlobalCacheMaxElapsedTicks[i]))
+                    .Append(FormatMilliseconds(stats.PathGlobalCacheMaxElapsedTicks[i]))
                     .Append(" ms; per-tower-cache=")
                     .Append(stats.PathTowerCacheCalls[i])
                     .Append('/')
-                    .Append(formatMilliseconds(stats.PathTowerCacheElapsedTicks[i]))
+                    .Append(FormatMilliseconds(stats.PathTowerCacheElapsedTicks[i]))
                     .Append(" ms avg=")
-                    .Append(formatMicroseconds(averageTicks(stats.PathTowerCacheElapsedTicks[i], stats.PathTowerCacheCalls[i])))
+                    .Append(FormatMicroseconds(AverageTicks(stats.PathTowerCacheElapsedTicks[i], stats.PathTowerCacheCalls[i])))
                     .Append(" us max=")
-                    .Append(formatMilliseconds(stats.PathTowerCacheMaxElapsedTicks[i]))
+                    .Append(FormatMilliseconds(stats.PathTowerCacheMaxElapsedTicks[i]))
                     .Append(" ms; residual total=")
-                    .Append(formatMilliseconds(stats.PathResidualElapsedTicks[i]))
+                    .Append(FormatMilliseconds(stats.PathResidualElapsedTicks[i]))
                     .Append(" ms avg=")
-                    .Append(formatMicroseconds(averageTicks(stats.PathResidualElapsedTicks[i], calls)))
+                    .Append(FormatMicroseconds(AverageTicks(stats.PathResidualElapsedTicks[i], calls)))
                     .Append(" us max=")
-                    .Append(formatMilliseconds(stats.PathResidualMaxElapsedTicks[i]))
+                    .Append(FormatMilliseconds(stats.PathResidualMaxElapsedTicks[i]))
                     .Append(" ms")
                     .Append("; breakdown=");
-                appendPathStageMetrics(builder, stats.Breakdown, i);
+                AppendPathStageMetrics(builder, stats.Breakdown, i);
             }
         }
 
-        private static void appendWorstCall(StringBuilder builder, WorstCallSnapshot worst)
+        private static void AppendWorstCall(StringBuilder builder, WorstCallSnapshot worst)
         {
             builder.Append("\nWorst search: elapsed=")
-                .Append(formatMilliseconds(worst.ElapsedTicks))
+                .Append(FormatMilliseconds(worst.ElapsedTicks))
                 .Append(" ms, product=")
                 .Append(worst.ProductId)
                 .Append(", path=")
-                .Append(SearchPathNames[(int)worst.Path])
+                .Append(s_searchPathNames[(int)worst.Path])
                 .Append(", caller=")
-                .Append(SearchCallerNames[(int)worst.Caller])
+                .Append(s_searchCallerNames[(int)worst.Caller])
                 .Append(", candidates=")
                 .Append(worst.CandidateDesignations)
                 .Append(", cache global=")
-                .Append(formatMilliseconds(worst.GlobalCacheElapsedTicks))
+                .Append(FormatMilliseconds(worst.GlobalCacheElapsedTicks))
                 .Append(" ms, per-tower=")
-                .Append(formatMilliseconds(worst.TowerCacheElapsedTicks))
+                .Append(FormatMilliseconds(worst.TowerCacheElapsedTicks))
                 .Append(" ms, nested=")
-                .Append(formatMilliseconds(worst.NestedCacheElapsedTicks))
+                .Append(FormatMilliseconds(worst.NestedCacheElapsedTicks))
                 .Append(" ms, residual=")
-                .Append(formatMilliseconds(worst.ResidualElapsedTicks))
+                .Append(FormatMilliseconds(worst.ResidualElapsedTicks))
                 .Append(" ms, cache calls=")
                 .Append(worst.GlobalCacheCalls)
                 .Append('/')
                 .Append(worst.TowerCacheCalls);
         }
 
-        private static string formatCacheComparison(long callsA, long ticksA, long callsB, long ticksB) =>
-            $"A={callsA} calls/{formatMilliseconds(ticksA)} ms avg {formatMicroseconds(averageTicks(ticksA, callsA))} us, B={callsB} calls/{formatMilliseconds(ticksB)} ms avg {formatMicroseconds(averageTicks(ticksB, callsB))} us";
+        private static string FormatCacheComparison(long callsA, long ticksA, long callsB, long ticksB) =>
+            $"A={callsA} calls/{FormatMilliseconds(ticksA)} ms avg {FormatMicroseconds(AverageTicks(ticksA, callsA))} us, B={callsB} calls/{FormatMilliseconds(ticksB)} ms avg {FormatMicroseconds(AverageTicks(ticksB, callsB))} us";
 
-        private static string formatPercentageSummary(string[] names, long[] counters)
+        private static string FormatPercentageSummary(string[] names, long[] counters)
         {
             long total = 0L;
             for (int i = 0; i < Math.Min(names.Length, counters.Length); i++)
@@ -2409,13 +2409,13 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 {
                     builder.Append(", ");
                 }
-                builder.Append(names[i]).Append('=').Append(formatDecimal(counters[i] * 100.0 / total)).Append('%');
+                builder.Append(names[i]).Append('=').Append(FormatDecimal(counters[i] * 100.0 / total)).Append('%');
             }
 
             return builder.ToString();
         }
 
-        private static bool hasNonZero(long[] values)
+        private static bool HasNonZero(long[] values)
         {
             for (int i = 0; i < values.Length; i++)
             {
@@ -2427,7 +2427,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return false;
         }
 
-        private static ProductSearchSnapshot? findProduct(ProductSearchSnapshot[] products, string productId)
+        private static ProductSearchSnapshot? FindProduct(ProductSearchSnapshot[] products, string productId)
         {
             for (int i = 0; i < products.Length; i++)
             {
@@ -2439,11 +2439,11 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return null;
         }
 
-        private static string findDominantPath(long[] pathCalls)
+        private static string FindDominantPath(long[] pathCalls)
         {
             int index = 0;
             long max = 0L;
-            for (int i = 0; i < Math.Min(pathCalls.Length, SearchPathNames.Length); i++)
+            for (int i = 0; i < Math.Min(pathCalls.Length, s_searchPathNames.Length); i++)
             {
                 if (pathCalls[i] > max)
                 {
@@ -2452,33 +2452,33 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 }
             }
 
-            return max == 0 ? "none" : SearchPathNames[index];
+            return max == 0 ? "none" : s_searchPathNames[index];
         }
 
-        private static double callsPerSecond(ProfileSnapshot profile) =>
+        private static double CallsPerSecond(ProfileSnapshot profile) =>
             profile.ActualRecordingSeconds > 0.0 ? profile.TotalCalls / profile.ActualRecordingSeconds : 0.0;
 
-        private static double utilization(ProfileSnapshot profile)
+        private static double Utilization(ProfileSnapshot profile)
         {
             return profile.ActualRecordingSeconds > 0.0
-                ? stopwatchTicksToSeconds(profile.TotalElapsedTicks) / profile.ActualRecordingSeconds * 100.0
+                ? StopwatchTicksToSeconds(profile.TotalElapsedTicks) / profile.ActualRecordingSeconds * 100.0
                 : 0.0;
         }
 
-        private static string formatRatio(double numerator, double denominator) =>
-            denominator == 0.0 ? "n/a" : formatDecimal(numerator / denominator) + "x";
+        private static string FormatRatio(double numerator, double denominator) =>
+            denominator == 0.0 ? "n/a" : FormatDecimal(numerator / denominator) + "x";
 
-        private static double average(long total, long count) => count > 0 ? total / (double)count : 0.0;
+        private static double Average(long total, long count) => count > 0 ? total / (double)count : 0.0;
 
-        private static double averageTicks(long totalTicks, long count) => count > 0 ? totalTicks / (double)count : 0.0;
+        private static double AverageTicks(long totalTicks, long count) => count > 0 ? totalTicks / (double)count : 0.0;
 
-        private static bool isValidProfileDuration(double value, double minimum, double maximum) =>
+        private static bool IsValidProfileDuration(double value, double minimum, double maximum) =>
             !double.IsNaN(value) && !double.IsInfinity(value) && value >= minimum && value <= maximum;
 
-        private static string describeProfileState(ProfileState state) =>
+        private static string DescribeProfileState(ProfileState state) =>
             state == ProfileState.WarmingUp ? "warming-up" : state == ProfileState.Recording ? "recording" : "idle";
 
-        private static ProfileSnapshot? findProfileLocked(string label)
+        private static ProfileSnapshot? FindProfileLocked(string label)
         {
             for (int i = 0; i < s_profileHistory.Count; i++)
             {
@@ -2490,20 +2490,20 @@ namespace TajsTweaks.Features.DumpingPathfinding
             return null;
         }
 
-        private static long secondsToStopwatchTicks(double seconds) =>
+        private static long SecondsToStopwatchTicks(double seconds) =>
             (long)Math.Round(seconds * Stopwatch.Frequency, MidpointRounding.AwayFromZero);
 
-        private static double stopwatchTicksToSeconds(long ticks) => ticks / (double)Stopwatch.Frequency;
+        private static double StopwatchTicksToSeconds(long ticks) => ticks / (double)Stopwatch.Frequency;
 
-        private static string formatSeconds(double seconds) => seconds.ToString("F2", CultureInfo.InvariantCulture) + "s";
+        private static string FormatSeconds(double seconds) => seconds.ToString("F2", CultureInfo.InvariantCulture) + "s";
 
-        private static string formatMilliseconds(double ticks) =>
+        private static string FormatMilliseconds(double ticks) =>
             (ticks * 1000.0 / Stopwatch.Frequency).ToString("F2", CultureInfo.InvariantCulture);
 
-        private static string formatMicroseconds(double ticks) =>
+        private static string FormatMicroseconds(double ticks) =>
             (ticks * 1_000_000.0 / Stopwatch.Frequency).ToString("F1", CultureInfo.InvariantCulture);
 
-        private static string formatDecimal(double value) => value.ToString("F2", CultureInfo.InvariantCulture);
+        private static string FormatDecimal(double value) => value.ToString("F2", CultureInfo.InvariantCulture);
 
         private enum SearchPath
         {
@@ -2668,7 +2668,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             public Lyst<TerrainDesignation>? NearbyDesignations { get; }
             public int NearbyDesignationsInitialCount { get; }
 
-            public void BeginEligibleCache(long timestamp, bool isPerTower)
+            public void BeginEligibleCache(long timestamp)
             {
                 if (FirstEligibleCacheStartTimestamp == 0)
                 {
@@ -2680,8 +2680,6 @@ namespace TajsTweaks.Features.DumpingPathfinding
                     CandidateFilteringElapsedTicks += Math.Max(0, timestamp - LastEligibleCacheEndTimestamp);
                     CandidateFilteringCalls = 1;
                 }
-
-                NearbyMode = isPerTower ? NearbyMode.Tower : NearbyMode.Global;
             }
 
             public void RecordEligibleCacheEnd(long timestamp) => LastEligibleCacheEndTimestamp = timestamp;
@@ -2717,7 +2715,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                     return;
                 }
 
-                BestReadyToFulfillElapsedTicks = Math.Max(0, timestamp - BestReadyToFulfillStartTimestamp);
+                BestReadyToFulfillElapsedTicks += Math.Max(0, timestamp - BestReadyToFulfillStartTimestamp);
                 BestReadyToFulfillResult = result;
                 BestReadyToFulfillEndTimestamp = timestamp;
             }
@@ -2793,14 +2791,14 @@ namespace TajsTweaks.Features.DumpingPathfinding
             {
                 Interlocked.Add(ref GlobalCacheElapsedTicks, elapsedTicks);
                 Interlocked.Increment(ref GlobalCacheCalls);
-                updateMax(ref GlobalCacheMaxElapsedTicks, elapsedTicks);
+                UpdateMax(ref GlobalCacheMaxElapsedTicks, elapsedTicks);
             }
 
             public void RecordTowerCache(long elapsedTicks)
             {
                 Interlocked.Add(ref TowerCacheElapsedTicks, elapsedTicks);
                 Interlocked.Increment(ref TowerCacheCalls);
-                updateMax(ref TowerCacheMaxElapsedTicks, elapsedTicks);
+                UpdateMax(ref TowerCacheMaxElapsedTicks, elapsedTicks);
             }
 
             public CacheSummary GetCacheSummary()
@@ -2956,11 +2954,11 @@ namespace TajsTweaks.Features.DumpingPathfinding
                     {
                         Interlocked.Add(ref m_stageElapsedTicks[i], elapsedTicks);
                         Interlocked.Add(ref m_stageCalls[i], calls);
-                        updateMax(ref m_stageMaxElapsedTicks[i], elapsedTicks);
+                        UpdateMax(ref m_stageMaxElapsedTicks[i], elapsedTicks);
                         int pathOffset = pathIndex * (int)SearchStage.Count + i;
                         Interlocked.Add(ref m_pathStageElapsedTicks[pathOffset], elapsedTicks);
                         Interlocked.Add(ref m_pathStageCalls[pathOffset], calls);
-                        updateMax(ref m_pathStageMaxElapsedTicks[pathOffset], elapsedTicks);
+                        UpdateMax(ref m_pathStageMaxElapsedTicks[pathOffset], elapsedTicks);
                     }
                 }
 
@@ -2968,10 +2966,10 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 {
                     Interlocked.Add(ref m_finalCandidateCount, breakdown.FinalCandidateCount);
                     Interlocked.Add(ref m_finalCandidateCalls, breakdown.FinalCandidateCountCalls);
-                    updateMax(ref m_finalCandidateMax, breakdown.FinalCandidateCount);
+                    UpdateMax(ref m_finalCandidateMax, breakdown.FinalCandidateCount);
                     Interlocked.Add(ref m_pathFinalCandidateCount[pathIndex], breakdown.FinalCandidateCount);
                     Interlocked.Add(ref m_pathFinalCandidateCalls[pathIndex], breakdown.FinalCandidateCountCalls);
-                    updateMax(ref m_pathFinalCandidateMax[pathIndex], breakdown.FinalCandidateCount);
+                    UpdateMax(ref m_pathFinalCandidateMax[pathIndex], breakdown.FinalCandidateCount);
                 }
 
                 Interlocked.Add(ref m_nearbyScanned, breakdown.NearbyScanned);
@@ -2992,46 +2990,46 @@ namespace TajsTweaks.Features.DumpingPathfinding
             public SearchBreakdownSnapshot Snapshot()
             {
                 return new SearchBreakdownSnapshot(
-                    snapshotCounters(m_stageElapsedTicks),
-                    snapshotCounters(m_stageCalls),
-                    snapshotCounters(m_stageMaxElapsedTicks),
-                    snapshotCounters(m_pathStageElapsedTicks),
-                    snapshotCounters(m_pathStageCalls),
-                    snapshotCounters(m_pathStageMaxElapsedTicks),
-                    read(ref m_finalCandidateCount),
-                    read(ref m_finalCandidateCalls),
-                    read(ref m_finalCandidateMax),
-                    read(ref m_nearbyScanned),
-                    read(ref m_nearbyAccepted),
-                    read(ref m_nearbyAdded),
-                    read(ref m_nearbyExpansionCalls),
-                    snapshotCounters(m_nearbyModeCalls),
-                    snapshotCounters(m_pathFinalCandidateCount),
-                    snapshotCounters(m_pathFinalCandidateCalls),
-                    snapshotCounters(m_pathFinalCandidateMax),
-                    snapshotCounters(m_pathNearbyScanned),
-                    snapshotCounters(m_pathNearbyAccepted),
-                    snapshotCounters(m_pathNearbyAdded),
-                    snapshotCounters(m_pathNearbyExpansionCalls),
-                    snapshotCounters(m_pathNearbyModeCalls));
+                    SnapshotCounters(m_stageElapsedTicks),
+                    SnapshotCounters(m_stageCalls),
+                    SnapshotCounters(m_stageMaxElapsedTicks),
+                    SnapshotCounters(m_pathStageElapsedTicks),
+                    SnapshotCounters(m_pathStageCalls),
+                    SnapshotCounters(m_pathStageMaxElapsedTicks),
+                    Read(ref m_finalCandidateCount),
+                    Read(ref m_finalCandidateCalls),
+                    Read(ref m_finalCandidateMax),
+                    Read(ref m_nearbyScanned),
+                    Read(ref m_nearbyAccepted),
+                    Read(ref m_nearbyAdded),
+                    Read(ref m_nearbyExpansionCalls),
+                    SnapshotCounters(m_nearbyModeCalls),
+                    SnapshotCounters(m_pathFinalCandidateCount),
+                    SnapshotCounters(m_pathFinalCandidateCalls),
+                    SnapshotCounters(m_pathFinalCandidateMax),
+                    SnapshotCounters(m_pathNearbyScanned),
+                    SnapshotCounters(m_pathNearbyAccepted),
+                    SnapshotCounters(m_pathNearbyAdded),
+                    SnapshotCounters(m_pathNearbyExpansionCalls),
+                    SnapshotCounters(m_pathNearbyModeCalls));
             }
 
             public void Reset()
             {
-                resetCounters(m_stageElapsedTicks);
-                resetCounters(m_stageCalls);
-                resetCounters(m_stageMaxElapsedTicks);
-                resetCounters(m_pathStageElapsedTicks);
-                resetCounters(m_pathStageCalls);
-                resetCounters(m_pathStageMaxElapsedTicks);
-                resetCounters(m_pathFinalCandidateCount);
-                resetCounters(m_pathFinalCandidateCalls);
-                resetCounters(m_pathFinalCandidateMax);
-                resetCounters(m_pathNearbyScanned);
-                resetCounters(m_pathNearbyAccepted);
-                resetCounters(m_pathNearbyAdded);
-                resetCounters(m_pathNearbyExpansionCalls);
-                resetCounters(m_pathNearbyModeCalls);
+                ResetCounters(m_stageElapsedTicks);
+                ResetCounters(m_stageCalls);
+                ResetCounters(m_stageMaxElapsedTicks);
+                ResetCounters(m_pathStageElapsedTicks);
+                ResetCounters(m_pathStageCalls);
+                ResetCounters(m_pathStageMaxElapsedTicks);
+                ResetCounters(m_pathFinalCandidateCount);
+                ResetCounters(m_pathFinalCandidateCalls);
+                ResetCounters(m_pathFinalCandidateMax);
+                ResetCounters(m_pathNearbyScanned);
+                ResetCounters(m_pathNearbyAccepted);
+                ResetCounters(m_pathNearbyAdded);
+                ResetCounters(m_pathNearbyExpansionCalls);
+                ResetCounters(m_pathNearbyModeCalls);
                 Interlocked.Exchange(ref m_finalCandidateCount, 0);
                 Interlocked.Exchange(ref m_finalCandidateCalls, 0);
                 Interlocked.Exchange(ref m_finalCandidateMax, 0);
@@ -3039,7 +3037,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 Interlocked.Exchange(ref m_nearbyAccepted, 0);
                 Interlocked.Exchange(ref m_nearbyAdded, 0);
                 Interlocked.Exchange(ref m_nearbyExpansionCalls, 0);
-                resetCounters(m_nearbyModeCalls);
+                ResetCounters(m_nearbyModeCalls);
             }
         }
 
@@ -3148,10 +3146,10 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 State = state;
                 RecordingStartTimestamp = recordingStartTimestamp;
                 WarmupEndTimestamp = state == ProfileState.WarmingUp
-                    ? startTimestamp + secondsToStopwatchTicks(warmupSeconds)
+                    ? startTimestamp + SecondsToStopwatchTicks(warmupSeconds)
                     : 0L;
                 RecordingEndTimestamp = state == ProfileState.Recording
-                    ? recordingStartTimestamp + secondsToStopwatchTicks(requestedSeconds)
+                    ? recordingStartTimestamp + SecondsToStopwatchTicks(requestedSeconds)
                     : 0L;
             }
 
@@ -3169,7 +3167,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
             {
                 State = ProfileState.Recording;
                 RecordingStartTimestamp = now;
-                RecordingEndTimestamp = now + secondsToStopwatchTicks(RequestedSeconds);
+                RecordingEndTimestamp = now + SecondsToStopwatchTicks(RequestedSeconds);
             }
         }
 
@@ -3210,7 +3208,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 Sequence = session.Sequence;
                 RequestedSeconds = session.RequestedSeconds;
                 WarmupSeconds = session.WarmupSeconds;
-                ActualRecordingSeconds = stopwatchTicksToSeconds(actualRecordingTicks);
+                ActualRecordingSeconds = StopwatchTicksToSeconds(actualRecordingTicks);
                 TotalCalls = totalCalls;
                 CompletedCalls = completedCalls;
                 TotalElapsedTicks = totalElapsedTicks;
@@ -3238,7 +3236,7 @@ namespace TajsTweaks.Features.DumpingPathfinding
                 WorstCall = worstCall;
                 Breakdown = breakdown;
                 Products = (ProductSearchSnapshot[])products.Clone();
-                DominantPath = findDominantPath(PathCalls);
+                DominantPath = FindDominantPath(PathCalls);
             }
 
             public string Label { get; }
@@ -3356,21 +3354,21 @@ namespace TajsTweaks.Features.DumpingPathfinding
             }
 
             public string ProductId { get; }
-            public long Calls => read(ref m_calls);
-            public long TrueResults => read(ref m_trueResults);
-            public long FalseResults => read(ref m_falseResults);
-            public long ElapsedTicks => read(ref m_elapsedTicks);
-            public long MaxElapsedTicks => read(ref m_maxElapsedTicks);
-            public long CandidateDesignations => read(ref m_candidateDesignations);
-            public long CandidateCalls => read(ref m_candidateCalls);
-            public long GlobalCacheCalls => read(ref m_globalCacheCalls);
-            public long GlobalCacheElapsedTicks => read(ref m_globalCacheElapsedTicks);
-            public long GlobalCacheMaxElapsedTicks => read(ref m_globalCacheMaxElapsedTicks);
-            public long TowerCacheCalls => read(ref m_towerCacheCalls);
-            public long TowerCacheElapsedTicks => read(ref m_towerCacheElapsedTicks);
-            public long TowerCacheMaxElapsedTicks => read(ref m_towerCacheMaxElapsedTicks);
-            public long ResidualElapsedTicks => read(ref m_residualElapsedTicks);
-            public long ResidualMaxElapsedTicks => read(ref m_residualMaxElapsedTicks);
+            public long Calls => Read(ref m_calls);
+            public long TrueResults => Read(ref m_trueResults);
+            public long FalseResults => Read(ref m_falseResults);
+            public long ElapsedTicks => Read(ref m_elapsedTicks);
+            public long MaxElapsedTicks => Read(ref m_maxElapsedTicks);
+            public long CandidateDesignations => Read(ref m_candidateDesignations);
+            public long CandidateCalls => Read(ref m_candidateCalls);
+            public long GlobalCacheCalls => Read(ref m_globalCacheCalls);
+            public long GlobalCacheElapsedTicks => Read(ref m_globalCacheElapsedTicks);
+            public long GlobalCacheMaxElapsedTicks => Read(ref m_globalCacheMaxElapsedTicks);
+            public long TowerCacheCalls => Read(ref m_towerCacheCalls);
+            public long TowerCacheElapsedTicks => Read(ref m_towerCacheElapsedTicks);
+            public long TowerCacheMaxElapsedTicks => Read(ref m_towerCacheMaxElapsedTicks);
+            public long ResidualElapsedTicks => Read(ref m_residualElapsedTicks);
+            public long ResidualMaxElapsedTicks => Read(ref m_residualMaxElapsedTicks);
             public SearchBreakdownSnapshot Breakdown => m_breakdown.Snapshot();
             public WorstCallSnapshot? WorstCall => Volatile.Read(ref m_worstCall);
 
@@ -3403,9 +3401,9 @@ namespace TajsTweaks.Features.DumpingPathfinding
                         Interlocked.Increment(ref m_falseResults);
                     }
                     Interlocked.Add(ref m_elapsedTicks, elapsedTicks);
-                    updateMax(ref m_maxElapsedTicks, elapsedTicks);
+                    UpdateMax(ref m_maxElapsedTicks, elapsedTicks);
                     Interlocked.Add(ref m_pathElapsedTicks[pathIndex], elapsedTicks);
-                    updateMax(ref m_pathMaxElapsedTicks[pathIndex], elapsedTicks);
+                    UpdateMax(ref m_pathMaxElapsedTicks[pathIndex], elapsedTicks);
                 }
 
                 if (candidateCalls > 0)
@@ -3416,21 +3414,21 @@ namespace TajsTweaks.Features.DumpingPathfinding
 
                 Interlocked.Add(ref m_globalCacheCalls, cacheSummary.GlobalCalls);
                 Interlocked.Add(ref m_globalCacheElapsedTicks, cacheSummary.GlobalElapsedTicks);
-                updateMax(ref m_globalCacheMaxElapsedTicks, cacheSummary.GlobalMaxElapsedTicks);
+                UpdateMax(ref m_globalCacheMaxElapsedTicks, cacheSummary.GlobalMaxElapsedTicks);
                 Interlocked.Add(ref m_towerCacheCalls, cacheSummary.TowerCalls);
                 Interlocked.Add(ref m_towerCacheElapsedTicks, cacheSummary.TowerElapsedTicks);
-                updateMax(ref m_towerCacheMaxElapsedTicks, cacheSummary.TowerMaxElapsedTicks);
+                UpdateMax(ref m_towerCacheMaxElapsedTicks, cacheSummary.TowerMaxElapsedTicks);
                 Interlocked.Add(ref m_residualElapsedTicks, residualTicks);
-                updateMax(ref m_residualMaxElapsedTicks, residualTicks);
-                Interlocked.Increment(ref m_latencyBuckets[getLatencyBucket(elapsedTicks)]);
+                UpdateMax(ref m_residualMaxElapsedTicks, residualTicks);
+                Interlocked.Increment(ref m_latencyBuckets[GetLatencyBucket(elapsedTicks)]);
                 Interlocked.Add(ref m_pathGlobalCacheCalls[pathIndex], cacheSummary.GlobalCalls);
                 Interlocked.Add(ref m_pathGlobalCacheElapsedTicks[pathIndex], cacheSummary.GlobalElapsedTicks);
-                updateMax(ref m_pathGlobalCacheMaxElapsedTicks[pathIndex], cacheSummary.GlobalMaxElapsedTicks);
+                UpdateMax(ref m_pathGlobalCacheMaxElapsedTicks[pathIndex], cacheSummary.GlobalMaxElapsedTicks);
                 Interlocked.Add(ref m_pathTowerCacheCalls[pathIndex], cacheSummary.TowerCalls);
                 Interlocked.Add(ref m_pathTowerCacheElapsedTicks[pathIndex], cacheSummary.TowerElapsedTicks);
-                updateMax(ref m_pathTowerCacheMaxElapsedTicks[pathIndex], cacheSummary.TowerMaxElapsedTicks);
+                UpdateMax(ref m_pathTowerCacheMaxElapsedTicks[pathIndex], cacheSummary.TowerMaxElapsedTicks);
                 Interlocked.Add(ref m_pathResidualElapsedTicks[pathIndex], residualTicks);
-                updateMax(ref m_pathResidualMaxElapsedTicks[pathIndex], residualTicks);
+                UpdateMax(ref m_pathResidualMaxElapsedTicks[pathIndex], residualTicks);
                 m_breakdown.Record(path, breakdown);
             }
 
@@ -3440,19 +3438,19 @@ namespace TajsTweaks.Features.DumpingPathfinding
             {
                 return new ProductSnapshotCounters
                 {
-                    PathCalls = snapshotCounters(m_pathCalls),
-                    CallerCalls = snapshotCounters(m_callerCalls),
-                    LatencyBuckets = snapshotCounters(m_latencyBuckets),
-                    PathElapsedTicks = snapshotCounters(m_pathElapsedTicks),
-                    PathMaxElapsedTicks = snapshotCounters(m_pathMaxElapsedTicks),
-                    PathGlobalCacheCalls = snapshotCounters(m_pathGlobalCacheCalls),
-                    PathGlobalCacheElapsedTicks = snapshotCounters(m_pathGlobalCacheElapsedTicks),
-                    PathGlobalCacheMaxElapsedTicks = snapshotCounters(m_pathGlobalCacheMaxElapsedTicks),
-                    PathTowerCacheCalls = snapshotCounters(m_pathTowerCacheCalls),
-                    PathTowerCacheElapsedTicks = snapshotCounters(m_pathTowerCacheElapsedTicks),
-                    PathTowerCacheMaxElapsedTicks = snapshotCounters(m_pathTowerCacheMaxElapsedTicks),
-                    PathResidualElapsedTicks = snapshotCounters(m_pathResidualElapsedTicks),
-                    PathResidualMaxElapsedTicks = snapshotCounters(m_pathResidualMaxElapsedTicks),
+                    PathCalls = SnapshotCounters(m_pathCalls),
+                    CallerCalls = SnapshotCounters(m_callerCalls),
+                    LatencyBuckets = SnapshotCounters(m_latencyBuckets),
+                    PathElapsedTicks = SnapshotCounters(m_pathElapsedTicks),
+                    PathMaxElapsedTicks = SnapshotCounters(m_pathMaxElapsedTicks),
+                    PathGlobalCacheCalls = SnapshotCounters(m_pathGlobalCacheCalls),
+                    PathGlobalCacheElapsedTicks = SnapshotCounters(m_pathGlobalCacheElapsedTicks),
+                    PathGlobalCacheMaxElapsedTicks = SnapshotCounters(m_pathGlobalCacheMaxElapsedTicks),
+                    PathTowerCacheCalls = SnapshotCounters(m_pathTowerCacheCalls),
+                    PathTowerCacheElapsedTicks = SnapshotCounters(m_pathTowerCacheElapsedTicks),
+                    PathTowerCacheMaxElapsedTicks = SnapshotCounters(m_pathTowerCacheMaxElapsedTicks),
+                    PathResidualElapsedTicks = SnapshotCounters(m_pathResidualElapsedTicks),
+                    PathResidualMaxElapsedTicks = SnapshotCounters(m_pathResidualMaxElapsedTicks),
                 };
             }
 

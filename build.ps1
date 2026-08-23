@@ -6,13 +6,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$project = Join-Path $root "src\Mods\TajsTweaks\TajsTweaks.csproj"
+$solution = Join-Path $root "TajsCOI.slnx"
+$mods = Get-ChildItem (Join-Path $root "src\Mods") -Filter "*.csproj" -Recurse | ForEach-Object {
+    [xml] $projectXml = Get-Content $_.FullName
+    [pscustomobject] @{
+        Id = @($projectXml.Project.PropertyGroup.ModId)[0]
+        Version = @($projectXml.Project.PropertyGroup.ModVersion)[0]
+    }
+} | Where-Object { $_.Id }
 
-[xml] $projectXml = Get-Content $project
-$modVersion = @($projectXml.Project.PropertyGroup.ModVersion)[0]
-
-Write-Host "Building TajsTweaks $modVersion ($Configuration)..."
-dotnet build $project -c $Configuration
+Write-Host "Building Taj's COI mods ($Configuration)..."
+dotnet build $solution -c $Configuration
 
 if ($LASTEXITCODE -ne 0)
 {
@@ -21,12 +25,16 @@ if ($LASTEXITCODE -ne 0)
 
 Write-Host ""
 Write-Host "Deployed:"
-Write-Host "  $env:APPDATA\Captain of Industry\Mods\TajsTweaks"
+$mods | ForEach-Object {
+    Write-Host "  $env:APPDATA\Captain of Industry\Mods\$($_.Id)"
+}
 
 if ($Configuration -eq "Release")
 {
     Write-Host "Release package:"
-    Write-Host "  $env:APPDATA\Captain of Industry\Mods\TajsTweaks_$modVersion.zip"
+    $mods | ForEach-Object {
+        Write-Host "  $env:APPDATA\Captain of Industry\Mods\$($_.Id)_$($_.Version).zip"
+    }
 }
 
 if ($Run)

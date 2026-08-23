@@ -1,3 +1,5 @@
 <Solution>
+    <Project Path="src/Mods/TajsCore/TajsCore.csproj"/>
+    <Project Path="src/Mods/TajsProfiler/TajsProfiler.csproj"/>
     <Project Path="src/Mods/TajsTweaks/TajsTweaks.csproj"/>
 </Solution>

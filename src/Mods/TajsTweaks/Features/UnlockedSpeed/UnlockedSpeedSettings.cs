@@ -2,7 +2,7 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
-namespace TajsTweaks.Features.UnlockedSpeed
+namespace TajsCOI.Tweaks.Features.UnlockedSpeed
 {
     internal static class UnlockedSpeedSettings
     {

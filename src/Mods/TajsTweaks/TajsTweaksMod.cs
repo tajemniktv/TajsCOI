@@ -7,12 +7,11 @@
 using Mafi;
 using Mafi.Collections;
 using Mafi.Core.Mods;
-using TajsTweaks.Features.UnlockedSpeed;
-using TajsTweaks.Infrastructure;
+using TajsCOI.Tweaks.Features.UnlockedSpeed;
 
 #endregion
 
-namespace TajsTweaks
+namespace TajsCOI.Tweaks
 {
     /// <summary>
     ///     Root mod class. Keep this boring.
@@ -23,7 +22,6 @@ namespace TajsTweaks
     {
         public TajsTweaksMod(ModManifest manifest) : base(manifest)
         {
-            BuildMetadata.Initialize(manifest);
             Log.Info("TajsTweaks: constructed");
         }
 

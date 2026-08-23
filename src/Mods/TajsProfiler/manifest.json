@@ -1,14 +1,14 @@
 ﻿{
-"id":"TajsTweaks",
+"id":"TajsProfiler",
 "version":"0.1.0",
-"display_name":"Taj's Tweaks",
-"description_short":"Quality-of-life and simulation tweaks for Captain of Industry.",
+"display_name":"Taj's Profiler",
+"description_short":"Behavior-neutral runtime diagnostics for Captain of Industry.",
 "authors":"TajemnikTV",
 "primary_dlls":[
-"TajsTweaks.dll"
+"TajsProfiler.dll"
 ],
 "mod_dependencies":["TajsCore>=0.1.0"],
-"primary_mod_class_name":"TajsTweaksMod",
+"primary_mod_class_name":"TajsProfilerMod",
 "min_game_version":"0.8.7",
 "max_verified_game_version":"0.8.7a",
 "non_locking_dll_load":true,

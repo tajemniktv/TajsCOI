@@ -84,22 +84,28 @@
       <_ManifestLines Include="line09">
         <Text>],</Text>
       </_ManifestLines>
-      <_ManifestLines Include="line10">
-        <Text>&quot;min_game_version&quot;:&quot;$(MinGameVersion)&quot;,</Text>
+      <_ManifestLines Include="line10" Condition="'@(ModDependency)' != ''">
+        <Text>&quot;mod_dependencies&quot;:[@(ModDependency->'&quot;%(Identity)&quot;', ',')],</Text>
       </_ManifestLines>
-      <_ManifestLines Include="line11">
-        <Text>&quot;max_verified_game_version&quot;:&quot;$(MaxVerifiedGameVersion)&quot;,</Text>
+      <_ManifestLines Include="line11" Condition="'$(PrimaryModClassName)' != ''">
+        <Text>&quot;primary_mod_class_name&quot;:&quot;$(PrimaryModClassName)&quot;,</Text>
       </_ManifestLines>
       <_ManifestLines Include="line12">
-        <Text>&quot;non_locking_dll_load&quot;:true,</Text>
+        <Text>&quot;min_game_version&quot;:&quot;$(MinGameVersion)&quot;,</Text>
       </_ManifestLines>
       <_ManifestLines Include="line13">
-        <Text>&quot;can_add_to_saved_game&quot;:true,</Text>
+        <Text>&quot;max_verified_game_version&quot;:&quot;$(MaxVerifiedGameVersion)&quot;,</Text>
       </_ManifestLines>
       <_ManifestLines Include="line14">
-        <Text>&quot;can_remove_from_saved_game&quot;:true</Text>
+        <Text>&quot;non_locking_dll_load&quot;:true,</Text>
       </_ManifestLines>
       <_ManifestLines Include="line15">
+        <Text>&quot;can_add_to_saved_game&quot;:true,</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line16">
+        <Text>&quot;can_remove_from_saved_game&quot;:true</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line17">
         <Text>}</Text>
       </_ManifestLines>
     </ItemGroup>
@@ -128,6 +134,18 @@
           DestinationFolder="$(_UnityDllDir)"
           SkipUnchangedFiles="true"
           OverwriteReadOnlyFiles="true"/>
+
+    <ItemGroup>
+      <_CoiRuntimeDependencies Remove="@(_CoiRuntimeDependencies)"/>
+      <_CoiRuntimeDependencies Include="@(ReferenceCopyLocalPaths)"
+                               Condition="'%(Extension)' == '.dll'"/>
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_CoiRuntimeDependencies)"
+          DestinationFolder="$(_UnityDllDir)"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true"
+          Condition="'@(_CoiRuntimeDependencies)' != ''"/>
 
     <Copy SourceFiles="$(TargetDir)$(TargetName).pdb"
           DestinationFolder="$(_UnityDllDir)"
@@ -160,6 +178,22 @@
           DestinationFolder="$(_ModDeployDir)"
           SkipUnchangedFiles="true"
           OverwriteReadOnlyFiles="true"/>
+
+    <ItemGroup>
+      <_CoiRuntimeDependencies Remove="@(_CoiRuntimeDependencies)"/>
+      <_CoiRuntimeDependencies Include="@(ReferenceCopyLocalPaths)"
+                               Condition="'%(Extension)' == '.dll'"/>
+    </ItemGroup>
+
+    <Message Text="Deploying runtime dependencies: @(_CoiRuntimeDependencies->'%(Filename)%(Extension)', ', ')"
+             Importance="High"
+             Condition="'@(_CoiRuntimeDependencies)' != ''"/>
+
+    <Copy SourceFiles="@(_CoiRuntimeDependencies)"
+          DestinationFolder="$(_ModDeployDir)"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true"
+          Condition="'@(_CoiRuntimeDependencies)' != ''"/>
 
     <Copy SourceFiles="$(TargetDir)$(TargetName).pdb"
           DestinationFolder="$(_ModDeployDir)"

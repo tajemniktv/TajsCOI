@@ -7,35 +7,33 @@
 using Mafi;
 using Mafi.Core.Console;
 using Mafi.Core.Simulation;
-using TajsTweaks.Infrastructure;
-using TajsTweaks.Interop;
+using TajsCOI.Core.Infrastructure;
 
 #endregion
 
-namespace TajsTweaks.Features.Debug
+namespace TajsCOI.Core.Features.Debug
 {
     [GlobalDependency(RegistrationMode.AsSelf)]
     public sealed class DebugInfoService
     {
-        private readonly SimLoopEvents _simLoop;
+        private readonly SimLoopEvents m_simLoop;
 
         public DebugInfoService(SimLoopEvents simLoop)
         {
-            _simLoop = simLoop;
+            m_simLoop = simLoop;
         }
 
         [ConsoleCommand(
-            documentation: "Shows TajsTweaks version, build provenance and basic runtime status.",
-            customCommandName: "tajs_tweaks_info")]
+            documentation: "Shows TajsCore version, build provenance and basic runtime status.",
+            customCommandName: "tajs_core_info")]
         public string GetInfo()
         {
             string coreVersion = typeof(SimLoopEvents).Assembly.GetName().Version?.ToString() ?? "unknown";
-            string speedInterop = SimLoopAccess.CanSetRequestedSpeed ? "ready" : "unavailable";
 
             return
-                $"TajsTweaks {BuildMetadata.Version} | {BuildMetadata.Configuration} | git {BuildMetadata.GitCommit} | " +
+                $"TajsCore {BuildMetadata.Version} | {BuildMetadata.Configuration} | git {BuildMetadata.GitCommit} | " +
                 $"built {BuildMetadata.BuildTimestampUtc} | Mafi.Core {coreVersion} | " +
-                $"requested speed {_simLoop.SimSpeedMult}x | speed interop {speedInterop}.";
+                $"requested speed {m_simLoop.SimSpeedMult}x.";
         }
     }
 }

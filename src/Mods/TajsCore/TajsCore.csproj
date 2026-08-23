@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsCoiMod>true</IsCoiMod>
+
+    <ModId>TajsCore</ModId>
+    <ModVersion>0.1.0</ModVersion>
+    <ModDisplayName>Taj's Core</ModDisplayName>
+    <ModDescription>Runtime foundation for the Taj's COI mod suite.</ModDescription>
+    <ModAuthor>TajemnikTV</ModAuthor>
+    <MinGameVersion>0.8.7</MinGameVersion>
+    <MaxVerifiedGameVersion>0.8.7a</MaxVerifiedGameVersion>
+    <PrimaryModClassName>TajsCoreMod</PrimaryModClassName>
+
+    <AssemblyName>$(ModId)</AssemblyName>
+    <RootNamespace>TajsCOI.Core</RootNamespace>
+  </PropertyGroup>
+</Project>

@@ -12,15 +12,15 @@ using Mafi.Core.Mods;
 
 #endregion
 
-namespace TajsTweaks.Infrastructure
+namespace TajsCOI.Core.Infrastructure
 {
     internal static class BuildMetadata
     {
         private const string Unknown = "unknown";
 
-        private static readonly Assembly Assembly = typeof(BuildMetadata).Assembly;
+        private static readonly Assembly s_assembly = typeof(BuildMetadata).Assembly;
 
-        internal static string Version => Get("ModVersion", Assembly.GetName().Version?.ToString() ?? Unknown);
+        internal static string Version => Get("ModVersion", s_assembly.GetName().Version?.ToString() ?? Unknown);
         internal static string Configuration => Get("BuildConfiguration");
         internal static string GitCommit => Get("GitCommit");
         internal static string BuildTimestampUtc { get; private set; } = Unknown;
@@ -29,7 +29,7 @@ namespace TajsTweaks.Infrastructure
         {
             try
             {
-                string assemblyName = Assembly.GetName().Name ?? "TajsTweaks";
+                string assemblyName = s_assembly.GetName().Name ?? "TajsCore";
                 string assemblyPath = Path.Combine(manifest.RootDirectoryPath, assemblyName + ".dll");
 
                 if (File.Exists(assemblyPath))
@@ -46,7 +46,7 @@ namespace TajsTweaks.Infrastructure
 
         private static string Get(string key, string fallback = Unknown)
         {
-            return Assembly
+            return s_assembly
                        .GetCustomAttributes<AssemblyMetadataAttribute>()
                        .FirstOrDefault(attribute => attribute.Key == key)
                        ?.Value

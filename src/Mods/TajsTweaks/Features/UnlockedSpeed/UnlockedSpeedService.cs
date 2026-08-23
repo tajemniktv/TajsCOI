@@ -7,11 +7,11 @@
 using Mafi;
 using Mafi.Core.Console;
 using Mafi.Core.Simulation;
-using TajsTweaks.Interop;
+using TajsCOI.Tweaks.Interop;
 
 #endregion
 
-namespace TajsTweaks.Features.UnlockedSpeed
+namespace TajsCOI.Tweaks.Features.UnlockedSpeed
 {
     /// <summary>
     ///     Bypasses the vanilla 20x requested-speed validation.
@@ -19,11 +19,11 @@ namespace TajsTweaks.Features.UnlockedSpeed
     [GlobalDependency(RegistrationMode.AsSelf)]
     public sealed class UnlockedSpeedService
     {
-        private readonly SimLoopEvents _simLoop;
+        private readonly SimLoopEvents m_simLoop;
 
         public UnlockedSpeedService(SimLoopEvents simLoop)
         {
-            _simLoop = simLoop;
+            m_simLoop = simLoop;
 
             if (!SimLoopAccess.CanSetRequestedSpeed)
             {
@@ -46,7 +46,7 @@ namespace TajsTweaks.Features.UnlockedSpeed
                 return $"Invalid speed. Valid range is 1-{maxSpeed}.";
             }
 
-            if (!SimLoopAccess.TrySetRequestedSpeedUncapped(_simLoop, speed, out string error))
+            if (!SimLoopAccess.TrySetRequestedSpeedUncapped(m_simLoop, speed, out string error))
             {
                 return $"Failed to set requested simulation speed: {error}";
             }
@@ -57,6 +57,6 @@ namespace TajsTweaks.Features.UnlockedSpeed
         [ConsoleCommand(
             documentation: "Shows the current requested simulation speed multiplier.",
             customCommandName: "get_game_speed_unlocked")]
-        public string GetGameSpeedUnlocked() => $"Requested simulation speed: {_simLoop.SimSpeedMult}x (configured max: {MaxSpeed}x).";
+        public string GetGameSpeedUnlocked() => $"Requested simulation speed: {m_simLoop.SimSpeedMult}x (configured max: {MaxSpeed}x).";
     }
 }

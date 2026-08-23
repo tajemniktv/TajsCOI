@@ -11,7 +11,7 @@ using static System.Reflection.BindingFlags;
 
 #endregion
 
-namespace TajsTweaks.Interop
+namespace TajsCOI.Tweaks.Interop
 {
     /// <summary>
     ///     Contains the fragile/private SimLoopEvents access used by runtime features.
@@ -20,22 +20,22 @@ namespace TajsTweaks.Interop
     internal static class SimLoopAccess
     {
         internal static bool CanSetRequestedSpeed =>
-            AdaptiveModeSetter is not null && (SimSpeedSetter is not null || SimSpeedBackingField is not null);
+            s_adaptiveModeSetter is not null && (s_simSpeedSetter is not null || s_simSpeedBackingField is not null);
 
         internal static bool TrySetRequestedSpeedUncapped(SimLoopEvents simLoop, int speed, out string error)
         {
-            if (AdaptiveModeSetter is null)
+            if (s_adaptiveModeSetter is null)
             {
                 error = "AdaptiveSimSpeedMode setter was not found.";
                 return false;
             }
 
             Action<SimLoopEvents, int> setRequestedSpeed;
-            if (SimSpeedSetter is { } speedSetter)
+            if (s_simSpeedSetter is { } speedSetter)
             {
                 setRequestedSpeed = (loop, value) => speedSetter.Invoke(loop, [value]);
             }
-            else if (SimSpeedBackingField is { } speedBackingField)
+            else if (s_simSpeedBackingField is { } speedBackingField)
             {
                 setRequestedSpeed = (loop, value) => speedBackingField.SetValue(loop, value);
             }
@@ -47,7 +47,7 @@ namespace TajsTweaks.Interop
 
             try
             {
-                AdaptiveModeSetter.Invoke(simLoop, [SimAdaptiveSpeedMode.Uncapped]);
+                s_adaptiveModeSetter.Invoke(simLoop, [SimAdaptiveSpeedMode.Uncapped]);
                 setRequestedSpeed(simLoop, speed);
 
                 error = string.Empty;
@@ -63,22 +63,22 @@ namespace TajsTweaks.Interop
         // hard-limits SetSimSpeed to 20x, so the unlocked-speed feature must reach fixed private
         // SimLoopEvents members. No user-supplied type/member names are reflected here.
 #pragma warning disable S3011
-        private static readonly BindingFlags InstanceFlags = Instance | Public | NonPublic;
+        private static readonly BindingFlags s_instanceFlags = Instance | Public | NonPublic;
 
-        private static readonly PropertyInfo? SimSpeedProperty =
-            typeof(SimLoopEvents).GetProperty("SimSpeedMult", InstanceFlags);
+        private static readonly PropertyInfo? s_simSpeedProperty =
+            typeof(SimLoopEvents).GetProperty("SimSpeedMult", s_instanceFlags);
 
-        private static readonly MethodInfo? SimSpeedSetter =
-            SimSpeedProperty?.GetSetMethod(true);
+        private static readonly MethodInfo? s_simSpeedSetter =
+            s_simSpeedProperty?.GetSetMethod(true);
 
-        private static readonly FieldInfo? SimSpeedBackingField =
-            typeof(SimLoopEvents).GetField("<SimSpeedMult>k__BackingField", InstanceFlags);
+        private static readonly FieldInfo? s_simSpeedBackingField =
+            typeof(SimLoopEvents).GetField("<SimSpeedMult>k__BackingField", s_instanceFlags);
 
-        private static readonly PropertyInfo? AdaptiveModeProperty =
-            typeof(SimLoopEvents).GetProperty("AdaptiveSimSpeedMode", InstanceFlags);
+        private static readonly PropertyInfo? s_adaptiveModeProperty =
+            typeof(SimLoopEvents).GetProperty("AdaptiveSimSpeedMode", s_instanceFlags);
 
-        private static readonly MethodInfo? AdaptiveModeSetter =
-            AdaptiveModeProperty?.GetSetMethod(true);
+        private static readonly MethodInfo? s_adaptiveModeSetter =
+            s_adaptiveModeProperty?.GetSetMethod(true);
 #pragma warning restore S3011
     }
 }
