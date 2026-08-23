@@ -105,5 +105,26 @@ namespace TajsCOI.Tests
             Assert.Equal("CollectGarbageMeasured", ((MethodInfo)output[1].operand).Name);
             Assert.Equal("WaitForPendingFinalizersMeasured", ((MethodInfo)output[2].operand).Name);
         }
+
+        [Fact]
+        public void ProductSlotTelemetrySeparatesLiveHighWaterAndCapacity()
+        {
+            var metric = new ProductRendererMetric(
+                true,
+                instances: 0,
+                gpuInstances: 0,
+                liveSlots: 600,
+                highWaterSlots: 1_000,
+                capacitySlots: 2_048,
+                fragmentedSlots: 400,
+                freeRangeCount: 3,
+                largestFreeRange: 250,
+                gpuBytes: 0,
+                reason: "test");
+
+            Assert.Equal(1_448, metric.TotalFreeSlots);
+            Assert.Equal(1_048, metric.UnusedCapacitySlots);
+            Assert.Equal(600 * 100.0 / 2_048, metric.Utilization, 8);
+        }
     }
 }

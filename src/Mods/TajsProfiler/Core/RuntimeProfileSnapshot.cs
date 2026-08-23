@@ -51,7 +51,8 @@ namespace TajsCOI.Profiler.Core
             bool available,
             int instances,
             int gpuInstances,
-            int usedSlots,
+            int liveSlots,
+            int highWaterSlots,
             int capacitySlots,
             int fragmentedSlots,
             int freeRangeCount,
@@ -62,7 +63,8 @@ namespace TajsCOI.Profiler.Core
             Available = available;
             Instances = instances;
             GpuInstances = gpuInstances;
-            UsedSlots = usedSlots;
+            LiveSlots = liveSlots;
+            HighWaterSlots = highWaterSlots;
             CapacitySlots = capacitySlots;
             FragmentedSlots = fragmentedSlots;
             FreeRangeCount = freeRangeCount;
@@ -74,15 +76,17 @@ namespace TajsCOI.Profiler.Core
         internal bool Available { get; }
         internal int Instances { get; }
         internal int GpuInstances { get; }
-        internal int UsedSlots { get; }
+        internal int LiveSlots { get; }
+        internal int HighWaterSlots { get; }
         internal int CapacitySlots { get; }
         internal int FragmentedSlots { get; }
         internal int FreeRangeCount { get; }
         internal int LargestFreeRange { get; }
         internal long GpuBytes { get; }
         internal string Reason { get; }
-        internal int UnusedSlots => Math.Max(0, CapacitySlots - UsedSlots);
-        internal double Utilization => CapacitySlots > 0 ? UsedSlots * 100.0 / CapacitySlots : 0.0;
+        internal int UnusedCapacitySlots => Math.Max(0, CapacitySlots - HighWaterSlots);
+        internal int TotalFreeSlots => Math.Max(0, CapacitySlots - LiveSlots);
+        internal double Utilization => CapacitySlots > 0 ? LiveSlots * 100.0 / CapacitySlots : 0.0;
     }
 
     internal readonly struct GcPassMetric

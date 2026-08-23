@@ -192,8 +192,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 {
                     builder.Append("\nProducts renderer delta: GPU=")
                         .Append(FormatBytes(second.Products.GpuBytes - first.Products.GpuBytes))
-                        .Append(", slots used/capacity=")
-                        .Append(second.Products.UsedSlots - first.Products.UsedSlots).Append('/')
+                        .Append(", slots live/high-water/capacity=")
+                        .Append(second.Products.LiveSlots - first.Products.LiveSlots).Append('/')
+                        .Append(second.Products.HighWaterSlots - first.Products.HighWaterSlots).Append('/')
                         .Append(second.Products.CapacitySlots - first.Products.CapacitySlots);
                 }
                 return builder.ToString();
@@ -267,11 +268,13 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     .Invoke(renderer, null);
                 Type memoryType = memory.GetType();
                 ReadSlotFragmentation(rendererType, renderer, out int fragmentedSlots, out int freeRanges, out int largestFreeRange);
+                int highWaterSlots = ReadIntProperty(rendererType, renderer, "StatSlots");
                 return new ProductRendererMetric(
                     true,
                     ReadIntProperty(rendererType, renderer, "StatInstances"),
                     ReadIntProperty(rendererType, renderer, "StatGpuInstances"),
-                    ReadIntProperty(rendererType, renderer, "StatSlots"),
+                    Math.Max(0, highWaterSlots - fragmentedSlots),
+                    highWaterSlots,
                     ReadIntProperty(rendererType, renderer, "StatSlotCapacity"),
                     fragmentedSlots,
                     freeRanges,
@@ -711,8 +714,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
             {
                 builder.Append("\nProducts renderer: GPU=").Append(FormatBytes(products.GpuBytes))
                     .Append(", instances CPU/GPU=").Append(products.Instances).Append('/').Append(products.GpuInstances)
-                    .Append(", slots used/capacity/unused=").Append(products.UsedSlots).Append('/')
-                    .Append(products.CapacitySlots).Append('/').Append(products.UnusedSlots)
+                    .Append(", slots live/high-water/capacity=").Append(products.LiveSlots).Append('/')
+                    .Append(products.HighWaterSlots).Append('/').Append(products.CapacitySlots)
+                    .Append(", total free/unused capacity=").Append(products.TotalFreeSlots).Append('/')
+                    .Append(products.UnusedCapacitySlots)
                     .Append(", utilization=").Append(products.Utilization.ToString("F1", CultureInfo.InvariantCulture)).Append('%')
                     .Append(", fragmented slots/ranges/largest=").Append(products.FragmentedSlots).Append('/')
                     .Append(products.FreeRangeCount).Append('/').Append(products.LargestFreeRange);
@@ -806,7 +811,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         }
 
         private static ProductRendererMetric UnavailableProducts(string reason) =>
-            new(false, 0, 0, 0, 0, 0, 0, 0, 0, reason);
+            new(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, reason);
 
         private static string FormatBytes(long bytes)
         {
