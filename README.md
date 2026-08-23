@@ -16,7 +16,7 @@ TajsCOI/
 │  │  ├─ TajsCore/
 │  │  ├─ TajsTweaks/
 │  │  ├─ TajsProfiler/
-│  │  └─ TajsPerformance/      # future, when there are proven fixes
+│  │  └─ TajsPerformance/      # host is present; fixes still require evidence
 │  │
 │  └─ Tests/
 │     └─ TajsCOI.Tests/
@@ -32,12 +32,12 @@ The compile-time contract dependency is:
 
 ```text
                   TajsCOI.Common
-             ┌─────────┼──────────┐
-             ↑         ↑          ↑
-         TajsCore  TajsTweaks  TajsProfiler
+          ┌────────┬──────────┬───────────┐
+          ↑        ↑          ↑           ↑
+      TajsCore TajsTweaks TajsProfiler TajsPerformance
 ```
 
-At runtime, Tweaks and Profiler manifest-depend on `TajsCore`, and their services obtain the Common `ITajsRuntime` contract from Captain of Industry's dependency resolver. They do not reference `TajsCore.dll`.
+At runtime, Tweaks, Profiler, and Performance manifest-depend on `TajsCore`, and their services obtain the Common `ITajsRuntime` contract from Captain of Industry's dependency resolver. They do not reference `TajsCore.dll`.
 
 ## Projects
 
@@ -146,7 +146,7 @@ Profiler instrumentation should be behavior-neutral and cheap when disabled. Dee
 
 ### TajsPerformance
 
-`TajsPerformance` is reserved for **proven performance fixes**.
+`TajsPerformance` is the standalone host for **proven performance fixes**. Its initial scaffold intentionally registers no fixes.
 
 Its contract is different from the profiler:
 

@@ -10,6 +10,7 @@ $expectedDlls = [ordered]@{
     TajsCore = @('0Harmony.dll', 'TajsCOI.Common.dll', 'TajsCore.dll')
     TajsTweaks = @('TajsTweaks.dll')
     TajsProfiler = @('TajsProfiler.dll')
+    TajsPerformance = @('TajsPerformance.dll')
 }
 
 foreach ($entry in $expectedDlls.GetEnumerator()) {

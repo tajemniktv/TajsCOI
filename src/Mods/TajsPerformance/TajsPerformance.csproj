@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsCoiMod>true</IsCoiMod>
+
+    <ModId>TajsPerformance</ModId>
+    <ModVersion>0.1.0</ModVersion>
+    <ModDisplayName>Taj's Performance</ModDisplayName>
+    <ModDescription>Evidence-backed, individually switchable performance fixes.</ModDescription>
+    <ModAuthor>TajemnikTV</ModAuthor>
+    <MinGameVersion>0.8.7</MinGameVersion>
+    <MaxVerifiedGameVersion>0.8.7a</MaxVerifiedGameVersion>
+    <PrimaryModClassName>TajsPerformanceMod</PrimaryModClassName>
+
+    <AssemblyName>$(ModId)</AssemblyName>
+    <RootNamespace>TajsCOI.Performance</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ModDependency Include="TajsCore&gt;=0.1.0"/>
+    <ProjectReference Include="..\..\Libraries\TajsCOI.Common\TajsCOI.Common.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+    <PackageReference Include="Lib.Harmony" Version="2.4.2" ExcludeAssets="runtime"/>
+  </ItemGroup>
+</Project>
