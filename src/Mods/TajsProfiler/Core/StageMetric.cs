@@ -17,7 +17,8 @@ namespace TajsCOI.Profiler.Core
             long managedBytesDelta,
             long gen0Collections = 0,
             long gen1Collections = 0,
-            long gen2Collections = 0)
+            long gen2Collections = 0,
+            long intervalMaxTicks = -1)
         {
             Count = count;
             TotalTicks = totalTicks;
@@ -26,11 +27,13 @@ namespace TajsCOI.Profiler.Core
             Gen0Collections = gen0Collections;
             Gen1Collections = gen1Collections;
             Gen2Collections = gen2Collections;
+            IntervalMaxTicks = intervalMaxTicks >= 0 ? intervalMaxTicks : maxTicks;
         }
 
         internal long Count { get; }
         internal long TotalTicks { get; }
         internal long MaxTicks { get; }
+        internal long IntervalMaxTicks { get; }
         internal long ManagedBytesDelta { get; }
         internal long Gen0Collections { get; }
         internal long Gen1Collections { get; }
@@ -42,7 +45,7 @@ namespace TajsCOI.Profiler.Core
             new(
                 Math.Max(0, right.Count - left.Count),
                 Math.Max(0, right.TotalTicks - left.TotalTicks),
-                Math.Max(0, right.MaxTicks),
+                Math.Max(0, right.IntervalMaxTicks),
                 right.ManagedBytesDelta - left.ManagedBytesDelta,
                 Math.Max(0, right.Gen0Collections - left.Gen0Collections),
                 Math.Max(0, right.Gen1Collections - left.Gen1Collections),
@@ -54,6 +57,7 @@ namespace TajsCOI.Profiler.Core
         private long m_count;
         private long m_totalTicks;
         private long m_maxTicks;
+        private long m_intervalMaxTicks;
         private long m_managedBytesDelta;
         private long m_gen0Collections;
         private long m_gen1Collections;
@@ -78,7 +82,15 @@ namespace TajsCOI.Profiler.Core
             Interlocked.Add(ref m_gen1Collections, gen1Collections);
             Interlocked.Add(ref m_gen2Collections, gen2Collections);
 
-            long observed = Volatile.Read(ref m_maxTicks);
+            long intervalObserved = Volatile.Read(ref m_intervalMaxTicks);
+              while (elapsedTicks > intervalObserved)
+              {
+                  long exchanged = Interlocked.CompareExchange(ref m_intervalMaxTicks, elapsedTicks, intervalObserved);
+                  if (exchanged == intervalObserved) break;
+                  intervalObserved = exchanged;
+              }
+
+              long observed = Volatile.Read(ref m_maxTicks);
             while (elapsedTicks > observed)
             {
                 long exchanged = Interlocked.CompareExchange(ref m_maxTicks, elapsedTicks, observed);
@@ -98,14 +110,16 @@ namespace TajsCOI.Profiler.Core
                 Interlocked.Read(ref m_managedBytesDelta),
                 Interlocked.Read(ref m_gen0Collections),
                 Interlocked.Read(ref m_gen1Collections),
-                Interlocked.Read(ref m_gen2Collections));
+                Interlocked.Read(ref m_gen2Collections),
+                  Interlocked.Exchange(ref m_intervalMaxTicks, 0));
 
         internal void Reset()
         {
             Interlocked.Exchange(ref m_count, 0);
             Interlocked.Exchange(ref m_totalTicks, 0);
             Interlocked.Exchange(ref m_maxTicks, 0);
-            Interlocked.Exchange(ref m_managedBytesDelta, 0);
+            Interlocked.Exchange(ref m_intervalMaxTicks, 0);
+              Interlocked.Exchange(ref m_managedBytesDelta, 0);
             Interlocked.Exchange(ref m_gen0Collections, 0);
             Interlocked.Exchange(ref m_gen1Collections, 0);
             Interlocked.Exchange(ref m_gen2Collections, 0);
