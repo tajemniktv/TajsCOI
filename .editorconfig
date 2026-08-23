@@ -1,6 +1,6 @@
-# TajsTweaks / Captain of Industry modding
-# Curated for C# + Harmony + Rider.
-# Rider-specific rules intentionally complement portable .NET EditorConfig rules.
+# TajsCOI repository code style
+# Rider 2026.2 / ReSharper + C# + Harmony
+# Repository-level source of truth; imported IDE settings are fallback defaults.
 
 root = true
 
@@ -9,236 +9,138 @@ charset = utf-8
 end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
+
+[*.{cs,csx}]
 indent_style = space
 indent_size = 4
 tab_width = 4
 max_line_length = 140
 
-[*.cs]
-# -----------------------------------------------------------------------------
-# Imports / qualification
-# -----------------------------------------------------------------------------
-dotnet_sort_system_directives_first = true
-dotnet_separate_import_directive_groups = false
-csharp_using_directive_placement = outside_namespace:silent
-
-dotnet_style_qualification_for_field = false:suggestion
-dotnet_style_qualification_for_property = false:suggestion
-dotnet_style_qualification_for_method = false:suggestion
-dotnet_style_qualification_for_event = false:suggestion
-
-dotnet_style_predefined_type_for_locals_parameters_members = true:suggestion
-dotnet_style_predefined_type_for_member_access = true:suggestion
-
-# Prefer explicit types when they add information; use var when the type is obvious.
-csharp_style_var_for_built_in_types = false:suggestion
-csharp_style_var_when_type_is_apparent = true:suggestion
-csharp_style_var_elsewhere = false:suggestion
-
-# -----------------------------------------------------------------------------
-# Braces / control flow
-# -----------------------------------------------------------------------------
-csharp_prefer_braces = true:suggestion
-csharp_new_line_before_open_brace = all
-csharp_new_line_before_else = true
-csharp_new_line_before_catch = true
-csharp_new_line_before_finally = true
-csharp_new_line_between_query_expression_clauses = true
-
-csharp_indent_block_contents = true
-csharp_indent_braces = false
-csharp_indent_case_contents = true
-csharp_indent_case_contents_when_block = true
-csharp_indent_switch_labels = true
-csharp_indent_labels = one_less_than_current
-
-# Keep compact code compact when it is already readable, but never cram statements together.
-csharp_preserve_single_line_blocks = true
-csharp_preserve_single_line_statements = false
-
-# -----------------------------------------------------------------------------
-# Whitespace
-# -----------------------------------------------------------------------------
-csharp_space_after_cast = false
-csharp_space_after_colon_in_inheritance_clause = true
-csharp_space_after_comma = true
-csharp_space_after_dot = false
-csharp_space_after_keywords_in_control_flow_statements = true
-csharp_space_after_semicolon_in_for_statement = true
-csharp_space_around_binary_operators = before_and_after
-csharp_space_around_declaration_statements = false
-csharp_space_before_colon_in_inheritance_clause = true
-csharp_space_before_comma = false
-csharp_space_before_dot = false
-csharp_space_before_open_square_brackets = false
-csharp_space_before_semicolon_in_for_statement = false
-csharp_space_between_empty_square_brackets = false
-csharp_space_between_method_call_empty_parameter_list_parentheses = false
-csharp_space_between_method_call_name_and_opening_parenthesis = false
-csharp_space_between_method_call_parameter_list_parentheses = false
-csharp_space_between_method_declaration_empty_parameter_list_parentheses = false
-csharp_space_between_method_declaration_name_and_open_parenthesis = false
-csharp_space_between_method_declaration_parameter_list_parentheses = false
-csharp_space_between_parentheses = false
-csharp_space_between_square_brackets = false
-
-# -----------------------------------------------------------------------------
-# Expressions / modern C# style
-# -----------------------------------------------------------------------------
-# Expression bodies are great for genuinely tiny members, not as a competitive sport.
-csharp_style_expression_bodied_properties = true:suggestion
-csharp_style_expression_bodied_indexers = true:suggestion
-csharp_style_expression_bodied_accessors = true:suggestion
-csharp_style_expression_bodied_methods = when_on_single_line:suggestion
-csharp_style_expression_bodied_constructors = false:suggestion
-csharp_style_expression_bodied_operators = when_on_single_line:suggestion
-csharp_style_expression_bodied_local_functions = when_on_single_line:suggestion
-
-# This is the Rider option from your screenshot: "If owner is singleline".
-resharper_csharp_place_expr_property_on_single_line = if_owner_is_single_line
-resharper_csharp_place_expr_accessor_on_single_line = if_owner_is_single_line
-resharper_csharp_place_expr_method_on_single_line = if_owner_is_single_line
-
-# Prefer readable modern idioms without forcing language-version-sensitive rewrites.
-dotnet_style_coalesce_expression = true:suggestion
-dotnet_style_null_propagation = true:suggestion
-dotnet_style_object_initializer = true:suggestion
-dotnet_style_collection_initializer = true:suggestion
-dotnet_style_explicit_tuple_names = true:suggestion
-dotnet_style_namespace_match_folder = true:suggestion
-csharp_style_inlined_variable_declaration = true:suggestion
-csharp_style_pattern_matching_over_as_with_null_check = true:suggestion
-csharp_style_pattern_matching_over_is_with_cast_check = true:suggestion
-csharp_style_throw_expression = true:suggestion
-csharp_style_conditional_delegate_call = true:suggestion
-
-# Parentheses: preserve clarity, remove noise.
-dotnet_style_parentheses_in_arithmetic_binary_operators = always_for_clarity:suggestion
-dotnet_style_parentheses_in_relational_binary_operators = always_for_clarity:suggestion
-dotnet_style_parentheses_in_other_binary_operators = always_for_clarity:suggestion
-dotnet_style_parentheses_in_other_operators = never_if_unnecessary:suggestion
-
-# -----------------------------------------------------------------------------
-# Line wrapping / layout (Rider / ReSharper)
-# -----------------------------------------------------------------------------
-# 140 is wide enough for modding/reflection-heavy code without turning the editor into a runway.
-resharper_csharp_max_line_length = 140
-resharper_csharp_keep_user_linebreaks = true
-
-resharper_csharp_wrap_parameters_style = chop_if_long
-resharper_csharp_wrap_arguments_style = chop_if_long
-resharper_csharp_wrap_object_and_collection_initializer_style = chop_if_long
-resharper_csharp_wrap_array_initializer_style = chop_if_long
-resharper_csharp_wrap_chained_method_calls = chop_if_long
-
-# When wrapping, put the first argument/parameter on the next line.
-resharper_csharp_wrap_after_declaration_lpar = true
-resharper_csharp_wrap_after_invocation_lpar = true
-resharper_csharp_wrap_before_declaration_rpar = false
-resharper_csharp_wrap_before_invocation_rpar = false
-
-# Multiline lists get trailing commas; single-line lists do not.
-resharper_csharp_trailing_comma_in_multiline_lists = true
-resharper_csharp_trailing_comma_in_singleline_lists = false
-
-# Do not aggressively compress normal blocks/methods onto one line.
-resharper_csharp_place_simple_method_on_single_line = false
-resharper_csharp_place_simple_embedded_statement_on_same_line = false
-resharper_csharp_place_simple_embedded_block_on_same_line = false
-resharper_csharp_place_simple_initializer_on_single_line = true
-
-# -----------------------------------------------------------------------------
-# Naming: Rider-first rules, with Harmony-aware parameter exceptions
-# -----------------------------------------------------------------------------
-# Keep naming as a suggestion so genuine correctness warnings do not drown in style noise.
-resharper_inconsistent_naming_highlighting = suggestion
-
+# Naming: Rider / ReSharper
+# Harmony semantic names such as __instance, __result, __state, __exception,
+# __args, __originalMethod and ___fieldName are intentionally accepted.
 resharper_csharp_naming_rule.types_and_namespaces = AaBb
 resharper_csharp_naming_rule.interfaces = I+AaBb
 resharper_csharp_naming_rule.type_parameters = T+AaBb
 resharper_csharp_naming_rule.method = AaBb
 resharper_csharp_naming_rule.property = AaBb
 resharper_csharp_naming_rule.event = AaBb
-resharper_csharp_naming_rule.local_functions = AaBb
 resharper_csharp_naming_rule.locals = aaBb
 resharper_csharp_naming_rule.local_constants = aaBb
-
-# Normal parameters are camelCase. Harmony's magic parameters are deliberately allowed:
-# __instance, __result, __state, __exception, __originalMethod, __runOriginal,
-# and ___fieldName for field injection.
-resharper_csharp_naming_rule.parameters = aaBb, __+aaBb, ___+aaBb
-
+resharper_csharp_naming_rule.parameters = aaBb, __+aaBb, ___+aaBb, ___+aa_bb
 resharper_csharp_naming_rule.public_fields = AaBb
-resharper_csharp_naming_rule.private_instance_fields = _+aaBb
+resharper_csharp_naming_rule.private_instance_fields = m_+aaBb
 resharper_csharp_naming_rule.private_static_fields = s_+aaBb
 resharper_csharp_naming_rule.constants = AaBb
 resharper_csharp_naming_rule.private_constants = AaBb
 resharper_csharp_naming_rule.static_readonly = AaBb
 resharper_csharp_naming_rule.private_static_readonly = s_+aaBb
+resharper_csharp_naming_rule.enum_member = AaBb
+resharper_csharp_naming_rule.local_functions = AaBb
+resharper_csharp_naming_rule.other = AaBb
+resharper_inconsistent_naming_highlighting = suggestion
 
-# -----------------------------------------------------------------------------
-# Portable .NET naming rules for the conventions that matter most
-# -----------------------------------------------------------------------------
-# Private instance fields: _camelCase
-dotnet_naming_rule.private_instance_fields_rule.symbols = private_instance_fields
-dotnet_naming_rule.private_instance_fields_rule.style = private_instance_field_style
-dotnet_naming_rule.private_instance_fields_rule.severity = suggestion
+# 'var' / explicit typing
+# Primitive types remain explicit. var is preferred only when the type is evident.
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = false:suggestion
+csharp_for_built_in_types = use_explicit_type
+csharp_for_simple_types = use_var_when_evident
+csharp_for_other_types = use_var_when_evident
 
-dotnet_naming_symbols.private_instance_fields.applicable_kinds = field
-dotnet_naming_symbols.private_instance_fields.applicable_accessibilities = private
+# Built-in type references
+dotnet_style_predefined_type_for_locals_parameters_members = true:suggestion
+dotnet_style_predefined_type_for_member_access = true:suggestion
+csharp_builtin_type_reference_style = use_keyword
+csharp_builtin_type_reference_for_member_access_style = use_keyword
 
-dotnet_naming_style.private_instance_field_style.required_prefix = _
-dotnet_naming_style.private_instance_field_style.capitalization = camel_case
+# Braces / layout
+csharp_prefer_braces = true:suggestion
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
 
-# Private static fields: s_camelCase
-dotnet_naming_rule.private_static_fields_rule.symbols = private_static_fields
-dotnet_naming_rule.private_static_fields_rule.style = private_static_field_style
-dotnet_naming_rule.private_static_fields_rule.severity = suggestion
+# Expression bodies: concise when genuinely simple.
+csharp_style_expression_bodied_properties = when_on_single_line:suggestion
+csharp_style_expression_bodied_accessors = when_on_single_line:suggestion
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_constructors = false:suggestion
+csharp_style_expression_bodied_operators = when_on_single_line:suggestion
+csharp_style_expression_bodied_lambdas = true:suggestion
+csharp_style_expression_bodied_local_functions = when_on_single_line:suggestion
 
-dotnet_naming_symbols.private_static_fields.applicable_kinds = field
-dotnet_naming_symbols.private_static_fields.applicable_accessibilities = private
-dotnet_naming_symbols.private_static_fields.required_modifiers = static
+# Modern C#: useful, but avoid churn-heavy conversions.
+dotnet_style_prefer_primary_constructors = false:suggestion
+dotnet_style_prefer_collection_expression = when_types_exactly_match:suggestion
+csharp_style_implicit_object_creation_when_type_is_apparent = true:suggestion
+csharp_style_prefer_pattern_matching = true:suggestion
+csharp_style_prefer_not_pattern = true:suggestion
+csharp_style_prefer_extended_property_pattern = true:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+csharp_style_prefer_is_null_check_over_reference_equality_method = true:suggestion
+csharp_style_prefer_conditional_expression_over_assignment = false:suggestion
+csharp_style_prefer_conditional_expression_over_return = false:suggestion
+csharp_style_namespace_declarations = block_scoped:suggestion
 
-dotnet_naming_style.private_static_field_style.required_prefix = s_
-dotnet_naming_style.private_static_field_style.capitalization = camel_case
+# Qualification / using directives
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+dotnet_style_qualification_for_event = false:suggestion
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_using_directive_placement = outside_namespace:suggestion
 
-# Interfaces: IFoo
-dotnet_naming_rule.interface_rule.symbols = interfaces
-dotnet_naming_rule.interface_rule.style = interface_style
-dotnet_naming_rule.interface_rule.severity = suggestion
-
-dotnet_naming_symbols.interfaces.applicable_kinds = interface
-
-dotnet_naming_style.interface_style.required_prefix = I
-dotnet_naming_style.interface_style.capitalization = pascal_case
-
-# Type parameters: TItem
-dotnet_naming_rule.type_parameter_rule.symbols = type_parameters
-dotnet_naming_rule.type_parameter_rule.style = type_parameter_style
-dotnet_naming_rule.type_parameter_rule.severity = suggestion
-
-dotnet_naming_symbols.type_parameters.applicable_kinds = type_parameter
-
-dotnet_naming_style.type_parameter_style.required_prefix = T
-dotnet_naming_style.type_parameter_style.capitalization = pascal_case
-
-# -----------------------------------------------------------------------------
-# Misc readability
-# -----------------------------------------------------------------------------
+# Modifiers / declarations
+dotnet_style_require_accessibility_modifiers = always:suggestion
 dotnet_style_readonly_field = true:suggestion
-dotnet_style_require_accessibility_modifiers = for_non_interface_members:suggestion
+
+# Parentheses / operators
+dotnet_style_parentheses_in_arithmetic_binary_operators = always_for_clarity:suggestion
+dotnet_style_parentheses_in_relational_binary_operators = always_for_clarity:suggestion
+dotnet_style_parentheses_in_other_binary_operators = always_for_clarity:suggestion
+dotnet_style_parentheses_in_other_operators = never_if_unnecessary:suggestion
 dotnet_style_operator_placement_when_wrapping = beginning_of_line
 
-# Rider's formatter should not invent blank-line confetti.
-resharper_csharp_blank_lines_after_block_statements = 0
-resharper_csharp_keep_blank_lines_in_code = 1
-resharper_csharp_keep_blank_lines_in_declarations = 1
+# Null / initializer conveniences
+dotnet_style_coalesce_expression = true:suggestion
+dotnet_style_null_propagation = true:suggestion
+dotnet_style_object_initializer = true:suggestion
+dotnet_style_collection_initializer = true:suggestion
+dotnet_style_explicit_tuple_names = true:suggestion
+dotnet_style_prefer_auto_properties = true:suggestion
+dotnet_style_prefer_inferred_tuple_names = true:suggestion
+dotnet_style_prefer_inferred_anonymous_type_member_names = true:suggestion
 
-# -----------------------------------------------------------------------------
-# Non-C# project files
-# -----------------------------------------------------------------------------
-[*.{json,yml,yaml}]
+# Rider formatting details
+resharper_csharp_wrap_arguments_style = chop_if_long
+resharper_csharp_wrap_parameters_style = chop_if_long
+resharper_csharp_wrap_array_initializer_style = chop_if_long
+resharper_csharp_wrap_object_and_collection_initializer_style = chop_if_long
+resharper_csharp_wrap_after_declaration_lpar = true
+resharper_csharp_wrap_after_invocation_lpar = true
+resharper_csharp_place_simple_initializer_on_single_line = true
+resharper_csharp_place_simple_embedded_statement_on_same_line = false
+resharper_csharp_place_while_on_new_line = true
+resharper_csharp_trailing_comma_in_multiline_lists = true
+
+[*.{json,jsonc}]
+indent_style = space
 indent_size = 2
 
-[*.{csproj,props,targets,xml}]
+[*.{yml,yaml}]
+indent_style = space
 indent_size = 2
+
+[*.{xml,csproj,props,targets}]
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+max_line_length = 120
+
+[*.{bat,cmd}]
+end_of_line = crlf
