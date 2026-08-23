@@ -1,195 +1,225 @@
 <Project>
 
-    <Target Name="ValidateCoiInstall"
-            BeforeTargets="ResolveReferences"
-            Condition="'$(IsCoiMod)' == 'true'">
-        <Error Condition="'$(ModId)' == ''" Text="IsCoiMod=true but ModId is not defined."/>
-        <Error Condition="'$(ModVersion)' == ''" Text="IsCoiMod=true but ModVersion is not defined."/>
-        <Error Condition="'$(ModDisplayName)' == ''" Text="IsCoiMod=true but ModDisplayName is not defined."/>
-        <Error Condition="'$(ModAuthor)' == ''" Text="IsCoiMod=true but ModAuthor is not defined."/>
-        <Error Condition="!Exists('$(COIManagedDir)\Mafi.Core.dll')"
-               Text="Captain of Industry assemblies were not found at '$(COIManagedDir)'. Set COI_ROOT or edit src\Mods\Directory.Build.props."/>
-    </Target>
+  <Target Name="ValidateCoiInstall"
+          BeforeTargets="ResolveReferences"
+          Condition="'$(IsCoiMod)' == 'true'">
+    <Error Condition="'$(ModId)' == ''" Text="IsCoiMod=true but ModId is not defined."/>
+    <Error Condition="'$(ModVersion)' == ''" Text="IsCoiMod=true but ModVersion is not defined."/>
+    <Error Condition="'$(ModDisplayName)' == ''" Text="IsCoiMod=true but ModDisplayName is not defined."/>
+    <Error Condition="'$(ModAuthor)' == ''" Text="IsCoiMod=true but ModAuthor is not defined."/>
+    <Error Condition="!Exists('$(COIManagedDir)\Mafi.Core.dll')"
+           Text="Captain of Industry assemblies were not found at '$(COIManagedDir)'. Set COI_ROOT or edit src\Mods\Directory.Build.props."/>
+  </Target>
 
-    <!-- Attach stable build provenance to the assembly without CodeTaskFactory. -->
-    <Target Name="CollectBuildMetadata"
-            BeforeTargets="GenerateAssemblyInfo"
-            Condition="'$(IsCoiMod)' == 'true'">
-        <PropertyGroup>
-            <_GitCommit>unknown</_GitCommit>
-        </PropertyGroup>
+  <!-- Attach stable build provenance to the assembly without CodeTaskFactory. -->
+  <Target Name="CollectBuildMetadata"
+          BeforeTargets="GenerateAssemblyInfo"
+          Condition="'$(IsCoiMod)' == 'true'">
+    <PropertyGroup>
+      <_GitCommit>unknown</_GitCommit>
+    </PropertyGroup>
 
-        <Exec Command="git -C &quot;$(MSBuildProjectDirectory)&quot; rev-parse --short=12 HEAD"
-              ConsoleToMSBuild="true"
-              IgnoreExitCode="true">
-            <Output TaskParameter="ConsoleOutput" PropertyName="_GitCommitOutput"/>
-            <Output TaskParameter="ExitCode" PropertyName="_GitExitCode"/>
-        </Exec>
+    <Exec Command="git -C &quot;$(MSBuildProjectDirectory)&quot; rev-parse --short=12 HEAD"
+          ConsoleToMSBuild="true"
+          IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitCommitOutput"/>
+      <Output TaskParameter="ExitCode" PropertyName="_GitExitCode"/>
+    </Exec>
 
-        <PropertyGroup>
-            <_GitCommitCandidate Condition="'$(_GitExitCode)' == '0'">$([System.String]::Copy('$(_GitCommitOutput)').Trim())</_GitCommitCandidate>
-            <_GitCommit Condition="'$(_GitExitCode)' == '0' and $([System.Text.RegularExpressions.Regex]::IsMatch('$(_GitCommitCandidate)', '^[0-9a-fA-F]{12,64}$'))">$(_GitCommitCandidate)</_GitCommit>
-        </PropertyGroup>
+    <PropertyGroup>
+      <_GitCommitCandidate Condition="'$(_GitExitCode)' == '0'">$([System.String]::Copy('$(_GitCommitOutput)').Trim())</_GitCommitCandidate>
+      <_GitCommit Condition="'$(_GitExitCode)' == '0' and $([System.Text.RegularExpressions.Regex]::IsMatch('$(_GitCommitCandidate)', '^[0-9a-fA-F]{12,64}$'))">$(_GitCommitCandidate)</_GitCommit>
+    </PropertyGroup>
 
-        <ItemGroup>
-            <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
-                <_Parameter1>ModVersion</_Parameter1>
-                <_Parameter2>$(ModVersion)</_Parameter2>
-            </AssemblyAttribute>
-            <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
-                <_Parameter1>BuildConfiguration</_Parameter1>
-                <_Parameter2>$(Configuration)</_Parameter2>
-            </AssemblyAttribute>
-            <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
-                <_Parameter1>GitCommit</_Parameter1>
-                <_Parameter2>$(_GitCommit)</_Parameter2>
-            </AssemblyAttribute>
-        </ItemGroup>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>ModVersion</_Parameter1>
+        <_Parameter2>$(ModVersion)</_Parameter2>
+      </AssemblyAttribute>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>BuildConfiguration</_Parameter1>
+        <_Parameter2>$(Configuration)</_Parameter2>
+      </AssemblyAttribute>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>GitCommit</_Parameter1>
+        <_Parameter2>$(_GitCommit)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
 
-        <Message Text="Build metadata: $(ModVersion) | $(Configuration) | git $(_GitCommit)" Importance="High"/>
-    </Target>
+    <Message Text="Build metadata: $(ModVersion) | $(Configuration) | git $(_GitCommit)" Importance="High"/>
+  </Target>
 
-    <!-- Generate manifest.json from the same properties used for assembly metadata. -->
-    <Target Name="GenerateCoiManifest"
-            BeforeTargets="BeforeBuild"
-            Condition="'$(IsCoiMod)' == 'true'">
-        <ItemGroup>
-            <_ManifestLines Remove="@(_ManifestLines)"/>
-            <!-- Keep this canonical layout stable: manifest.json is tracked and is also copied into release packages. -->
-            <!-- Store the text as metadata because MSBuild trims leading whitespace in Item Include values. -->
-            <_ManifestLines Include="line01"><Text>{</Text></_ManifestLines>
-            <_ManifestLines Include="line02"><Text>  &quot;id&quot;:&quot;$(ModId)&quot;,</Text></_ManifestLines>
-            <_ManifestLines Include="line03"><Text>  &quot;version&quot;:&quot;$(ModVersion)&quot;,</Text></_ManifestLines>
-            <_ManifestLines Include="line04"><Text>  &quot;display_name&quot;:&quot;$(ModDisplayName)&quot;,</Text></_ManifestLines>
-            <_ManifestLines Include="line05"><Text>  &quot;description_short&quot;:&quot;$(ModDescription)&quot;,</Text></_ManifestLines>
-            <_ManifestLines Include="line06"><Text>  &quot;authors&quot;:&quot;$(ModAuthor)&quot;,</Text></_ManifestLines>
-            <_ManifestLines Include="line07"><Text>  &quot;primary_dlls&quot;:[</Text></_ManifestLines>
-            <_ManifestLines Include="line08"><Text>    &quot;$(TargetFileName)&quot;</Text></_ManifestLines>
-            <_ManifestLines Include="line09"><Text>  ],</Text></_ManifestLines>
-            <_ManifestLines Include="line10"><Text>  &quot;min_game_version&quot;:&quot;$(MinGameVersion)&quot;,</Text></_ManifestLines>
-            <_ManifestLines Include="line11"><Text>  &quot;max_verified_game_version&quot;:&quot;$(MaxVerifiedGameVersion)&quot;,</Text></_ManifestLines>
-            <_ManifestLines Include="line12"><Text>  &quot;non_locking_dll_load&quot;:true,</Text></_ManifestLines>
-            <_ManifestLines Include="line13"><Text>  &quot;can_add_to_saved_game&quot;:true,</Text></_ManifestLines>
-            <_ManifestLines Include="line14"><Text>  &quot;can_remove_from_saved_game&quot;:true</Text></_ManifestLines>
-            <_ManifestLines Include="line15"><Text>}</Text></_ManifestLines>
-        </ItemGroup>
+  <!-- Generate manifest.json from the same properties used for assembly metadata. -->
+  <Target Name="GenerateCoiManifest"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(IsCoiMod)' == 'true'">
+    <ItemGroup>
+      <_ManifestLines Remove="@(_ManifestLines)"/>
+      <!-- Keep this canonical layout stable: manifest.json is tracked and is also copied into release packages. -->
+      <!-- Store the text as metadata because MSBuild trims leading whitespace in Item Include values. -->
+      <_ManifestLines Include="line01">
+        <Text>{</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line02">
+        <Text>&quot;id&quot;:&quot;$(ModId)&quot;,</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line03">
+        <Text>&quot;version&quot;:&quot;$(ModVersion)&quot;,</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line04">
+        <Text>&quot;display_name&quot;:&quot;$(ModDisplayName)&quot;,</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line05">
+        <Text>&quot;description_short&quot;:&quot;$(ModDescription)&quot;,</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line06">
+        <Text>&quot;authors&quot;:&quot;$(ModAuthor)&quot;,</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line07">
+        <Text>&quot;primary_dlls&quot;:[</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line08">
+        <Text>&quot;$(TargetFileName)&quot;</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line09">
+        <Text>],</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line10">
+        <Text>&quot;min_game_version&quot;:&quot;$(MinGameVersion)&quot;,</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line11">
+        <Text>&quot;max_verified_game_version&quot;:&quot;$(MaxVerifiedGameVersion)&quot;,</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line12">
+        <Text>&quot;non_locking_dll_load&quot;:true,</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line13">
+        <Text>&quot;can_add_to_saved_game&quot;:true,</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line14">
+        <Text>&quot;can_remove_from_saved_game&quot;:true</Text>
+      </_ManifestLines>
+      <_ManifestLines Include="line15">
+        <Text>}</Text>
+      </_ManifestLines>
+    </ItemGroup>
 
-        <WriteLinesToFile File="$(MSBuildProjectDirectory)\manifest.json"
-                          Lines="@(_ManifestLines->'%(Text)')"
-                          Overwrite="true"
-                          Encoding="UTF-8"/>
+    <WriteLinesToFile File="$(MSBuildProjectDirectory)\manifest.json"
+                      Lines="@(_ManifestLines->'%(Text)')"
+                      Overwrite="true"
+                      Encoding="UTF-8"/>
 
-        <Message Text="Generated manifest.json for $(ModId) $(ModVersion)" Importance="High"/>
-    </Target>
+    <Message Text="Generated manifest.json for $(ModId) $(ModVersion)" Importance="High"/>
+  </Target>
 
-    <!-- Keep Unity's Assets/DLLs supplied with the latest normal-mod assembly -->
-    <Target Name="CopyCoiDllToUnity"
-            AfterTargets="Build"
-            Condition="'$(IsCoiMod)' == 'true'
+  <!-- Keep Unity's Assets/DLLs supplied with the latest normal-mod assembly -->
+  <Target Name="CopyCoiDllToUnity"
+          AfterTargets="Build"
+          Condition="'$(IsCoiMod)' == 'true'
                   and '$(CopyToUnityProject)' == 'true'
                   and Exists('$(UnityProjectDir)')">
-        <PropertyGroup>
-            <_UnityDllDir>$(UnityProjectDir)\Assets\DLLs</_UnityDllDir>
-        </PropertyGroup>
+    <PropertyGroup>
+      <_UnityDllDir>$(UnityProjectDir)\Assets\DLLs</_UnityDllDir>
+    </PropertyGroup>
 
-        <MakeDir Directories="$(_UnityDllDir)"/>
+    <MakeDir Directories="$(_UnityDllDir)"/>
 
-        <Copy SourceFiles="$(TargetPath)"
-              DestinationFolder="$(_UnityDllDir)"
-              SkipUnchangedFiles="true"
-              OverwriteReadOnlyFiles="true"/>
+    <Copy SourceFiles="$(TargetPath)"
+          DestinationFolder="$(_UnityDllDir)"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true"/>
 
-        <Copy SourceFiles="$(TargetDir)$(TargetName).pdb"
-              DestinationFolder="$(_UnityDllDir)"
-              SkipUnchangedFiles="true"
-              OverwriteReadOnlyFiles="true"
-              Condition="Exists('$(TargetDir)$(TargetName).pdb')"/>
+    <Copy SourceFiles="$(TargetDir)$(TargetName).pdb"
+          DestinationFolder="$(_UnityDllDir)"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true"
+          Condition="Exists('$(TargetDir)$(TargetName).pdb')"/>
 
-        <Copy SourceFiles="$(TargetDir)$(TargetName).xml"
-              DestinationFolder="$(_UnityDllDir)"
-              SkipUnchangedFiles="true"
-              OverwriteReadOnlyFiles="true"
-              Condition="'$(Configuration)' == 'Release' and Exists('$(TargetDir)$(TargetName).xml')"/>
+    <Copy SourceFiles="$(TargetDir)$(TargetName).xml"
+          DestinationFolder="$(_UnityDllDir)"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true"
+          Condition="'$(Configuration)' == 'Release' and Exists('$(TargetDir)$(TargetName).xml')"/>
 
-        <Message Text="Copied $(TargetFileName) to Unity project: $(_UnityDllDir)" Importance="High"/>
-    </Target>
+    <Message Text="Copied $(TargetFileName) to Unity project: $(_UnityDllDir)" Importance="High"/>
+  </Target>
 
-    <!-- Deploy the live mod -->
-    <Target Name="DeployCoiMod"
-            AfterTargets="Build"
-            Condition="'$(IsCoiMod)' == 'true' and '$(DeployToModsFolder)' == 'true'">
+  <!-- Deploy the live mod -->
+  <Target Name="DeployCoiMod"
+          AfterTargets="Build"
+          Condition="'$(IsCoiMod)' == 'true' and '$(DeployToModsFolder)' == 'true'">
 
-        <PropertyGroup>
-            <_ModDeployDir>$(COIModsDir)\$(ModId)</_ModDeployDir>
-        </PropertyGroup>
+    <PropertyGroup>
+      <_ModDeployDir>$(COIModsDir)\$(ModId)</_ModDeployDir>
+    </PropertyGroup>
 
-        <Message Text="Deploying $(ModId) $(ModVersion) -> $(_ModDeployDir)" Importance="High"/>
-        <MakeDir Directories="$(_ModDeployDir)"/>
+    <Message Text="Deploying $(ModId) $(ModVersion) -> $(_ModDeployDir)" Importance="High"/>
+    <MakeDir Directories="$(_ModDeployDir)"/>
 
-        <Copy SourceFiles="$(TargetPath)"
-              DestinationFolder="$(_ModDeployDir)"
-              SkipUnchangedFiles="true"
-              OverwriteReadOnlyFiles="true"/>
+    <Copy SourceFiles="$(TargetPath)"
+          DestinationFolder="$(_ModDeployDir)"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true"/>
 
-        <Copy SourceFiles="$(TargetDir)$(TargetName).pdb"
-              DestinationFolder="$(_ModDeployDir)"
-              SkipUnchangedFiles="true"
-              OverwriteReadOnlyFiles="true"
-              Condition="Exists('$(TargetDir)$(TargetName).pdb')"/>
+    <Copy SourceFiles="$(TargetDir)$(TargetName).pdb"
+          DestinationFolder="$(_ModDeployDir)"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true"
+          Condition="Exists('$(TargetDir)$(TargetName).pdb')"/>
 
-        <Copy SourceFiles="$(TargetDir)$(TargetName).xml"
-              DestinationFolder="$(_ModDeployDir)"
-              SkipUnchangedFiles="true"
-              OverwriteReadOnlyFiles="true"
-              Condition="Exists('$(TargetDir)$(TargetName).xml')"/>
+    <Copy SourceFiles="$(TargetDir)$(TargetName).xml"
+          DestinationFolder="$(_ModDeployDir)"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true"
+          Condition="Exists('$(TargetDir)$(TargetName).xml')"/>
 
-        <ItemGroup>
-            <_ModStaticFiles Remove="@(_ModStaticFiles)"/>
-            <_ModStaticFiles Include="$(MSBuildProjectDirectory)\manifest.json"/>
-            <_ModStaticFiles Include="$(MSBuildProjectDirectory)\config.json"
-                             Condition="Exists('$(MSBuildProjectDirectory)\config.json')"/>
-            <_ModStaticFiles Include="$(MSBuildProjectDirectory)\readme.txt"
-                             Condition="Exists('$(MSBuildProjectDirectory)\readme.txt')"/>
-            <_ModStaticFiles Include="$(MSBuildProjectDirectory)\changelog.txt"
-                             Condition="Exists('$(MSBuildProjectDirectory)\changelog.txt')"/>
-            <_ModStaticFiles Include="$(MSBuildProjectDirectory)\thumbnail.png"
-                             Condition="Exists('$(MSBuildProjectDirectory)\thumbnail.png')"/>
-        </ItemGroup>
+    <ItemGroup>
+      <_ModStaticFiles Remove="@(_ModStaticFiles)"/>
+      <_ModStaticFiles Include="$(MSBuildProjectDirectory)\manifest.json"/>
+      <_ModStaticFiles Include="$(MSBuildProjectDirectory)\config.json"
+                       Condition="Exists('$(MSBuildProjectDirectory)\config.json')"/>
+      <_ModStaticFiles Include="$(MSBuildProjectDirectory)\readme.txt"
+                       Condition="Exists('$(MSBuildProjectDirectory)\readme.txt')"/>
+      <_ModStaticFiles Include="$(MSBuildProjectDirectory)\changelog.txt"
+                       Condition="Exists('$(MSBuildProjectDirectory)\changelog.txt')"/>
+      <_ModStaticFiles Include="$(MSBuildProjectDirectory)\thumbnail.png"
+                       Condition="Exists('$(MSBuildProjectDirectory)\thumbnail.png')"/>
+    </ItemGroup>
 
-        <Copy SourceFiles="@(_ModStaticFiles)"
-              DestinationFolder="$(_ModDeployDir)"
-              SkipUnchangedFiles="true"
-              OverwriteReadOnlyFiles="true"/>
+    <Copy SourceFiles="@(_ModStaticFiles)"
+          DestinationFolder="$(_ModDeployDir)"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true"/>
 
-        <!-- Optional custom Unity AssetBundles. -->
-        <ItemGroup Condition="'$(AssetBundlesSource)' != '' and Exists('$(AssetBundlesSource)')">
-            <_AssetBundleFiles Remove="@(_AssetBundleFiles)"/>
-            <_AssetBundleFiles Include="$(AssetBundlesSource)\**\*"/>
-        </ItemGroup>
+    <!-- Optional custom Unity AssetBundles. -->
+    <ItemGroup Condition="'$(AssetBundlesSource)' != '' and Exists('$(AssetBundlesSource)')">
+      <_AssetBundleFiles Remove="@(_AssetBundleFiles)"/>
+      <_AssetBundleFiles Include="$(AssetBundlesSource)\**\*"/>
+    </ItemGroup>
 
-        <MakeDir Directories="$(_ModDeployDir)\AssetBundles"
-                 Condition="'@(_AssetBundleFiles)' != ''"/>
+    <MakeDir Directories="$(_ModDeployDir)\AssetBundles"
+             Condition="'@(_AssetBundleFiles)' != ''"/>
 
-        <Copy SourceFiles="@(_AssetBundleFiles)"
-              DestinationFiles="@(_AssetBundleFiles->'$(_ModDeployDir)\AssetBundles\%(RecursiveDir)%(Filename)%(Extension)')"
-              SkipUnchangedFiles="true"
-              OverwriteReadOnlyFiles="true"
-              Condition="'@(_AssetBundleFiles)' != ''"/>
-    </Target>
+    <Copy SourceFiles="@(_AssetBundleFiles)"
+          DestinationFiles="@(_AssetBundleFiles->'$(_ModDeployDir)\AssetBundles\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true"
+          Condition="'@(_AssetBundleFiles)' != ''"/>
+  </Target>
 
-    <!-- Convenient distributable ZIP -->
-    <Target Name="CreateCoiReleasePackage"
-            AfterTargets="DeployCoiMod"
-            Condition="'$(IsCoiMod)' == 'true'
+  <!-- Convenient distributable ZIP -->
+  <Target Name="CreateCoiReleasePackage"
+          AfterTargets="DeployCoiMod"
+          Condition="'$(IsCoiMod)' == 'true'
                   and '$(DeployToModsFolder)' == 'true'
                   and '$(CreateReleaseZip)' == 'true'
                   and '$(Configuration)' == 'Release'">
-        <PropertyGroup>
-            <_ModDeployDir>$(COIModsDir)\$(ModId)</_ModDeployDir>
-            <_PackagePath>$(COIModsDir)\$(ModId)_$(ModVersion).zip</_PackagePath>
-        </PropertyGroup>
+    <PropertyGroup>
+      <_ModDeployDir>$(COIModsDir)\$(ModId)</_ModDeployDir>
+      <_PackagePath>$(COIModsDir)\$(ModId)_$(ModVersion).zip</_PackagePath>
+    </PropertyGroup>
 
-        <Message Text="Creating release package: $(_PackagePath)" Importance="High"/>
-        <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -Command &quot;Compress-Archive -Path '$(_ModDeployDir)' -DestinationPath '$(_PackagePath)' -Force&quot;"/>
-    </Target>
+    <Message Text="Creating release package: $(_PackagePath)" Importance="High"/>
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -Command &quot;Compress-Archive -Path '$(_ModDeployDir)' -DestinationPath '$(_PackagePath)' -Force&quot;"/>
+  </Target>
 </Project>
