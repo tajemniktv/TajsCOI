@@ -39,47 +39,53 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
             }
 
             long originalPosition = uncompressedInput.Position;
-            uncompressedInput.Position = 0;
-            long uncompressedBytes = uncompressedInput.Length;
-            uint uncompressedChecksum = 0;
-            if (!skipUncompressedChecksum)
+            try
             {
-                uncompressedChecksum = Crc32Calculator.Compute(uncompressedInput, out long scannedBytes);
-                if (scannedBytes != uncompressedBytes)
-                {
-                    throw new EndOfStreamException($"Expected {uncompressedBytes} uncompressed bytes, scanned {scannedBytes}.");
-                }
                 uncompressedInput.Position = 0;
+                long uncompressedBytes = uncompressedInput.Length;
+                uint uncompressedChecksum = 0;
+                if (!skipUncompressedChecksum)
+                {
+                    uncompressedChecksum = Crc32Calculator.Compute(uncompressedInput, out long scannedBytes);
+                    if (scannedBytes != uncompressedBytes)
+                    {
+                        throw new EndOfStreamException($"Expected {uncompressedBytes} uncompressed bytes, scanned {scannedBytes}.");
+                    }
+                    uncompressedInput.Position = 0;
+                }
+
+                long headerPosition = output.Position;
+                WriteHeader(output, fileHeader, saveVersion, compressionType, 0, 0, uncompressedBytes, uncompressedChecksum);
+
+                var crcOutput = new Crc32ForwardingWriteStream(output);
+                using (var gzip = new GZipStream(crcOutput, CompressionLevel.Optimal, leaveOpen: true))
+                {
+                    uncompressedInput.CopyTo(gzip, 64 * 1024);
+                }
+
+                long endPosition = output.Position;
+                output.Position = headerPosition;
+                WriteHeader(
+                    output,
+                    fileHeader,
+                    saveVersion,
+                    compressionType,
+                    crcOutput.BytesWritten,
+                    crcOutput.Checksum,
+                    uncompressedBytes,
+                    uncompressedChecksum);
+                output.Position = endPosition;
+
+                return new StreamingSaveResult(
+                    crcOutput.BytesWritten,
+                    crcOutput.Checksum,
+                    uncompressedBytes,
+                    uncompressedChecksum);
             }
-
-            long headerPosition = output.Position;
-            WriteHeader(output, fileHeader, saveVersion, compressionType, 0, 0, uncompressedBytes, uncompressedChecksum);
-
-            var crcOutput = new Crc32ForwardingWriteStream(output);
-            using (var gzip = new GZipStream(crcOutput, CompressionLevel.Optimal, leaveOpen: true))
+            finally
             {
-                uncompressedInput.CopyTo(gzip, 64 * 1024);
+                uncompressedInput.Position = originalPosition;
             }
-
-            long endPosition = output.Position;
-            output.Position = headerPosition;
-            WriteHeader(
-                output,
-                fileHeader,
-                saveVersion,
-                compressionType,
-                crcOutput.BytesWritten,
-                crcOutput.Checksum,
-                uncompressedBytes,
-                uncompressedChecksum);
-            output.Position = endPosition;
-            uncompressedInput.Position = originalPosition;
-
-            return new StreamingSaveResult(
-                crcOutput.BytesWritten,
-                crcOutput.Checksum,
-                uncompressedBytes,
-                uncompressedChecksum);
         }
 
         private static void WriteHeader(

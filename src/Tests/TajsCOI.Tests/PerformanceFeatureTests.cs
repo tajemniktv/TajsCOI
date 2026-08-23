@@ -135,6 +135,19 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void StreamingSaveWriterRestoresInputPositionAfterOutputFailure()
+        {
+            byte[] payload = Enumerable.Range(0, 100_000).Select(x => (byte)x).ToArray();
+            using var input = new MemoryStream(payload);
+            input.Position = 123;
+            using var output = new ThrowingWriteStream(StreamingSaveWriter.HeaderSize + 100);
+
+            Assert.Throws<IOException>(() =>
+                StreamingSaveWriter.Write(input, output, 7, 328, 1, false));
+            Assert.Equal(123, input.Position);
+        }
+
+        [Fact]
         public void StreamingSaveWriterChecksumDetectsCompressedCorruption()
         {
             byte[] payload = Enumerable.Range(0, 50_000).Select(x => (byte)(x * 17)).ToArray();
@@ -184,6 +197,25 @@ namespace TajsCOI.Tests
             Assert.Equal(4, LowProductTexturesSettings.MipBias);
             LowProductTexturesSettings.Update(9);
             Assert.Equal(4, LowProductTexturesSettings.MipBias);
+        }
+
+        private sealed class ThrowingWriteStream : MemoryStream
+        {
+            private readonly long m_limit;
+
+            internal ThrowingWriteStream(long limit)
+            {
+                m_limit = limit;
+            }
+
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                if (Position + count > m_limit)
+                {
+                    throw new IOException("Deliberate write failure.");
+                }
+                base.Write(buffer, offset, count);
+            }
         }
     }
 }
