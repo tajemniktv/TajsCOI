@@ -192,10 +192,16 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 {
                     builder.Append("\nProducts renderer delta: GPU=")
                         .Append(FormatBytes(second.Products.GpuBytes - first.Products.GpuBytes))
+                        .Append(", textures=").Append(FormatBytes(second.Products.TexturesBytes - first.Products.TexturesBytes))
+                        .Append(", instance buffers=").Append(FormatBytes(second.Products.InstancesBytes - first.Products.InstancesBytes))
                         .Append(", slots live/high-water/capacity=")
                         .Append(second.Products.LiveSlots - first.Products.LiveSlots).Append('/')
                         .Append(second.Products.HighWaterSlots - first.Products.HighWaterSlots).Append('/')
-                        .Append(second.Products.CapacitySlots - first.Products.CapacitySlots);
+                        .Append(second.Products.CapacitySlots - first.Products.CapacitySlots)
+                        .Append(", live used/capacity=").Append(second.Products.LiveBufferUsed - first.Products.LiveBufferUsed).Append('/')
+                        .Append(second.Products.LiveBufferCapacity - first.Products.LiveBufferCapacity)
+                        .Append(", reserve used/capacity=").Append(second.Products.ReserveBufferUsed - first.Products.ReserveBufferUsed).Append('/')
+                        .Append(second.Products.ReserveBufferCapacity - first.Products.ReserveBufferCapacity);
                 }
                 return builder.ToString();
             }
@@ -269,6 +275,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 Type memoryType = memory.GetType();
                 ReadSlotFragmentation(rendererType, renderer, out int fragmentedSlots, out int freeRanges, out int largestFreeRange);
                 int highWaterSlots = ReadIntProperty(rendererType, renderer, "StatSlots");
+                ReadInstanceBuffer(rendererType, renderer, "m_liveBuffer", "m_liveCountDraw", out int liveUsed, out int liveCapacity);
+                ReadInstanceBuffer(rendererType, renderer, "m_reserveBuffer", "m_reserveCount", out int reserveUsed, out int reserveCapacity);
                 return new ProductRendererMetric(
                     true,
                     ReadIntProperty(rendererType, renderer, "StatInstances"),
@@ -279,7 +287,15 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     fragmentedSlots,
                     freeRanges,
                     largestFreeRange,
-                    Convert.ToInt64(memoryType.GetProperty("GpuTotalBytes")!.GetValue(memory), CultureInfo.InvariantCulture),
+                    liveUsed,
+                    liveCapacity,
+                    reserveUsed,
+                    reserveCapacity,
+                    ReadLongField(memoryType, memory, "InstancesBytes"),
+                    ReadLongField(memoryType, memory, "StaticOwnersBytes"),
+                    ReadLongField(memoryType, memory, "DynamicOwnersBytes"),
+                    ReadLongField(memoryType, memory, "SlotsBytes"),
+                    ReadLongField(memoryType, memory, "TexturesBytes"),
                     "Public ProductsRenderer telemetry plus read-only slot free-list inspection");
             }
             catch (Exception exception)
@@ -713,7 +729,14 @@ namespace TajsCOI.Profiler.Probes.Runtime
             if (products.Available)
             {
                 builder.Append("\nProducts renderer: GPU=").Append(FormatBytes(products.GpuBytes))
+                    .Append(" [instances=").Append(FormatBytes(products.InstancesBytes))
+                    .Append(", static owners=").Append(FormatBytes(products.StaticOwnersBytes))
+                    .Append(", dynamic owners=").Append(FormatBytes(products.DynamicOwnersBytes))
+                    .Append(", slots=").Append(FormatBytes(products.SlotsBytes))
+                    .Append(", textures=").Append(FormatBytes(products.TexturesBytes)).Append(']')
                     .Append(", instances CPU/GPU=").Append(products.Instances).Append('/').Append(products.GpuInstances)
+                    .Append(", live buffer used/capacity=").Append(products.LiveBufferUsed).Append('/').Append(products.LiveBufferCapacity)
+                    .Append(", reserve buffer used/capacity=").Append(products.ReserveBufferUsed).Append('/').Append(products.ReserveBufferCapacity)
                     .Append(", slots live/high-water/capacity=").Append(products.LiveSlots).Append('/')
                     .Append(products.HighWaterSlots).Append('/').Append(products.CapacitySlots)
                     .Append(", total free/unused capacity=").Append(products.TotalFreeSlots).Append('/')
@@ -780,6 +803,26 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private static int ReadIntProperty(Type type, object instance, string name) =>
             Convert.ToInt32(type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public)!.GetValue(instance), CultureInfo.InvariantCulture);
 
+        private static long ReadLongField(Type type, object instance, string name) =>
+            Convert.ToInt64(type.GetField(name, BindingFlags.Instance | BindingFlags.Public)!.GetValue(instance), CultureInfo.InvariantCulture);
+
+        private static void ReadInstanceBuffer(
+            Type rendererType,
+            object renderer,
+            string bufferFieldName,
+            string usedFieldName,
+            out int used,
+            out int capacity)
+        {
+            used = Convert.ToInt32(
+                rendererType.GetField(usedFieldName, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(renderer),
+                CultureInfo.InvariantCulture);
+            object? buffer = rendererType.GetField(bufferFieldName, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(renderer);
+            capacity = buffer is null
+                ? 0
+                : Convert.ToInt32(buffer.GetType().GetProperty("count", BindingFlags.Instance | BindingFlags.Public)!.GetValue(buffer), CultureInfo.InvariantCulture);
+        }
+
         private static Type? FindType(string fullName, string assemblyName) =>
             Type.GetType(fullName + ", " + assemblyName, false) ??
             AppDomain.CurrentDomain.GetAssemblies()
@@ -811,7 +854,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         }
 
         private static ProductRendererMetric UnavailableProducts(string reason) =>
-            new(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, reason);
+            new(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, reason);
 
         private static string FormatBytes(long bytes)
         {

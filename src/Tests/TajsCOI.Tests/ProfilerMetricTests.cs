@@ -119,12 +119,21 @@ namespace TajsCOI.Tests
                 fragmentedSlots: 400,
                 freeRangeCount: 3,
                 largestFreeRange: 250,
-                gpuBytes: 0,
+                liveBufferUsed: 120,
+                liveBufferCapacity: 256,
+                reserveBufferUsed: 60,
+                reserveBufferCapacity: 128,
+                instancesBytes: 3_072,
+                staticOwnersBytes: 1_024,
+                dynamicOwnersBytes: 2_048,
+                slotsBytes: 65_536,
+                texturesBytes: 1_048_576,
                 reason: "test");
 
             Assert.Equal(1_448, metric.TotalFreeSlots);
             Assert.Equal(1_048, metric.UnusedCapacitySlots);
             Assert.Equal(600 * 100.0 / 2_048, metric.Utilization, 8);
+            Assert.Equal(1_120_256, metric.GpuBytes);
         }
     }
 }

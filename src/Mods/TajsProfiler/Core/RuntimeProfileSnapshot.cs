@@ -57,7 +57,15 @@ namespace TajsCOI.Profiler.Core
             int fragmentedSlots,
             int freeRangeCount,
             int largestFreeRange,
-            long gpuBytes,
+            int liveBufferUsed,
+            int liveBufferCapacity,
+            int reserveBufferUsed,
+            int reserveBufferCapacity,
+            long instancesBytes,
+            long staticOwnersBytes,
+            long dynamicOwnersBytes,
+            long slotsBytes,
+            long texturesBytes,
             string reason)
         {
             Available = available;
@@ -69,7 +77,15 @@ namespace TajsCOI.Profiler.Core
             FragmentedSlots = fragmentedSlots;
             FreeRangeCount = freeRangeCount;
             LargestFreeRange = largestFreeRange;
-            GpuBytes = gpuBytes;
+            LiveBufferUsed = liveBufferUsed;
+            LiveBufferCapacity = liveBufferCapacity;
+            ReserveBufferUsed = reserveBufferUsed;
+            ReserveBufferCapacity = reserveBufferCapacity;
+            InstancesBytes = instancesBytes;
+            StaticOwnersBytes = staticOwnersBytes;
+            DynamicOwnersBytes = dynamicOwnersBytes;
+            SlotsBytes = slotsBytes;
+            TexturesBytes = texturesBytes;
             Reason = reason;
         }
 
@@ -82,7 +98,16 @@ namespace TajsCOI.Profiler.Core
         internal int FragmentedSlots { get; }
         internal int FreeRangeCount { get; }
         internal int LargestFreeRange { get; }
-        internal long GpuBytes { get; }
+        internal int LiveBufferUsed { get; }
+        internal int LiveBufferCapacity { get; }
+        internal int ReserveBufferUsed { get; }
+        internal int ReserveBufferCapacity { get; }
+        internal long InstancesBytes { get; }
+        internal long StaticOwnersBytes { get; }
+        internal long DynamicOwnersBytes { get; }
+        internal long SlotsBytes { get; }
+        internal long TexturesBytes { get; }
+        internal long GpuBytes => InstancesBytes + StaticOwnersBytes + DynamicOwnersBytes + SlotsBytes + TexturesBytes;
         internal string Reason { get; }
         internal int UnusedCapacitySlots => Math.Max(0, CapacitySlots - HighWaterSlots);
         internal int TotalFreeSlots => Math.Max(0, CapacitySlots - LiveSlots);
