@@ -9,6 +9,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Text;
 using HarmonyLib;
+using Mafi.Core.SaveGame;
 using TajsCOI.Performance.Features.SaveLoadReadBuffer;
 using TajsCOI.Performance.Features.StreamingSaveCompression;
 using TajsCOI.Performance.Features.LowProductTextures;
@@ -91,6 +92,14 @@ namespace TajsCOI.Tests
             StreamingSaveResult result = StreamingSaveWriter.Write(input, output, 0x1122334455667788, 328, 1, false);
 
             output.Position = 0;
+            SaveChecksumValidationResults validation = SaveLoadFileUtils.ValidateChecksum(
+                output,
+                out SaveHeader _,
+                out Mafi.Option<System.Exception> validationException);
+            Assert.Equal(SaveChecksumValidationResults.Success, validation);
+            Assert.False(validationException.HasValue);
+
+            output.Position = 0;
             using var reader = new BinaryReader(output, Encoding.UTF8, leaveOpen: true);
             Assert.Equal(0x1122334455667788ul, reader.ReadUInt64());
             Assert.Equal(328, reader.ReadInt32());
@@ -104,6 +113,25 @@ namespace TajsCOI.Tests
             using var restored = new MemoryStream();
             gzip.CopyTo(restored);
             Assert.Equal(payload, restored.ToArray());
+        }
+
+        [Fact]
+        public void StreamingSaveWriterCanSkipOnlyTheUncompressedChecksum()
+        {
+            byte[] payload = Encoding.UTF8.GetBytes("The compressed checksum must remain active.");
+            using var input = new MemoryStream(payload);
+            input.Position = 7;
+            using var output = new MemoryStream();
+
+            StreamingSaveResult result = StreamingSaveWriter.Write(input, output, 7, 328, 1, true);
+
+            Assert.Equal(7, input.Position);
+            Assert.Equal(0u, result.UncompressedChecksum);
+            Assert.NotEqual(0u, result.CompressedChecksum);
+            output.Position = 0;
+            Assert.Equal(
+                SaveChecksumValidationResults.Success,
+                SaveLoadFileUtils.ValidateChecksum(output, out SaveHeader _, out Mafi.Option<System.Exception> _));
         }
 
         [Fact]
