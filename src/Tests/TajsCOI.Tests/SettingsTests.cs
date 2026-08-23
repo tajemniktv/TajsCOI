@@ -37,6 +37,14 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void Core_settings_do_not_reference_desktop_only_system_web_extensions()
+        {
+            Assert.DoesNotContain(
+                typeof(TajsSettings).Assembly.GetReferencedAssemblies(),
+                assembly => string.Equals(assembly.Name, "System.Web.Extensions", StringComparison.Ordinal));
+        }
+
+        [Fact]
         public void GlobalSettingPersistsNotifiesAndPreservesUnknownKeys()
         {
             string directory = CreateTemporaryDirectory();

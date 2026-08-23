@@ -8,9 +8,10 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Web.Script.Serialization;
 using Mafi;
+using Mafi.Collections;
 using Mafi.Core.Console;
+using Mafi.Serialization;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
@@ -26,7 +27,6 @@ namespace TajsCOI.Core.Settings
         private readonly string m_filePath;
         private readonly string m_backupPath;
         private readonly ITajsLogger m_log;
-        private readonly JavaScriptSerializer m_serializer = new();
         private readonly Dictionary<string, SettingDescriptor> m_descriptors = new(StringComparer.Ordinal);
         private readonly Dictionary<string, object> m_values = new(StringComparer.Ordinal);
         private readonly Dictionary<string, object> m_persistedValues = new(StringComparer.Ordinal);
@@ -254,8 +254,12 @@ namespace TajsCOI.Core.Settings
 
             try
             {
-                object? parsed = m_serializer.DeserializeObject(File.ReadAllText(path, Encoding.UTF8));
-                if (parsed is not Dictionary<string, object> root)
+                object parsed;
+                using (var reader = new StringReader(File.ReadAllText(path, Encoding.UTF8)))
+                {
+                    parsed = new JsonParser().Parse(reader);
+                }
+                if (parsed is not Dict<string, object> root)
                 {
                     throw new FormatException("Settings root must be a JSON object.");
                 }
@@ -272,7 +276,7 @@ namespace TajsCOI.Core.Settings
             }
         }
 
-        private static Dictionary<string, object> Migrate(Dictionary<string, object> root, int version)
+        private static Dictionary<string, object> Migrate(Dict<string, object> root, int version)
         {
             if (version < 0 || version > CurrentSchemaVersion)
             {
@@ -286,11 +290,11 @@ namespace TajsCOI.Core.Settings
                     .ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal);
             }
 
-            if (!root.TryGetValue("values", out object rawValues) || rawValues is not Dictionary<string, object> values)
+            if (!root.TryGetValue("values", out object rawValues) || rawValues is not Dict<string, object> values)
             {
                 throw new FormatException("Settings schema 1 requires a 'values' object.");
             }
-            return new Dictionary<string, object>(values, StringComparer.Ordinal);
+            return values.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal);
         }
 
         private bool TryPersist(string changedId, object changedValue, out string error)
@@ -312,7 +316,7 @@ namespace TajsCOI.Core.Settings
                 ["schema_version"] = CurrentSchemaVersion,
                 ["values"] = values,
             };
-            string json = m_serializer.Serialize(root);
+            string json = SerializeSettings(root);
             string? directory = Path.GetDirectoryName(m_filePath);
             string tempPath = m_filePath + ".tmp." + Guid.NewGuid().ToString("N");
             try
@@ -401,6 +405,77 @@ namespace TajsCOI.Core.Settings
 
         private static string FormatValue(object value) =>
             Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+
+        private static string SerializeSettings(IReadOnlyDictionary<string, object> root)
+        {
+            var builder = new StringBuilder(256);
+            AppendJsonObject(builder, root);
+            return builder.ToString();
+        }
+
+        private static void AppendJsonObject(StringBuilder builder, IEnumerable<KeyValuePair<string, object>> values)
+        {
+            builder.Append('{');
+            bool first = true;
+            foreach (KeyValuePair<string, object> item in values.OrderBy(x => x.Key, StringComparer.Ordinal))
+            {
+                if (!first)
+                {
+                    builder.Append(',');
+                }
+                first = false;
+                AppendJsonString(builder, item.Key);
+                builder.Append(':');
+                AppendJsonValue(builder, item.Value);
+            }
+            builder.Append('}');
+        }
+
+        private static void AppendJsonValue(StringBuilder builder, object? value)
+        {
+            switch (value)
+            {
+                case null:
+                    builder.Append("null");
+                    return;
+                case string text:
+                    AppendJsonString(builder, text);
+                    return;
+                case bool boolean:
+                    builder.Append(boolean ? "true" : "false");
+                    return;
+                case byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal:
+                    builder.Append(Convert.ToString(value, CultureInfo.InvariantCulture));
+                    return;
+                case IReadOnlyDictionary<string, object> dictionary:
+                    AppendJsonObject(builder, dictionary);
+                    return;
+                case IEnumerable<object> array:
+                    builder.Append('[');
+                    bool first = true;
+                    foreach (object? item in array)
+                    {
+                        if (!first)
+                        {
+                            builder.Append(',');
+                        }
+                        first = false;
+                        AppendJsonValue(builder, item);
+                    }
+                    builder.Append(']');
+                    return;
+                default:
+                    throw new InvalidOperationException(
+                        $"Settings value type '{value.GetType().FullName}' cannot be serialized as JSON.");
+            }
+        }
+
+        private static void AppendJsonString(StringBuilder builder, string value)
+        {
+            builder.Append('"');
+            JsonWriter.JsonEscapeString(value, builder);
+            builder.Append('"');
+        }
 
         private static void TryDelete(string path)
         {
