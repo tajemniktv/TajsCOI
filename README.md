@@ -49,6 +49,7 @@ Its initial public surface is deliberately small:
 
 - immutable compatibility reports and states;
 - the `ITajsRuntime` and `ITajsLogger` contracts;
+- typed setting descriptors, snapshots, validation, and change contracts;
 - assembly build-provenance reading with explicit physical-path support.
 
 Common has no MaFi or Harmony dependency. It must not own gameplay features, mod lifecycle, global mutable game state, or Captain of Industry feature-specific knowledge.
@@ -69,6 +70,7 @@ It exists once per game process and provides suite-level infrastructure such as:
 - TajsCOI mod discovery/registration;
 - capability detection for private MaFi APIs;
 - shared diagnostics/service registries where a true cross-mod service is needed.
+- global settings persistence and the runtime suite dashboard.
 
 **Core is infrastructure only.** It must not become a home for camera tweaks, truck fixes, balancing changes, dumping optimizers, UI features, or other gameplay behavior.
 
@@ -286,15 +288,25 @@ Lifecycle abstractions should map cleanly onto Captain of Industry's actual mod 
 
 ## Configuration
 
-Configuration belongs to the mod that owns the behavior. Use separate config files such as:
+Feature descriptors remain owned by the mod that owns the behavior, while Core provides one typed
+registry and persistence implementation. Mods register descriptors through `ITajsSettings`; they do
+not use `ModJsonConfig` or ship per-mod `config.json` files.
 
 ```text
-TajsTweaks/config.json
-TajsProfiler/config.json
-TajsPerformance/config.json
+TajsCOI.Common  setting contracts
+TajsCore        registry + persistence + dashboard
+Tweaks/Profiler/Performance  feature-owned descriptors
 ```
 
-Do not create one giant suite-wide gameplay config. Prefer typed sections per feature/probe.
+Global values are stored outside savegames in `%APPDATA%\Captain of Industry\TajsCOI\settings.json`.
+Use `tajs_dashboard` during a running game to inspect loaded suite components and edit registered
+settings. `tajs_settings_list` and `tajs_settings_set <ModId.key> <value>` remain available as console
+fallbacks. Apply modes state whether a value is immediate, requires a save reload, or requires a game
+restart.
+
+The dashboard is currently a gameplay-scene service. Main-menu UI registration is intentionally not
+supported yet because the main menu uses a separate dependency/bootstrap lifetime; persistence itself
+is scene-independent and values are loaded when the gameplay resolver starts.
 
 ## Testing
 

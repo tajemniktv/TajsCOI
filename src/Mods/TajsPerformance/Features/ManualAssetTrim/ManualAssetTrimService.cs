@@ -12,6 +12,7 @@ using Mafi.Core.Simulation;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
+using TajsCOI.Common.Settings;
 
 namespace TajsCOI.Performance.Features.ManualAssetTrim
 {
@@ -21,6 +22,7 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
         private readonly DependencyResolver m_resolver;
         private readonly SimLoopEvents m_simLoop;
         private readonly ITajsLogger m_log;
+        private readonly ITajsRuntime m_runtime;
         private readonly Type? m_assetsDbType;
         private readonly MethodInfo? m_clearCachedAssets;
         private readonly MethodInfo? m_unloadUnusedAssets;
@@ -32,11 +34,21 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
         private UnityMemorySnapshot m_unityBefore;
         private string m_lastResult = "No manual asset trim has run.";
 
-        public ManualAssetTrimService(DependencyResolver resolver, SimLoopEvents simLoop, ITajsRuntime runtime)
+        public ManualAssetTrimService(
+            DependencyResolver resolver,
+            SimLoopEvents simLoop,
+            ITajsRuntime runtime,
+            ITajsSettings settings)
         {
             m_resolver = resolver;
             m_simLoop = simLoop;
+            m_runtime = runtime;
             m_log = runtime.GetLogger("TajsPerformance", "ManualAssetTrim");
+
+            PerformanceSettingsCatalog.RegisterAll(settings);
+            ManualAssetTrimSettings.Update(
+                settings.Get<bool>(PerformanceSettingsCatalog.ModId, ManualAssetTrimSettings.EnableConfigKey));
+            settings.Changed += OnSettingChanged;
 
             Assembly? unityAssembly = AppDomain.CurrentDomain.GetAssemblies()
                 .FirstOrDefault(x => string.Equals(x.GetName().Name, "Mafi.Unity", StringComparison.Ordinal));
@@ -49,10 +61,29 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
 
             bool compatible = m_assetsDbType is not null && m_clearCachedAssets is not null &&
                 m_unloadUnusedAssets is not null && m_asyncIsDone is not null;
+            ReportCompatibility(compatible);
+        }
+
+        private void OnSettingChanged(object? sender, SettingChangedEventArgs change)
+        {
+            if (!string.Equals(change.Descriptor.ModId, PerformanceSettingsCatalog.ModId, StringComparison.Ordinal) ||
+                !string.Equals(change.Descriptor.Key, ManualAssetTrimSettings.EnableConfigKey, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            ManualAssetTrimSettings.Update((bool)change.NewValue);
+            bool compatible = m_assetsDbType is not null && m_clearCachedAssets is not null &&
+                m_unloadUnusedAssets is not null && m_asyncIsDone is not null;
+            ReportCompatibility(compatible);
+        }
+
+        private void ReportCompatibility(bool compatible)
+        {
             CompatibilityState state = !ManualAssetTrimSettings.Enabled
                 ? CompatibilityState.Disabled
                 : compatible ? CompatibilityState.Compatible : CompatibilityState.Disabled;
-            runtime.ReportCompatibility(new CompatibilityReport(
+            m_runtime.ReportCompatibility(new CompatibilityReport(
                 "TajsPerformance",
                 "ManualAssetTrim",
                 state,
@@ -73,7 +104,7 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
             RefreshCompletion();
             if (!ManualAssetTrimSettings.Enabled)
             {
-                return "Manual asset trim is disabled. Enable 'enable_manual_asset_trim' and restart.";
+                return "Manual asset trim is disabled. Enable 'TajsPerformance.enable_manual_asset_trim'.";
             }
             if (!m_simLoop.IsSimPaused)
             {

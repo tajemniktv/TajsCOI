@@ -10,7 +10,9 @@ using Mafi.Core.Simulation;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
+using TajsCOI.Common.Settings;
 using TajsCOI.Tweaks.Interop;
+using System.Threading;
 
 #endregion
 
@@ -24,11 +26,15 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
     {
         private readonly SimLoopEvents m_simLoop;
         private readonly ITajsLogger m_log;
+        private int m_maxSpeed;
 
-        public UnlockedSpeedService(SimLoopEvents simLoop, ITajsRuntime runtime)
+        public UnlockedSpeedService(SimLoopEvents simLoop, ITajsRuntime runtime, ITajsSettings settings)
         {
             m_simLoop = simLoop;
             m_log = runtime.GetLogger("TajsTweaks", "UnlockedSpeed");
+            settings.Register(UnlockedSpeedSetting.Descriptor);
+            m_maxSpeed = settings.Get<int>(UnlockedSpeedSetting.ModId, UnlockedSpeedSetting.Key);
+            settings.Changed += OnSettingChanged;
 
             if (!SimLoopAccess.CanSetRequestedSpeed)
             {
@@ -54,7 +60,17 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
             }
         }
 
-        private static int MaxSpeed => UnlockedSpeedSettings.MaxSpeed;
+        private int MaxSpeed => Volatile.Read(ref m_maxSpeed);
+
+        private void OnSettingChanged(object sender, SettingChangedEventArgs change)
+        {
+            if (string.Equals(change.Descriptor.StableId, UnlockedSpeedSetting.Descriptor.StableId, System.StringComparison.Ordinal) &&
+                change.NewValue is int maxSpeed)
+            {
+                Volatile.Write(ref m_maxSpeed, maxSpeed);
+                m_log.Info($"Unlocked simulation speed maximum changed to {maxSpeed}x.");
+            }
+        }
 
         [ConsoleCommand(
             documentation: "Sets requested simulation speed without the vanilla 20x limit.",

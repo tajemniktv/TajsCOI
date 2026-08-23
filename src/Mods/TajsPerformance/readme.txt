@@ -2,7 +2,8 @@ Taj's Performance
 
 Evidence-backed, individually switchable performance fixes for Captain of Industry.
 
-Features are disabled by default and configured independently.
+Features are disabled by default and configured independently through the TajsCore runtime dashboard
+(`tajs_dashboard`) or the `tajs_settings_set` console command.
 
 Available opt-in features:
 - Large save/load read buffer: changes BlobReader's 4 KiB buffer to a configurable 16-256 KiB

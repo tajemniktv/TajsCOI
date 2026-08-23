@@ -8,6 +8,7 @@ using Mafi;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
+using TajsCOI.Common.Settings;
 using TajsCOI.Performance.Features.SaveLoadReadBuffer;
 using TajsCOI.Performance.Features.StreamingSaveCompression;
 using TajsCOI.Performance.Features.LowProductTextures;
@@ -31,12 +32,15 @@ namespace TajsCOI.Performance
                 new ProductBufferShrinkFeature(),
             };
 
-        public PerformanceFeatureHost(TajsPerformanceMod mod, ITajsRuntime runtime)
+        public PerformanceFeatureHost(ITajsRuntime runtime, ITajsSettings settings)
         {
+            PerformanceSettingsCatalog.RegisterAll(settings);
+            PerformanceSettingsCatalog.LoadStartupValues(settings);
+
             foreach (IPerformanceFeature feature in s_features)
             {
                 ITajsLogger log = runtime.GetLogger("TajsPerformance", feature.Id);
-                if (!mod.JsonConfig.GetBool(feature.ConfigKey))
+                if (!settings.Get<bool>(PerformanceSettingsCatalog.ModId, feature.ConfigKey))
                 {
                     runtime.ReportCompatibility(new CompatibilityReport(
                         "TajsPerformance",

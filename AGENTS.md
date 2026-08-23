@@ -222,17 +222,20 @@ Do not invent an elaborate framework that obscures Captain of Industry's real li
 
 ## Configuration
 
-Config is owned per mod:
+Setting descriptors are owned by the feature or probe that owns the behavior. Shared contracts live
+in `TajsCOI.Common`; persistence and the runtime dashboard live in `TajsCore`.
 
 ```text
-TajsTweaks/config.json
-TajsProfiler/config.json
-TajsPerformance/config.json
+feature/probe -> registers SettingDescriptor through ITajsSettings
+TajsCore      -> persists global values and publishes runtime changes
 ```
 
-Prefer typed sections per feature/probe. Do not create one giant suite-wide gameplay config.
+Do not add `ModJsonConfig` or per-mod `config.json` files. Use stable ordinal `ModId.key` identifiers,
+declare `Immediate`, `ReloadSave`, or `RestartGame` honestly, and keep gameplay-specific descriptor
+knowledge in the owning mod. Invalid persisted values must fall back to descriptor defaults.
 
-Core configuration, if any, should be limited to actual runtime-foundation concerns.
+The runtime dashboard is gameplay-scene-only until a separate main-menu bootstrap is deliberately
+implemented. Do not make gameplay-scene services resolve in the main-menu lifetime by accident.
 
 ## Profiling design rules
 

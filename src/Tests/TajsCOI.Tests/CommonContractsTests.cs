@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using TajsCOI.Common.Build;
 using TajsCOI.Common.Compatibility;
+using TajsCOI.Common.Settings;
 using Xunit;
 
 namespace TajsCOI.Tests
@@ -57,6 +58,53 @@ namespace TajsCOI.Tests
             {
                 File.Delete(temporaryPath);
             }
+        }
+
+        [Fact]
+        public void IntegerSettingDescriptorNormalizesAndValidatesBoundsAndStep()
+        {
+            SettingDescriptor descriptor = SettingDescriptor.Integer(
+                "TajsTweaks",
+                "Tweaks",
+                "unlocked_speed_max",
+                "Maximum unlocked speed",
+                "Maximum accepted simulation speed.",
+                defaultValue: 100,
+                minimum: 20,
+                maximum: 500,
+                step: 5,
+                applyMode: SettingApplyMode.Immediate);
+
+            Assert.Equal("TajsTweaks.unlocked_speed_max", descriptor.StableId);
+            Assert.True(descriptor.TryNormalize(125L, out object normalized, out _));
+            Assert.Equal(125, normalized);
+            Assert.False(descriptor.TryNormalize(126, out _, out string stepError));
+            Assert.Contains("increments", stepError);
+            Assert.False(descriptor.TryNormalize(501, out _, out string rangeError));
+            Assert.Contains("between", rangeError);
+        }
+
+        [Fact]
+        public void ChoiceSettingRequiresADeclaredStableValue()
+        {
+            SettingDescriptor descriptor = SettingDescriptor.Choice(
+                "TajsPerformance",
+                "Performance",
+                "quality",
+                "Quality",
+                "Example choice.",
+                "low",
+                new[]
+                {
+                    new SettingChoice("low", "Low"),
+                    new SettingChoice("very_low", "Very low"),
+                },
+                applyMode: SettingApplyMode.ReloadSave,
+                flags: SettingFlags.Experimental);
+
+            Assert.True(descriptor.TryNormalize("very_low", out object normalized, out _));
+            Assert.Equal("very_low", normalized);
+            Assert.False(descriptor.TryNormalize("ultra", out _, out _));
         }
     }
 }

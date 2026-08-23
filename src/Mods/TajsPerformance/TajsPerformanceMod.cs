@@ -3,11 +3,6 @@
 // All Rights Reserved.
 
 using Mafi.Core.Mods;
-using TajsCOI.Performance.Features.SaveLoadReadBuffer;
-using TajsCOI.Performance.Features.StreamingSaveCompression;
-using TajsCOI.Performance.Features.LowProductTextures;
-using TajsCOI.Performance.Features.ManualAssetTrim;
-using TajsCOI.Performance.Features.ProductBufferShrink;
 
 namespace TajsCOI.Performance
 {
@@ -23,12 +18,6 @@ namespace TajsCOI.Performance
 
         public override void RegisterPrototypes(ProtoRegistrator registrator)
         {
-            SaveLoadReadBufferSettings.Update(JsonConfig.GetInt(SaveLoadReadBufferSettings.SizeConfigKey));
-            StreamingSaveCompressionSettings.Update(
-                JsonConfig.GetBool(StreamingSaveCompressionSettings.SkipUncompressedChecksumConfigKey));
-            LowProductTexturesSettings.Update(JsonConfig.GetInt(LowProductTexturesSettings.MipBiasConfigKey));
-            ManualAssetTrimSettings.Update(JsonConfig.GetBool(ManualAssetTrimSettings.EnableConfigKey));
-            ProductBufferShrinkSettings.Update(JsonConfig.GetInt(ProductBufferShrinkSettings.ObservationFramesConfigKey));
         }
     }
 }
