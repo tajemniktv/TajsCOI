@@ -1,9 +1,9 @@
 {
-  "unlocked_speed_max": {
-    "default": 100,
-    "min": 20,
-    "max": 500,
-    "is_integer": true,
-    "description": "Maximum value accepted by the unlocked simulation speed command."
+  "unlocked_speed_max":{
+    "default":100,
+    "min":20,
+    "max":500,
+    "is_integer":true,
+    "description":"Maximum value accepted by the unlocked simulation speed command."
   }
 }

@@ -12,29 +12,30 @@ using TajsTweaks.Interop;
 
 #endregion
 
-namespace TajsTweaks.Features.Debug;
-
-[GlobalDependency(RegistrationMode.AsSelf)]
-public sealed class DebugInfoService
+namespace TajsTweaks.Features.Debug
 {
-    private readonly SimLoopEvents _simLoop;
-
-    public DebugInfoService(SimLoopEvents simLoop)
+    [GlobalDependency(RegistrationMode.AsSelf)]
+    public sealed class DebugInfoService
     {
-        _simLoop = simLoop;
-    }
+        private readonly SimLoopEvents _simLoop;
 
-    [ConsoleCommand(
-        documentation: "Shows TajsTweaks version, build provenance and basic runtime status.",
-        customCommandName: "tajs_tweaks_info")]
-    public string GetInfo()
-    {
-        var coreVersion = typeof(SimLoopEvents).Assembly.GetName().Version?.ToString() ?? "unknown";
-        var speedInterop = SimLoopAccess.CanSetRequestedSpeed ? "ready" : "unavailable";
+        public DebugInfoService(SimLoopEvents simLoop)
+        {
+            _simLoop = simLoop;
+        }
 
-        return
-            $"TajsTweaks {BuildMetadata.Version} | {BuildMetadata.Configuration} | git {BuildMetadata.GitCommit} | " +
-            $"built {BuildMetadata.BuildTimestampUtc} | Mafi.Core {coreVersion} | " +
-            $"requested speed {_simLoop.SimSpeedMult}x | speed interop {speedInterop}.";
+        [ConsoleCommand(
+            documentation: "Shows TajsTweaks version, build provenance and basic runtime status.",
+            customCommandName: "tajs_tweaks_info")]
+        public string GetInfo()
+        {
+            string coreVersion = typeof(SimLoopEvents).Assembly.GetName().Version?.ToString() ?? "unknown";
+            string speedInterop = SimLoopAccess.CanSetRequestedSpeed ? "ready" : "unavailable";
+
+            return
+                $"TajsTweaks {BuildMetadata.Version} | {BuildMetadata.Configuration} | git {BuildMetadata.GitCommit} | " +
+                $"built {BuildMetadata.BuildTimestampUtc} | Mafi.Core {coreVersion} | " +
+                $"requested speed {_simLoop.SimSpeedMult}x | speed interop {speedInterop}.";
+        }
     }
 }

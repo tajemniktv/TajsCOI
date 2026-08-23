@@ -1,57 +1,57 @@
 <Project>
-    <PropertyGroup>
-        <TargetFramework>net48</TargetFramework>
-        <LangVersion>latest</LangVersion>
-        <Nullable>enable</Nullable>
-        <ImplicitUsings>disable</ImplicitUsings>
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
 
-        <COIRoot Condition="'$(COI_ROOT)' != ''">$(COI_ROOT)</COIRoot>
+    <COIRoot Condition="'$(COI_ROOT)' != ''">$(COI_ROOT)</COIRoot>
 
-        <COIManagedDir>$(COIRoot)\Captain of Industry_Data\Managed</COIManagedDir>
-        <COIModsDir>$(APPDATA)\Captain of Industry\Mods</COIModsDir>
+    <COIManagedDir>$(COIRoot)\Captain of Industry_Data\Managed</COIManagedDir>
+    <COIModsDir>$(APPDATA)\Captain of Industry\Mods</COIModsDir>
 
-        <!-- Existing official Unity project by default. Easy to rename later. -->
-        <UnityProjectDir Condition="'$(UnityProjectDir)' == ''">$(MSBuildThisFileDirectory)..\ExampleMod.Unity</UnityProjectDir>
+    <!-- Existing official Unity project by default. Easy to rename later. -->
+    <UnityProjectDir Condition="'$(UnityProjectDir)' == ''">$(MSBuildThisFileDirectory)..\ExampleMod.Unity</UnityProjectDir>
 
-        <!-- Development conveniences. Can be overridden per build/project. -->
-        <DeployToModsFolder Condition="'$(DeployToModsFolder)' == ''">true</DeployToModsFolder>
-        <CopyToUnityProject Condition="'$(CopyToUnityProject)' == ''">true</CopyToUnityProject>
-        <CreateReleaseZip Condition="'$(CreateReleaseZip)' == ''">true</CreateReleaseZip>
+    <!-- Development conveniences. Can be overridden per build/project. -->
+    <DeployToModsFolder Condition="'$(DeployToModsFolder)' == ''">true</DeployToModsFolder>
+    <CopyToUnityProject Condition="'$(CopyToUnityProject)' == ''">true</CopyToUnityProject>
+    <CreateReleaseZip Condition="'$(CreateReleaseZip)' == ''">true</CreateReleaseZip>
 
-        <DebugType>portable</DebugType>
-        <DebugSymbols>true</DebugSymbols>
-    </PropertyGroup>
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
 
-    <PropertyGroup Condition="'$(IsCoiMod)' == 'true'">
-        <!-- One source of truth: project Mod* properties feed both assembly metadata and manifest.json. -->
-        <Version>$(ModVersion)</Version>
-        <AssemblyVersion>$(ModVersion)</AssemblyVersion>
-        <FileVersion>$(ModVersion)</FileVersion>
-        <Title>$(ModDisplayName)</Title>
-        <Product>$(ModDisplayName)</Product>
-        <Authors>$(ModAuthor)</Authors>
-        <Company>$(ModAuthor)</Company>
-        <Description>$(ModDescription)</Description>
-    </PropertyGroup>
+  <PropertyGroup Condition="'$(IsCoiMod)' == 'true'">
+    <!-- One source of truth: project Mod* properties feed both assembly metadata and manifest.json. -->
+    <Version>$(ModVersion)</Version>
+    <AssemblyVersion>$(ModVersion)</AssemblyVersion>
+    <FileVersion>$(ModVersion)</FileVersion>
+    <Title>$(ModDisplayName)</Title>
+    <Product>$(ModDisplayName)</Product>
+    <Authors>$(ModAuthor)</Authors>
+    <Company>$(ModAuthor)</Company>
+    <Description>$(ModDescription)</Description>
+  </PropertyGroup>
 
-    <ItemGroup Condition="'$(IsCoiMod)' == 'true'">
-        <!-- Allows SDK-style net48 builds with Rider's modern dotnet/MSBuild. -->
-        <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies"
-                          Version="1.0.3"
-                          PrivateAssets="All"/>
+  <ItemGroup Condition="'$(IsCoiMod)' == 'true'">
+    <!-- Allows SDK-style net48 builds with Rider's modern dotnet/MSBuild. -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies"
+                      Version="1.0.3"
+                      PrivateAssets="All"/>
 
-        <!-- Minimal common CoI references. Add Mafi.Unity/UnityEngine modules only when needed. -->
-        <Reference Include="Mafi">
-            <HintPath>$(COIManagedDir)\Mafi.dll</HintPath>
-            <Private>false</Private>
-        </Reference>
-        <Reference Include="Mafi.Core">
-            <HintPath>$(COIManagedDir)\Mafi.Core.dll</HintPath>
-            <Private>false</Private>
-        </Reference>
-        <Reference Include="Mafi.Base">
-            <HintPath>$(COIManagedDir)\Mafi.Base.dll</HintPath>
-            <Private>false</Private>
-        </Reference>
-    </ItemGroup>
+    <!-- Minimal common CoI references. Add Mafi.Unity/UnityEngine modules only when needed. -->
+    <Reference Include="Mafi">
+      <HintPath>$(COIManagedDir)\Mafi.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Mafi.Core">
+      <HintPath>$(COIManagedDir)\Mafi.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Mafi.Base">
+      <HintPath>$(COIManagedDir)\Mafi.Base.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
 </Project>
