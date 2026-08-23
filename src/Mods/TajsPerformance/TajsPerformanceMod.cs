@@ -7,6 +7,7 @@ using TajsCOI.Performance.Features.SaveLoadReadBuffer;
 using TajsCOI.Performance.Features.StreamingSaveCompression;
 using TajsCOI.Performance.Features.LowProductTextures;
 using TajsCOI.Performance.Features.ManualAssetTrim;
+using TajsCOI.Performance.Features.ProductBufferShrink;
 
 namespace TajsCOI.Performance
 {
@@ -27,6 +28,7 @@ namespace TajsCOI.Performance
                 JsonConfig.GetBool(StreamingSaveCompressionSettings.SkipUncompressedChecksumConfigKey));
             LowProductTexturesSettings.Update(JsonConfig.GetInt(LowProductTexturesSettings.MipBiasConfigKey));
             ManualAssetTrimSettings.Update(JsonConfig.GetBool(ManualAssetTrimSettings.EnableConfigKey));
+            ProductBufferShrinkSettings.Update(JsonConfig.GetInt(ProductBufferShrinkSettings.ObservationFramesConfigKey));
         }
     }
 }

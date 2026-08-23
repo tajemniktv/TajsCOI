@@ -161,7 +161,7 @@ Capture before and after a representative operation. Comparisons subtract cumula
 
 `TajsPerformance` is the standalone host for **proven performance fixes**. Candidate fixes are independently configured and remain disabled by default until their evidence gates are met.
 
-Current default-off candidates cover streaming save compression, a larger buffered save reader, lower product-texture mip modes, and a paused-only manual asset trim. The read-buffer microbenchmark is documented in [`docs/benchmarks/save-load-read-buffer-2026-08-23.md`](docs/benchmarks/save-load-read-buffer-2026-08-23.md); each candidate still requires its issue-specific in-game A/B acceptance before becoming a default.
+Current default-off candidates cover streaming save compression, a larger buffered save reader, lower product-texture mip modes, a paused-only manual asset trim, and conservative live/reserve product-buffer shrinking after sustained under-utilization. Stable product owner and slot buffers are never compacted. Proxy benchmarks are documented under [`docs/benchmarks`](docs/benchmarks); each candidate still requires its issue-specific in-game A/B acceptance before becoming a default.
 
 Its contract is different from the profiler:
 

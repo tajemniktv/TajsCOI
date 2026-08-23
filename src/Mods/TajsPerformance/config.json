@@ -32,5 +32,16 @@
   "enable_manual_asset_trim":{
     "default":false,
     "description":"Enable the paused-only trim_unused_assets console command. The action is never run automatically."
+  },
+  "enable_product_buffer_shrink":{
+    "default":false,
+    "description":"Opt in to conservative shrinking of only the remappable live/reserve product instance buffers after sustained under-utilization. Restart required."
+  },
+  "product_buffer_shrink_observation_frames":{
+    "default":600,
+    "min":120,
+    "max":3600,
+    "is_integer":true,
+    "description":"Consecutive render uploads at or below 25% utilization required before shrinking. Restart required."
   }
 }

@@ -15,6 +15,9 @@ Available opt-in features:
 - Manual asset trim: exposes paused-only trim_unused_assets and trim_unused_assets_status
   commands. It clears only CoI's reloadable AssetsDb cache and invokes Unity's normal unused-
   asset unload operation; it is never scheduled automatically.
+- Product buffer shrink: after a configurable sustained observation window at or below 25%
+  utilization, releases only the live/reserve instance buffers and lets CoI's normal dirty-path
+  upload recreate them with power-of-two sizing. Stable owner and slot buffers are never compacted.
 
 Local benchmark evidence for the default came from five read-only decompression passes over a
 35.3 MB save (77.7 MB expanded): median 327 ms at 4 KiB, 223 ms at 16 KiB, 213 ms at 64 KiB,

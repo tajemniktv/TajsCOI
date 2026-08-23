@@ -11,6 +11,7 @@ using TajsCOI.Common.Runtime;
 using TajsCOI.Performance.Features.SaveLoadReadBuffer;
 using TajsCOI.Performance.Features.StreamingSaveCompression;
 using TajsCOI.Performance.Features.LowProductTextures;
+using TajsCOI.Performance.Features.ProductBufferShrink;
 
 namespace TajsCOI.Performance
 {
@@ -27,6 +28,7 @@ namespace TajsCOI.Performance
                 new SaveLoadReadBufferFeature(),
                 new StreamingSaveCompressionFeature(),
                 new LowProductTexturesFeature(),
+                new ProductBufferShrinkFeature(),
             };
 
         public PerformanceFeatureHost(TajsPerformanceMod mod, ITajsRuntime runtime)
