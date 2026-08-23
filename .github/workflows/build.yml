@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   build:
-    name: Compile TajsTweaks
+    name: Compile mods
     runs-on: windows-latest
 
     # This job needs the private CoI reference token. Run it only in the canonical
@@ -36,13 +36,13 @@ jobs:
 
     steps:
       - name: Checkout TajsCOI
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Checkout Captain of Industry references
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: tajemniktv/TajsCOI-Refs
           token: ${{ secrets.COI_REFS_TOKEN }}
@@ -50,7 +50,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
 
@@ -59,24 +59,29 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $projectPath = 'src/Mods/TajsTweaks/TajsTweaks.csproj'
-          $expectedVersion = (& dotnet msbuild $projectPath -nologo -getProperty:MaxVerifiedGameVersion).Trim()
-          if ($LASTEXITCODE -ne 0) {
-              throw 'Failed to evaluate MaxVerifiedGameVersion from TajsTweaks.csproj.'
-          }
-
           $referenceVersion = (Get-Content 'coi-refs/VERSION.txt' -Raw).Trim()
-
-          if ([string]::IsNullOrWhiteSpace($expectedVersion)) {
-              throw 'The evaluated TajsTweaks project does not define MaxVerifiedGameVersion.'
-          }
-
           if ([string]::IsNullOrWhiteSpace($referenceVersion)) {
               throw 'TajsCOI-Refs/VERSION.txt is empty.'
           }
 
-          if ($referenceVersion -ne $expectedVersion) {
-              throw "CoI reference version mismatch: mod expects $expectedVersion, refs repo provides $referenceVersion."
+          $modProjects = Get-ChildItem 'src/Mods' -Filter '*.csproj' -Recurse | Sort-Object FullName
+          if ($modProjects.Count -eq 0) {
+              throw 'No mod projects were found under src/Mods.'
+          }
+
+          foreach ($project in $modProjects) {
+              $expectedVersion = (& dotnet msbuild $project.FullName -nologo -getProperty:MaxVerifiedGameVersion).Trim()
+              if ($LASTEXITCODE -ne 0) {
+                  throw "Failed to evaluate MaxVerifiedGameVersion from $($project.FullName)."
+              }
+
+              if ([string]::IsNullOrWhiteSpace($expectedVersion)) {
+                  throw "The evaluated project does not define MaxVerifiedGameVersion: $($project.FullName)"
+              }
+
+              if ($referenceVersion -ne $expectedVersion) {
+                  throw "CoI reference version mismatch: $($project.Name) expects $expectedVersion, refs repo provides $referenceVersion."
+              }
           }
 
           $coiRoot = Join-Path $env:GITHUB_WORKSPACE "coi-refs\refs\$referenceVersion"
@@ -97,11 +102,11 @@ jobs:
           Write-Host "Using Captain of Industry $referenceVersion references from $coiRoot"
 
       - name: Restore
-        run: dotnet restore src/Mods/TajsTweaks/TajsTweaks.csproj
+        run: dotnet restore TajsCOI.slnx
 
       - name: Build
         run: >-
-          dotnet build src/Mods/TajsTweaks/TajsTweaks.csproj
+          dotnet build TajsCOI.slnx
           --configuration Release
           --no-restore
           -p:ContinuousIntegrationBuild=true
