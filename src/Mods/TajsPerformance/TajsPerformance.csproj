@@ -22,4 +22,10 @@
     </ProjectReference>
     <PackageReference Include="Lib.Harmony" Version="2.4.2" ExcludeAssets="runtime"/>
   </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>TajsCOI.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>

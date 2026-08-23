@@ -8,25 +8,32 @@ using Mafi;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
+using TajsCOI.Performance.Features.SaveLoadReadBuffer;
+using TajsCOI.Performance.Features.StreamingSaveCompression;
+using TajsCOI.Performance.Features.LowProductTextures;
 
 namespace TajsCOI.Performance
 {
     /// <summary>
-    ///     Installs independently configured performance features. The initial host intentionally
-    ///     has no registered features: candidate fixes graduate here only after profiler evidence.
+    ///     Installs independently configured patch features. Candidates remain disabled by default
+    ///     and fail open when their exact 0.8.7a compatibility seam is unavailable.
     /// </summary>
     [GlobalDependency(RegistrationMode.AsSelf)]
     internal sealed class PerformanceFeatureHost
     {
         private static readonly IReadOnlyList<IPerformanceFeature> s_features =
-            Array.Empty<IPerformanceFeature>();
+            new IPerformanceFeature[]
+            {
+                new SaveLoadReadBufferFeature(),
+                new StreamingSaveCompressionFeature(),
+                new LowProductTexturesFeature(),
+            };
 
         public PerformanceFeatureHost(TajsPerformanceMod mod, ITajsRuntime runtime)
         {
-            ITajsLogger log = runtime.GetLogger("TajsPerformance", "FeatureHost");
-
             foreach (IPerformanceFeature feature in s_features)
             {
+                ITajsLogger log = runtime.GetLogger("TajsPerformance", feature.Id);
                 if (!mod.JsonConfig.GetBool(feature.ConfigKey))
                 {
                     runtime.ReportCompatibility(new CompatibilityReport(
@@ -60,11 +67,9 @@ namespace TajsCOI.Performance
                 "TajsPerformance",
                 "FeatureHost",
                 CompatibilityState.Compatible,
-                "Only evidence-backed, individually switchable features are registered",
-                $"{s_features.Count} feature(s) registered",
-                s_features.Count == 0
-                    ? "Scaffold is active; no speculative optimization is installed."
-                    : "Registered features were evaluated independently."));
+                "Only individually switchable patch features are registered",
+                $"{s_features.Count} patch feature(s) registered",
+                "Registered patch features were evaluated independently; manual command features report separately."));
         }
     }
 }

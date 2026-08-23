@@ -1,1 +1,36 @@
-{}
+{
+  "enable_large_save_load_buffer":{
+    "default":false,
+    "description":"Opt in to a measured 64 KiB buffered save reader. Preserves vanilla checksum preflight and load semantics. Restart required."
+  },
+  "save_load_buffer_kib":{
+    "default":64,
+    "min":16,
+    "max":256,
+    "is_integer":true,
+    "description":"Buffered save-reader size in KiB. Local benchmark plateaued at 64 KiB. Restart required."
+  },
+  "enable_streaming_save_compression":{
+    "default":false,
+    "description":"Opt in to streaming gzip directly into CoI's seekable temporary save file. Preserves post-write validation and atomic rename. Restart required."
+  },
+  "skip_uncompressed_save_checksum":{
+    "default":false,
+    "description":"Skip the redundant uncompressed CRC pass when streaming saves. Compressed CRC and post-write validation remain enabled. Restart required."
+  },
+  "enable_low_product_textures":{
+    "default":false,
+    "description":"Opt in to a lower-resolution product texture-array mode through CoI's normal rebuild path. Restart required."
+  },
+  "product_texture_mip_bias":{
+    "default":3,
+    "min":3,
+    "max":4,
+    "is_integer":true,
+    "description":"3 = Low, 4 = Very Low. CoI's existing 64 px minimum slice size remains enforced."
+  },
+  "enable_manual_asset_trim":{
+    "default":false,
+    "description":"Enable the paused-only trim_unused_assets console command. The action is never run automatically."
+  }
+}
