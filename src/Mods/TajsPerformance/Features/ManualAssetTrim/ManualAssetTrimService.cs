@@ -29,7 +29,7 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
         private object? m_operation;
         private long m_startedTicks;
         private long m_managedBefore;
-        private long m_unityBefore;
+        private UnityMemorySnapshot m_unityBefore;
         private string m_lastResult = "No manual asset trim has run.";
 
         public ManualAssetTrimService(DependencyResolver resolver, SimLoopEvents simLoop, ITajsRuntime runtime)
@@ -83,21 +83,22 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
             {
                 return "Manual asset trim is already running.";
             }
-            if (m_assetsDbType is null || m_clearCachedAssets is null || m_unloadUnusedAssets is null)
+            if (m_assetsDbType is null || m_clearCachedAssets is null ||
+                m_unloadUnusedAssets is null || m_asyncIsDone is null)
             {
                 return "Manual asset trim unavailable: required 0.8.7a bindings were not resolved.";
             }
 
-            object? assets = m_resolver.TryResolve(m_assetsDbType).ValueOrNull;
-            if (assets is null)
-            {
-                return "Manual asset trim unavailable: no active gameplay AssetsDb was resolved.";
-            }
-
             try
             {
+                object? assets = m_resolver.TryResolve(m_assetsDbType).ValueOrNull;
+                if (assets is null)
+                {
+                    return "Manual asset trim unavailable: no active gameplay AssetsDb was resolved.";
+                }
+
                 m_managedBefore = GC.GetTotalMemory(false);
-                m_unityBefore = ReadUnityAllocated();
+                m_unityBefore = ReadUnityMemory();
                 m_startedTicks = Stopwatch.GetTimestamp();
                 m_clearCachedAssets.Invoke(assets, null);
                 m_operation = m_unloadUnusedAssets.Invoke(null, null);
@@ -142,11 +143,14 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
                 }
 
                 long managedAfter = GC.GetTotalMemory(false);
-                long unityAfter = ReadUnityAllocated();
+                UnityMemorySnapshot unityAfter = ReadUnityMemory();
                 m_lastResult =
                     $"Manual asset trim completed in {ElapsedMilliseconds():F1} ms; " +
                     $"managed delta={FormatBytes(managedAfter - m_managedBefore)}, " +
-                    $"Unity allocated delta={FormatOptionalDelta(m_unityBefore, unityAfter)}.";
+                    $"Unity allocated/reserved/graphics delta=" +
+                    $"{FormatOptionalDelta(m_unityBefore.Allocated, unityAfter.Allocated)}/" +
+                    $"{FormatOptionalDelta(m_unityBefore.Reserved, unityAfter.Reserved)}/" +
+                    $"{FormatOptionalDelta(m_unityBefore.Graphics, unityAfter.Graphics)}.";
                 m_operation = null;
             }
             catch (Exception exception)
@@ -160,20 +164,26 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
         private double ElapsedMilliseconds() =>
             (Stopwatch.GetTimestamp() - m_startedTicks) * 1000.0 / Stopwatch.Frequency;
 
-        private static long ReadUnityAllocated()
+        private static UnityMemorySnapshot ReadUnityMemory()
         {
             try
             {
                 Type? profiler = FindType("UnityEngine.Profiling.Profiler", "UnityEngine.CoreModule");
                 return profiler is null
-                    ? -1
-                    : Convert.ToInt64(profiler.GetMethod("GetTotalAllocatedMemoryLong", BindingFlags.Static | BindingFlags.Public)!.Invoke(null, null));
+                    ? UnityMemorySnapshot.Unavailable
+                    : new UnityMemorySnapshot(
+                        InvokeLong(profiler, "GetTotalAllocatedMemoryLong"),
+                        InvokeLong(profiler, "GetTotalReservedMemoryLong"),
+                        InvokeLong(profiler, "GetAllocatedMemoryForGraphicsDriver"));
             }
             catch
             {
-                return -1;
+                return UnityMemorySnapshot.Unavailable;
             }
         }
+
+        private static long InvokeLong(Type type, string methodName) =>
+            Convert.ToInt64(type.GetMethod(methodName, BindingFlags.Static | BindingFlags.Public)!.Invoke(null, null));
 
         private static Type? FindType(string fullName, string assemblyName) =>
             Type.GetType(fullName + ", " + assemblyName, false) ??
@@ -191,5 +201,21 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
             exception is TargetInvocationException invocation && invocation.InnerException is not null
                 ? invocation.InnerException
                 : exception;
+
+        private readonly struct UnityMemorySnapshot
+        {
+            internal static readonly UnityMemorySnapshot Unavailable = new(-1, -1, -1);
+
+            internal UnityMemorySnapshot(long allocated, long reserved, long graphics)
+            {
+                Allocated = allocated;
+                Reserved = reserved;
+                Graphics = graphics;
+            }
+
+            internal long Allocated { get; }
+            internal long Reserved { get; }
+            internal long Graphics { get; }
+        }
     }
 }
