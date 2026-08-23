@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   build:
-    name: Compile mods
+    name: Build, test, and verify packages
     runs-on: windows-latest
 
     # This job needs the private CoI reference token. Run it only in the canonical
@@ -113,3 +113,42 @@ jobs:
           -p:DeployToModsFolder=false
           -p:CopyToUnityProject=false
           -p:CreateReleaseZip=false
+
+      - name: Test
+        run: >-
+          dotnet test TajsCOI.slnx
+          --configuration Release
+          --no-build
+          --no-restore
+          -p:ContinuousIntegrationBuild=true
+          -p:DeployToModsFolder=false
+          -p:CopyToUnityProject=false
+          -p:CreateReleaseZip=false
+
+      - name: Build clean mod packages
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runnerTemp = [System.IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          $modsRoot = [System.IO.Path]::GetFullPath((Join-Path $runnerTemp 'tajscoi-mods'))
+          if (-not $modsRoot.StartsWith($runnerTemp + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+              throw "Unsafe package staging path: $modsRoot"
+          }
+          if (Test-Path -LiteralPath $modsRoot) {
+              Remove-Item -LiteralPath $modsRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $modsRoot | Out-Null
+
+          dotnet build TajsCOI.slnx `
+            --configuration Release `
+            --no-restore `
+            -p:ContinuousIntegrationBuild=true `
+            -p:COIModsDir="$modsRoot" `
+            -p:DeployToModsFolder=true `
+            -p:CopyToUnityProject=false `
+            -p:CreateReleaseZip=false
+          if ($LASTEXITCODE -ne 0) {
+              throw "Package build failed with exit code $LASTEXITCODE."
+          }
+
+          ./scripts/verify-mod-packages.ps1 -ModsRoot $modsRoot

@@ -14,4 +14,19 @@
     <AssemblyName>$(ModId)</AssemblyName>
     <RootNamespace>TajsCOI.Core</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PrimaryModDll Include="0Harmony.dll"/>
+    <PrimaryModDll Include="TajsCOI.Common.dll"/>
+    <PrimaryModDll Include="$(TargetFileName)"/>
+
+    <ProjectReference Include="..\..\Libraries\TajsCOI.Common\TajsCOI.Common.csproj"/>
+    <PackageReference Include="Lib.Harmony" Version="2.4.2"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>TajsCOI.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>

@@ -7,6 +7,9 @@
 using Mafi;
 using Mafi.Core.Console;
 using Mafi.Core.Simulation;
+using TajsCOI.Common.Compatibility;
+using TajsCOI.Common.Logging;
+using TajsCOI.Common.Runtime;
 using TajsCOI.Tweaks.Interop;
 
 #endregion
@@ -20,16 +23,34 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
     public sealed class UnlockedSpeedService
     {
         private readonly SimLoopEvents m_simLoop;
+        private readonly ITajsLogger m_log;
 
-        public UnlockedSpeedService(SimLoopEvents simLoop)
+        public UnlockedSpeedService(SimLoopEvents simLoop, ITajsRuntime runtime)
         {
             m_simLoop = simLoop;
+            m_log = runtime.GetLogger("TajsTweaks", "UnlockedSpeed");
 
             if (!SimLoopAccess.CanSetRequestedSpeed)
             {
-                Log.Error(
-                    "TajsTweaks/UnlockedSpeed: Required SimLoopEvents speed/adaptive-mode interop was not found. " +
-                    "The game probably changed its simulation internals.");
+                const string reason = "The private game contract changed or could not be resolved.";
+                m_log.Error(reason + " " + SimLoopAccess.BindingStatus);
+                runtime.ReportCompatibility(new CompatibilityReport(
+                    "TajsTweaks",
+                    "UnlockedSpeed",
+                    CompatibilityState.Disabled,
+                    "SimLoopEvents requested-speed and adaptive-mode setters",
+                    SimLoopAccess.BindingStatus,
+                    reason));
+            }
+            else
+            {
+                runtime.ReportCompatibility(new CompatibilityReport(
+                    "TajsTweaks",
+                    "UnlockedSpeed",
+                    CompatibilityState.Compatible,
+                    "SimLoopEvents requested-speed and adaptive-mode setters",
+                    SimLoopAccess.BindingStatus,
+                    "All required private bindings resolved."));
             }
         }
 
@@ -48,6 +69,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
 
             if (!SimLoopAccess.TrySetRequestedSpeedUncapped(m_simLoop, speed, out string error))
             {
+                m_log.ErrorOnce("Failed to set requested simulation speed: " + error);
                 return $"Failed to set requested simulation speed: {error}";
             }
 

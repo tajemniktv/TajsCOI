@@ -22,7 +22,6 @@ namespace TajsCOI.Tweaks
     {
         public TajsTweaksMod(ModManifest manifest) : base(manifest)
         {
-            Log.Info("TajsTweaks: constructed");
         }
 
         public override void RegisterPrototypes(ProtoRegistrator registrator)

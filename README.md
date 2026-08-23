@@ -19,9 +19,7 @@ TajsCOI/
 │  │  └─ TajsPerformance/      # future, when there are proven fixes
 │  │
 │  └─ Tests/
-│     ├─ TajsCOI.Common.Tests/
-│     ├─ TajsTweaks.Tests/
-│     └─ TajsProfiler.Tests/
+│     └─ TajsCOI.Tests/
 │
 ├─ build.ps1
 ├─ build-and-run.ps1
@@ -30,19 +28,16 @@ TajsCOI/
 └─ TajsCOI.slnx
 ```
 
-The intended dependency direction is:
+The compile-time contract dependency is:
 
 ```text
-                 TajsCOI.Common
-                       ↑
-                    TajsCore
-                       ↑
-          ┌────────────┼────────────┐
-          │            │            │
-     TajsTweaks   TajsMod1   TajsWhateverMod2
+                  TajsCOI.Common
+             ┌─────────┼──────────┐
+             ↑         ↑          ↑
+         TajsCore  TajsTweaks  TajsProfiler
 ```
 
-Mods should not depend on each other by default. They share infrastructure through `TajsCore` and `TajsCOI.Common` instead.
+At runtime, Tweaks and Profiler manifest-depend on `TajsCore`, and their services obtain the Common `ITajsRuntime` contract from Captain of Industry's dependency resolver. They do not reference `TajsCore.dll`.
 
 ## Projects
 
@@ -50,18 +45,13 @@ Mods should not depend on each other by default. They share infrastructure throu
 
 `TajsCOI.Common` is a normal .NET library and **not** a Captain of Industry mod.
 
-It contains boring, reusable building blocks that make sense in more than one TajsCOI mod, for example:
+Its initial public surface is deliberately small:
 
-- small collection and utility types;
-- generic timing and metric primitives;
-- bounded histories and histograms;
-- formatting helpers;
-- version/signature description types;
-- generic reflection helpers;
-- small Harmony helper abstractions;
-- shared result/error types.
+- immutable compatibility reports and states;
+- the `ITajsRuntime` and `ITajsLogger` contracts;
+- assembly build-provenance reading with explicit physical-path support.
 
-Common must not own gameplay features, mod lifecycle, global mutable game state, or Captain of Industry feature-specific knowledge.
+Common has no MaFi or Harmony dependency. It must not own gameplay features, mod lifecycle, global mutable game state, or Captain of Industry feature-specific knowledge.
 
 A useful rule is: **if only one mod uses it, it stays in that mod.** Do not promote code into Common merely because it could theoretically be reusable someday.
 
@@ -73,7 +63,7 @@ It exists once per game process and provides suite-level infrastructure such as:
 
 - mod/runtime lifecycle coordination;
 - shared compatibility and game-version checks;
-- Harmony runtime/patch coordination;
+- shared Harmony runtime packaging and version diagnostics;
 - logging infrastructure;
 - console-command infrastructure;
 - TajsCOI mod discovery/registration;
@@ -84,7 +74,7 @@ It exists once per game process and provides suite-level infrastructure such as:
 
 Installing Core by itself should make essentially no gameplay-visible difference.
 
-`TajsCOI.Common` is the library layer below Core. The intended packaging model is that Core owns the runtime copy of the Common assembly while other TajsCOI mods depend on Core. The exact Captain of Industry loader/dependency behavior for shared assemblies must be validated before this packaging contract is treated as final.
+`TajsCOI.Common` is the contract layer below Core. Core loads `0Harmony.dll`, `TajsCOI.Common.dll`, and `TajsCore.dll` in that explicit order. Other TajsCOI mods compile against Common, manifest-depend on Core, and do not deploy private copies of these shared assemblies.
 
 ### TajsTweaks
 

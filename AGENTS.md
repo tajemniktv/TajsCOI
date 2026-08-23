@@ -23,13 +23,15 @@ src/
 └─ Tests/
 ```
 
-Dependency direction:
+Compile-time contract dependency:
 
 ```text
-TajsCOI.Common <- TajsCore <- TajsTweaks
-                           <- TajsProfiler
-                           <- TajsPerformance
+                 TajsCOI.Common
+       ┌─────────┬─────┴─────┬───────────┐
+   TajsCore  TajsTweaks  TajsProfiler  TajsPerformance
 ```
+
+Tweaks, Profiler, and Performance manifest-depend on Core but must not compile-reference `TajsCore.dll`. Runtime services inject Common's `ITajsRuntime` through the CoI dependency resolver.
 
 ## Project responsibilities
 
@@ -43,7 +45,6 @@ Allowed:
 - collections;
 - metric/timing primitives used by multiple mods;
 - generic reflection helpers;
-- generic Harmony helpers;
 - version/signature description types;
 - shared result/error abstractions;
 - formatting helpers genuinely reused across mods.
@@ -75,7 +76,7 @@ Allowed responsibilities:
 
 Installing only TajsCore should produce essentially no gameplay-visible change.
 
-`TajsCOI.Common` is a library below Core, not a second mod. The intended runtime packaging is for Core to own the Common assembly; verify Captain of Industry dependency/assembly resolution before relying on this contract in shipping builds.
+`TajsCOI.Common` is a library below Core, not a second mod. Core owns and explicitly loads the runtime copies of Harmony, Common, and Core in dependency order. Dependent mods reference Common with copy-local disabled and receive Core services only through Common interfaces.
 
 ### TajsTweaks
 
@@ -380,4 +381,3 @@ Also:
 - do not repeatedly read skills, memory, status, logs, builds, or reports when nothing changed;
 - do not equate a large `Promise.allSettled` batch with efficiency;
 - preserve unrelated dirty-worktree changes.
-

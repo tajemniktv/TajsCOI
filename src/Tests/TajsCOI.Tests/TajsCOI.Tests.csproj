@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <AssemblyName>TajsCOI.Tests</AssemblyName>
+    <RootNamespace>TajsCOI.Tests</RootNamespace>
+
+    <COIRoot Condition="'$(COI_ROOT)' != ''">$(COI_ROOT)</COIRoot>
+    <COIManagedDir>$(COIRoot)\Captain of Industry_Data\Managed</COIManagedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="All"/>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1"/>
+    <PackageReference Include="Lib.Harmony" Version="2.4.2"/>
+    <PackageReference Include="xunit" Version="2.9.3"/>
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="All"/>
+
+    <ProjectReference Include="..\..\Libraries\TajsCOI.Common\TajsCOI.Common.csproj"/>
+    <ProjectReference Include="..\..\Mods\TajsCore\TajsCore.csproj"/>
+
+    <Reference Include="Mafi">
+      <HintPath>$(COIManagedDir)\Mafi.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Mafi.Core">
+      <HintPath>$(COIManagedDir)\Mafi.Core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Mafi.Base">
+      <HintPath>$(COIManagedDir)\Mafi.Base.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>ModVersion</_Parameter1>
+      <_Parameter2>9.8.7</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildConfiguration</_Parameter1>
+      <_Parameter2>Test</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>GitCommit</_Parameter1>
+      <_Parameter2>abcdef123456</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

@@ -22,6 +22,11 @@ namespace TajsCOI.Tweaks.Interop
         internal static bool CanSetRequestedSpeed =>
             s_adaptiveModeSetter is not null && (s_simSpeedSetter is not null || s_simSpeedBackingField is not null);
 
+        internal static string BindingStatus =>
+            $"adaptive setter={(s_adaptiveModeSetter is null ? "missing" : "resolved")}, " +
+            $"requested-speed setter={(s_simSpeedSetter is null ? "missing" : "resolved")}, " +
+            $"requested-speed backing field={(s_simSpeedBackingField is null ? "missing" : "resolved")}";
+
         internal static bool TrySetRequestedSpeedUncapped(SimLoopEvents simLoop, int speed, out string error)
         {
             if (s_adaptiveModeSetter is null)

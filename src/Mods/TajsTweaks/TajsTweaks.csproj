@@ -26,6 +26,8 @@
 
   <ItemGroup>
     <ModDependency Include="TajsCore&gt;=0.1.0"/>
-    <ProjectReference Include="..\TajsCore\TajsCore.csproj" ReferenceOutputAssembly="false"/>
+    <ProjectReference Include="..\..\Libraries\TajsCOI.Common\TajsCOI.Common.csproj">
+      <Private>false</Private>
+    </ProjectReference>
   </ItemGroup>
 </Project>

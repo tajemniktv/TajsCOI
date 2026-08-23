@@ -4,7 +4,6 @@
 
 #region
 
-using Mafi;
 using Mafi.Core.Mods;
 
 #endregion
@@ -18,7 +17,6 @@ namespace TajsCOI.Profiler
     {
         public TajsProfilerMod(ModManifest manifest) : base(manifest)
         {
-            Log.Info("TajsProfiler: constructed");
         }
 
         public override void RegisterPrototypes(ProtoRegistrator registrator)
