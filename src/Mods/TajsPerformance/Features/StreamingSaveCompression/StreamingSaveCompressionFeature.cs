@@ -83,13 +83,15 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
 
             Stopwatch timer = Stopwatch.StartNew();
             ulong mainHeader = (ulong)s_mainHeaderField!.GetValue(null);
+            ISaveCompressor compressor = SaveLoadFileUtils.GetCompressorOrThrow(compression).Value;
             StreamingSaveResult result = StreamingSaveWriter.Write(
                 writer.FinalizeAndReturnStream(),
                 outputStream,
                 mainHeader,
                 CurrentSaveVersion,
                 (int)compression,
-                StreamingSaveCompressionSettings.SkipUncompressedChecksum);
+                StreamingSaveCompressionSettings.SkipUncompressedChecksum,
+                compressor.CreateCompressingStream);
             timer.Stop();
             try
             {

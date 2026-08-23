@@ -148,6 +148,35 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void StreamingSaveWriterUsesProvidedGameCompressorFactory()
+        {
+            bool invoked = false;
+            byte[] payload = Encoding.UTF8.GetBytes("factory-backed gzip");
+            using var input = new MemoryStream(payload);
+            using var output = new MemoryStream();
+
+            StreamingSaveWriter.Write(
+                input,
+                output,
+                7,
+                328,
+                1,
+                false,
+                stream =>
+                {
+                    invoked = true;
+                    return new GZipStream(stream, CompressionLevel.Optimal, leaveOpen: true);
+                });
+
+            Assert.True(invoked);
+            output.Position = StreamingSaveWriter.HeaderSize;
+            using var gzip = new GZipStream(output, CompressionMode.Decompress, leaveOpen: true);
+            using var restored = new MemoryStream();
+            gzip.CopyTo(restored);
+            Assert.Equal(payload, restored.ToArray());
+        }
+
+        [Fact]
         public void StreamingSaveWriterChecksumDetectsCompressedCorruption()
         {
             byte[] payload = Enumerable.Range(0, 50_000).Select(x => (byte)(x * 17)).ToArray();

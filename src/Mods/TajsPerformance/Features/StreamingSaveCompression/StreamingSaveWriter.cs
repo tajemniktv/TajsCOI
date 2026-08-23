@@ -19,7 +19,8 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
             ulong fileHeader,
             int saveVersion,
             int compressionType,
-            bool skipUncompressedChecksum)
+            bool skipUncompressedChecksum,
+            Func<Stream, Stream>? createCompressor = null)
         {
             if (uncompressedInput is null)
             {
@@ -58,7 +59,9 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
                 WriteHeader(output, fileHeader, saveVersion, compressionType, 0, 0, uncompressedBytes, uncompressedChecksum);
 
                 var crcOutput = new Crc32ForwardingWriteStream(output);
-                using (var gzip = new GZipStream(crcOutput, CompressionLevel.Optimal, leaveOpen: true))
+                using (Stream gzip = createCompressor is null
+                    ? new GZipStream(crcOutput, CompressionLevel.Optimal, leaveOpen: true)
+                    : createCompressor(crcOutput))
                 {
                     uncompressedInput.CopyTo(gzip, 64 * 1024);
                 }

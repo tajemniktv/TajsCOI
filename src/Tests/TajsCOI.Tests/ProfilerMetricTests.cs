@@ -6,6 +6,8 @@ using System.Reflection;
 using System.Collections.Generic;
 using System.Linq;
 using System;
+using System.IO;
+using System.IO.Compression;
 using HarmonyLib;
 using Mafi.Core.SaveGame;
 using TajsCOI.Profiler.Core;
@@ -74,6 +76,36 @@ namespace TajsCOI.Tests
                     BindingFlags.Static | BindingFlags.NonPublic)!;
                 var stages = (System.Collections.Generic.Dictionary<string, StageAccumulator>)stagesField.GetValue(null)!;
                 Assert.True(stages[RuntimePerformanceDiagnosticsService.ChecksumValidation].Snapshot().Count >= 1);
+
+                FieldInfo loadScope = typeof(RuntimePerformanceDiagnosticsService).GetField(
+                    "s_mainLoadStartDepth",
+                    BindingFlags.Static | BindingFlags.NonPublic)!;
+                byte[] payload = Enumerable.Range(0, 20_000).Select(x => (byte)x).ToArray();
+                using var compressed = new MemoryStream();
+                using (var gzip = new GZipStream(compressed, CompressionLevel.Optimal, leaveOpen: true))
+                {
+                    gzip.Write(payload, 0, payload.Length);
+                }
+                compressed.Position = 0;
+                loadScope.SetValue(null, 1);
+                try
+                {
+                    Stream decompressor = new GZipStream(compressed, CompressionMode.Decompress, leaveOpen: true);
+                    MethodInfo wrap = typeof(RuntimePerformanceDiagnosticsService).GetMethod(
+                        "WrapDecompressingStream",
+                        BindingFlags.Static | BindingFlags.NonPublic)!;
+                    object[] arguments = { decompressor };
+                    wrap.Invoke(null, arguments);
+                    using Stream measured = (Stream)arguments[0];
+                    using var restored = new MemoryStream();
+                    measured.CopyTo(restored);
+                    Assert.Equal(payload, restored.ToArray());
+                }
+                finally
+                {
+                    loadScope.SetValue(null, 0);
+                }
+                Assert.True(stages[RuntimePerformanceDiagnosticsService.LoadDecompression].Snapshot().Count >= 1);
 
             }
             finally

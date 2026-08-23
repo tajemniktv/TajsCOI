@@ -9,6 +9,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -36,9 +37,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         internal const string SaveSerialization = "save.serialization";
         internal const string SaveFinalize = "save.compression-write-total";
+        internal const string SaveCompression = "save.compression-io";
         internal const string SaveChecksum = "save.checksum-nested";
         internal const string ChecksumValidation = "load.checksum-validation";
-        internal const string LoadHeaders = "load.decompress-headers-config";
+        internal const string LoadHeaders = "load.headers-config";
+        internal const string LoadDecompression = "load.decompression-io";
         internal const string LoadFinalize = "load.deserialize-resolve-finalize";
         internal const string LoadDeserialization = "load.deserialization";
         internal const string LoadResolverFinalization = "load.resolver-finalization";
@@ -48,9 +51,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
         {
             SaveSerialization,
             SaveFinalize,
+            SaveCompression,
             SaveChecksum,
             ChecksumValidation,
             LoadHeaders,
+            LoadDecompression,
             LoadFinalize,
             LoadDeserialization,
             LoadResolverFinalization,
@@ -76,6 +81,12 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         [ThreadStatic]
         private static int s_saveDataDepth;
+
+        [ThreadStatic]
+        private static int s_mainSaveFinalizeDepth;
+
+        [ThreadStatic]
+        private static int s_mainLoadStartDepth;
 
         [ThreadStatic]
         private static GcPassState? s_gcPassState;
@@ -324,15 +335,78 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 required += PatchTimed(harmony, "Mafi.Core.SaveGame.SaveLoadFileUtils", "Mafi.Core", "ValidateChecksum", ChecksumValidation, typeof(string)) ? 1 : 0;
                 required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "StartGameLoad", LoadHeaders) ? 1 : 0;
                 required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "ContinueGameLoad", LoadHeaders) ? 1 : 0;
+                required += PatchCompressionIo(
+                    harmony,
+                    "Mafi.Core.SaveGame.GameSaver",
+                    "FinishSaveWriteToStream",
+                    "CreateCompressingStream",
+                    nameof(BeginMainSaveFinalize),
+                    nameof(EndMainSaveFinalize),
+                    nameof(WrapCompressingStream)) ? 1 : 0;
+                required += PatchCompressionIo(
+                    harmony,
+                    "Mafi.Core.SaveGame.GameLoader",
+                    "StartGameLoad",
+                    "CreateDecompressingStream",
+                    nameof(BeginMainLoadStart),
+                    nameof(EndMainLoadStart),
+                    nameof(WrapDecompressingStream)) ? 1 : 0;
                 required += PatchIterator(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "FinishGameLoadAndDisposeTimeSliced", LoadFinalize) ? 1 : 0;
                 required += PatchTimed(harmony, "Mafi.DependencyResolver", "Mafi", "DeserializeInto", LoadDeserialization) ? 1 : 0;
                 required += PatchIterator(harmony, "Mafi.Serialization.BlobReader", "Mafi", "FinalizeLoadingTimeSliced", LoadResolverFinalization) ? 1 : 0;
                 optional += PatchTimed(harmony, "Mafi.Unity.Main", "Mafi.Unity", "collectGarbageDrainingFinalizers", SceneGarbageCollection) ? 1 : 0;
                 optional += PatchSceneGcPasses(harmony) ? 1 : 0;
 
-                s_patchSummary = new PatchSummary(9, required, 2, optional);
+                s_patchSummary = new PatchSummary(11, required, 2, optional);
                 s_patchAttempted = true;
                 return s_patchSummary;
+            }
+        }
+
+        private static bool PatchCompressionIo(
+            Harmony harmony,
+            string outerTypeName,
+            string outerMethodName,
+            string factoryMethodName,
+            string beginCallback,
+            string endCallback,
+            string wrapCallback)
+        {
+            try
+            {
+                Type? outerType = FindType(outerTypeName, "Mafi.Core");
+                Type? compressorType = FindType("Mafi.Core.SaveGame.GzipSaveCompressor", "Mafi.Core");
+                MethodInfo? outer = outerType?.GetMethod(
+                    outerMethodName,
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                MethodInfo? factory = compressorType?.GetMethod(
+                    factoryMethodName,
+                    BindingFlags.Instance | BindingFlags.Public,
+                    null,
+                    new[] { typeof(Stream) },
+                    null);
+                if (outer is null || factory is null || !typeof(Stream).IsAssignableFrom(factory.ReturnType))
+                {
+                    return false;
+                }
+
+                var begin = new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), beginCallback)
+                {
+                    priority = Priority.First,
+                };
+                harmony.Patch(
+                    outer,
+                    prefix: begin,
+                    finalizer: new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), endCallback));
+                harmony.Patch(
+                    factory,
+                    postfix: new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), wrapCallback));
+                return true;
+            }
+            catch (Exception exception)
+            {
+                LogCallbackFailure(exception, $"patch gzip I/O for {outerTypeName}.{outerMethodName}");
+                return false;
             }
         }
 
@@ -583,6 +657,52 @@ namespace TajsCOI.Profiler.Probes.Runtime
         }
 
         private static readonly ConcurrentDictionary<MethodBase, string> TimedTargets = new();
+
+        private static void BeginMainSaveFinalize() => s_mainSaveFinalizeDepth++;
+
+        private static Exception? EndMainSaveFinalize(Exception? __exception)
+        {
+            s_mainSaveFinalizeDepth = Math.Max(0, s_mainSaveFinalizeDepth - 1);
+            return __exception;
+        }
+
+        private static void BeginMainLoadStart() => s_mainLoadStartDepth++;
+
+        private static Exception? EndMainLoadStart(Exception? __exception)
+        {
+            s_mainLoadStartDepth = Math.Max(0, s_mainLoadStartDepth - 1);
+            return __exception;
+        }
+
+        private static void WrapCompressingStream(ref Stream __result)
+        {
+            try
+            {
+                if (s_mainSaveFinalizeDepth > 0 && __result is not TimedIoStream)
+                {
+                    __result = new TimedIoStream(__result, s_stages[SaveCompression]);
+                }
+            }
+            catch (Exception exception)
+            {
+                LogCallbackFailure(exception, "wrap save compression stream");
+            }
+        }
+
+        private static void WrapDecompressingStream(ref Stream __result)
+        {
+            try
+            {
+                if (s_mainLoadStartDepth > 0 && __result is not TimedIoStream)
+                {
+                    __result = new TimedIoStream(__result, s_stages[LoadDecompression]);
+                }
+            }
+            catch (Exception exception)
+            {
+                LogCallbackFailure(exception, "wrap load decompression stream");
+            }
+        }
 
         private static void BeginSaveData(out CallbackState? __state)
         {
@@ -916,6 +1036,96 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 Gen0Collections = GC.CollectionCount(0);
                 Gen1Collections = GC.CollectionCount(1);
                 Gen2Collections = GC.CollectionCount(2);
+            }
+        }
+
+        private sealed class TimedIoStream : Stream
+        {
+            private readonly Stream m_inner;
+            private readonly StageAccumulator m_accumulator;
+            private int m_disposed;
+
+            internal TimedIoStream(Stream inner, StageAccumulator accumulator)
+            {
+                m_inner = inner ?? throw new ArgumentNullException(nameof(inner));
+                m_accumulator = accumulator ?? throw new ArgumentNullException(nameof(accumulator));
+            }
+
+            public override bool CanRead => m_inner.CanRead;
+            public override bool CanSeek => m_inner.CanSeek;
+            public override bool CanWrite => m_inner.CanWrite;
+            public override long Length => m_inner.Length;
+            public override long Position
+            {
+                get => m_inner.Position;
+                set => m_inner.Position = value;
+            }
+
+            public override void Flush() => Measure(m_inner.Flush);
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                int result = 0;
+                Measure(() => result = m_inner.Read(buffer, offset, count));
+                return result;
+            }
+
+            public override long Seek(long offset, SeekOrigin origin) => m_inner.Seek(offset, origin);
+            public override void SetLength(long value) => m_inner.SetLength(value);
+
+            public override void Write(byte[] buffer, int offset, int count) =>
+                Measure(() => m_inner.Write(buffer, offset, count));
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing && Interlocked.Exchange(ref m_disposed, 1) == 0)
+                {
+                    Measure(m_inner.Dispose);
+                }
+                base.Dispose(disposing);
+            }
+
+            private void Measure(Action operation)
+            {
+                long started;
+                long managedBefore;
+                int gen0;
+                int gen1;
+                int gen2;
+                try
+                {
+                    started = Stopwatch.GetTimestamp();
+                    managedBefore = GC.GetTotalMemory(false);
+                    gen0 = GC.CollectionCount(0);
+                    gen1 = GC.CollectionCount(1);
+                    gen2 = GC.CollectionCount(2);
+                }
+                catch (Exception exception)
+                {
+                    LogCallbackFailure(exception, "gzip I/O timing prefix");
+                    operation();
+                    return;
+                }
+                try
+                {
+                    operation();
+                }
+                finally
+                {
+                    try
+                    {
+                        m_accumulator.Record(
+                            Stopwatch.GetTimestamp() - started,
+                            GC.GetTotalMemory(false) - managedBefore,
+                            GC.CollectionCount(0) - gen0,
+                            GC.CollectionCount(1) - gen1,
+                            GC.CollectionCount(2) - gen2);
+                    }
+                    catch (Exception exception)
+                    {
+                        LogCallbackFailure(exception, "gzip I/O timing result");
+                    }
+                }
             }
         }
 
