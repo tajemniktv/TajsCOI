@@ -166,8 +166,12 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
         public DumpSearchDiagnosticsService(IGameConsole console, ITajsRuntime runtime)
         {
+            // Static Harmony callbacks publish deferred reports through these process-lifetime
+            // services; CoI creates this global dependency once per game process.
+#pragma warning disable S2696
             s_console = console;
             s_log = runtime.GetLogger("TajsProfiler", "Dumping");
+#pragma warning restore S2696
             EnsurePatchesApplied();
             ReportCompatibility(runtime);
         }

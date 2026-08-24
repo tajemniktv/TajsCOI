@@ -91,7 +91,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
         public RuntimePerformanceDiagnosticsService(DependencyResolver resolver, ITajsRuntime runtime)
         {
             m_resolver = resolver;
+            // Harmony callbacks are static, so this process-lifetime global dependency publishes
+            // its component logger once for fail-open callback diagnostics.
+#pragma warning disable S2696
             s_log = runtime.GetLogger("TajsProfiler", "RuntimePerformance");
+#pragma warning restore S2696
 
             PatchSummary summary = InstallPatches();
             CompatibilityState state = summary.RequiredInstalled == summary.RequiredExpected
