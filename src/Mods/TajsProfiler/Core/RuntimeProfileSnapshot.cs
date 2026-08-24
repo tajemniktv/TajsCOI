@@ -14,9 +14,15 @@ namespace TajsCOI.Profiler.Core
             long sequence,
             long resetGeneration,
             DateTime capturedUtc,
+            long processWorkingSetBytes,
+            long processPrivateBytes,
+            long processCpuMilliseconds,
             long managedBytes,
+            long monoUsedBytes,
+            long monoHeapBytes,
             long unityAllocatedBytes,
             long unityReservedBytes,
+            long unityUnusedReservedBytes,
             long unityGraphicsBytes,
             ProductRendererMetric products,
             IReadOnlyDictionary<string, StageMetric> stages,
@@ -27,9 +33,15 @@ namespace TajsCOI.Profiler.Core
             Sequence = sequence;
             ResetGeneration = resetGeneration;
             CapturedUtc = capturedUtc;
+            ProcessWorkingSetBytes = processWorkingSetBytes;
+            ProcessPrivateBytes = processPrivateBytes;
+            ProcessCpuMilliseconds = processCpuMilliseconds;
             ManagedBytes = managedBytes;
+            MonoUsedBytes = monoUsedBytes;
+            MonoHeapBytes = monoHeapBytes;
             UnityAllocatedBytes = unityAllocatedBytes;
             UnityReservedBytes = unityReservedBytes;
+            UnityUnusedReservedBytes = unityUnusedReservedBytes;
             UnityGraphicsBytes = unityGraphicsBytes;
             Products = products;
             Stages = stages;
@@ -41,9 +53,15 @@ namespace TajsCOI.Profiler.Core
         internal long Sequence { get; }
         internal long ResetGeneration { get; }
         internal DateTime CapturedUtc { get; }
+        internal long ProcessWorkingSetBytes { get; }
+        internal long ProcessPrivateBytes { get; }
+        internal long ProcessCpuMilliseconds { get; }
         internal long ManagedBytes { get; }
+        internal long MonoUsedBytes { get; }
+        internal long MonoHeapBytes { get; }
         internal long UnityAllocatedBytes { get; }
         internal long UnityReservedBytes { get; }
+        internal long UnityUnusedReservedBytes { get; }
         internal long UnityGraphicsBytes { get; }
         internal ProductRendererMetric Products { get; }
         internal IReadOnlyDictionary<string, StageMetric> Stages { get; }

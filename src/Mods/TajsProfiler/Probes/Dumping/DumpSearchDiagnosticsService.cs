@@ -29,6 +29,7 @@ using Mafi.Core.Vehicles.Trucks.JobProviders;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
+using TajsCOI.Profiler.Probes.Runtime;
 
 #endregion
 
@@ -64,7 +65,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
         private static readonly object s_profileGate = new();
         private static readonly List<ProfileSnapshot> s_profileHistory = new(MaxProfileHistory);
 
-        private static IGameConsole? s_console;
+        private static WeakReference<IGameConsole>? s_console;
         private static ITajsLogger? s_log;
 
         private static int s_patchesApplied;
@@ -166,12 +167,16 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
         public DumpSearchDiagnosticsService(IGameConsole console, ITajsRuntime runtime)
         {
-            // Static Harmony callbacks publish deferred reports through these process-lifetime
-            // services; CoI creates this global dependency once per game process.
+            // Static Harmony callbacks publish deferred reports through a weak scene-console
+            // reference. CoI recreates this dependency per gameplay resolver, so this must not
+            // retain the old scene through console event subscribers.
 #pragma warning disable S2696
-            s_console = console;
+            s_console = new WeakReference<IGameConsole>(console);
             s_log = runtime.GetLogger("TajsProfiler", "Dumping");
 #pragma warning restore S2696
+            RuntimePerformanceDiagnosticsService.RecordLifecycleCheckpoint("dump-service/current-console");
+            RuntimePerformanceDiagnosticsService.RecordWeakLifecycleWatch("dump-service/console", console);
+            RuntimePerformanceDiagnosticsService.RecordWeakLifecycleWatch("dump-service/service", this);
             EnsurePatchesApplied();
             ReportCompatibility(runtime);
         }
@@ -1411,7 +1416,10 @@ namespace TajsCOI.Profiler.Probes.Dumping
             try
             {
                 string prefix = automatic ? "[TajsProfiler] " : string.Empty;
-                s_console?.WriteLine(prefix + FormatProfileReport(profile), ColorRgba.White);
+                if (s_console?.TryGetTarget(out IGameConsole? console) == true)
+                {
+                    console.WriteLine(prefix + FormatProfileReport(profile), ColorRgba.White);
+                }
             }
             catch (Exception ex)
             {

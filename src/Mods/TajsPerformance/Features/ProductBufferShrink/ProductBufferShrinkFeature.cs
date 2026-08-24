@@ -23,9 +23,20 @@ namespace TajsCOI.Performance.Features.ProductBufferShrink
         public string Id => "ProductBufferShrink";
         public string ConfigKey => ProductBufferShrinkSettings.EnableConfigKey;
 
+        public bool IsProcessPatchInstalled()
+        {
+            MethodInfo? target = FindTarget();
+            MethodInfo? patchMethod = AccessTools.Method(typeof(ProductBufferShrinkFeature), nameof(BeforeUploadFrame));
+            return target is not null && patchMethod is not null &&
+                ProcessHarmonyPatchOwnership.HasExpected(
+                    Harmony.GetPatchInfo(target)?.Prefixes,
+                    HarmonyId,
+                    patchMethod);
+        }
+
         public void Install(ITajsRuntime runtime, ITajsLogger log)
         {
-            MethodInfo? target = AccessTools.Method(typeof(ProductsRenderer), "uploadFrame", Type.EmptyTypes);
+            MethodInfo? target = FindTarget();
             if (target is null || target.IsStatic || target.ReturnType != typeof(void))
             {
                 throw new MissingMethodException(typeof(ProductsRenderer).FullName, "uploadFrame()");
@@ -39,9 +50,38 @@ namespace TajsCOI.Performance.Features.ProductBufferShrink
             // Target: ProductsRenderer.uploadFrame(). This behavior-changing prefix releases only
             // validated remappable buffers after a sustained low-utilization window; a missing target
             // disables installation, and the feature-specific Harmony owner lives for the process.
-            new Harmony(HarmonyId).Patch(
-                target,
-                prefix: new HarmonyMethod(typeof(ProductBufferShrinkFeature), nameof(BeforeUploadFrame)));
+            MethodInfo patchMethod = AccessTools.Method(typeof(ProductBufferShrinkFeature), nameof(BeforeUploadFrame))!;
+            lock (s_installGate)
+            {
+                Patches? patches = Harmony.GetPatchInfo(target);
+                if (ProcessHarmonyPatchOwnership.HasExpected(patches?.Prefixes, HarmonyId, patchMethod))
+                {
+                    log.Info("Already installed / compatible; the process-lifetime buffer patch was not applied again.");
+                    runtime.ReportCompatibility(new CompatibilityReport(
+                        "TajsPerformance", Id, CompatibilityState.Compatible,
+                        "Existing process-lifetime Harmony owner and prefix method",
+                        "Already installed / compatible",
+                        "The validated 0.8.7a buffer patch remains active; no duplicate prefix was registered."));
+                    return;
+                }
+
+                if (ProcessHarmonyPatchOwnership.HasOwner(patches?.Prefixes, HarmonyId))
+                {
+                    throw new InvalidOperationException(
+                        $"Existing Harmony owner '{HarmonyId}' has an unexpected buffer prefix ({ProcessHarmonyPatchOwnership.Describe(patches)}).");
+                }
+
+                var harmony = new Harmony(HarmonyId);
+                try
+                {
+                    harmony.Patch(target, prefix: new HarmonyMethod(patchMethod));
+                }
+                catch
+                {
+                    harmony.Unpatch(target, HarmonyPatchType.Prefix, HarmonyId);
+                    throw;
+                }
+            }
 
             runtime.ReportCompatibility(new CompatibilityReport(
                 "TajsPerformance",
@@ -51,6 +91,10 @@ namespace TajsCOI.Performance.Features.ProductBufferShrink
                 $"Sustained under-utilization observer installed ({ProductBufferShrinkSettings.ObservationFrames} frames)",
                 "Only remappable instance buffers can shrink; owner and persistent-slot identity buffers are untouched."));
         }
+
+        private static readonly object s_installGate = new();
+
+        private static MethodInfo? FindTarget() => AccessTools.Method(typeof(ProductsRenderer), "uploadFrame", Type.EmptyTypes);
 
         private static void BeforeUploadFrame(
             ProductsRenderer __instance,

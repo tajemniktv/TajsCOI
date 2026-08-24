@@ -5,6 +5,7 @@
 using System.Collections.Generic;
 using TajsCOI.Common.Settings;
 using TajsCOI.Performance.Features.LowProductTextures;
+using TajsCOI.Performance.Features.LazyResourceVisualization;
 using TajsCOI.Performance.Features.ManualAssetTrim;
 using TajsCOI.Performance.Features.ProductBufferShrink;
 using TajsCOI.Performance.Features.SaveLoadReadBuffer;
@@ -46,6 +47,11 @@ namespace TajsCOI.Performance
                 ModId, ModDisplayName, LowProductTexturesSettings.EnableConfigKey,
                 "Low product textures",
                 "Uses CoI's normal texture-array rebuild path with lower-resolution product texture slices.",
+                false, "Rendering", applyMode: SettingApplyMode.RestartGame, flags: CandidateFlags),
+            SettingDescriptor.Boolean(
+                ModId, ModDisplayName, LazyResourceVisualizationSettings.EnableConfigKey,
+                "Lazy resource visualization build",
+                "Defers the hidden whole-map resource-bar build until the first resource overlay activation.",
                 false, "Rendering", applyMode: SettingApplyMode.RestartGame, flags: CandidateFlags),
             SettingDescriptor.Integer(
                 ModId, ModDisplayName, LowProductTexturesSettings.MipBiasConfigKey,

@@ -223,6 +223,13 @@ Use feature/probe hosts or similarly simple coordination so root mod classes do 
 
 Do not invent an elaborate framework that obscures Captain of Industry's real lifecycle. Internal lifecycle abstractions should map cleanly onto the game/mod loader lifecycle.
 
+Captain of Industry's process and gameplay-resolver lifetimes are different. Loaded assemblies,
+CLR statics, and Harmony patch tables survive process-wide, while `[GlobalDependency]` service
+instances, `DependencyResolver`, managers, renderers, console/UI objects, and `SimLoopEvents`
+belong to the current gameplay scene/resolver. Process-lifetime patches must be idempotent and
+process-scoped settings must be snapshotted; process-static state must not strongly retain a
+resolver-scoped object or callback target.
+
 ## Configuration
 
 Setting descriptors are owned by the feature or probe that owns the behavior. Shared contracts live

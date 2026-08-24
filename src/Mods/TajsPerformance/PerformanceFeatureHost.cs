@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Mafi;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
@@ -12,6 +13,7 @@ using TajsCOI.Common.Settings;
 using TajsCOI.Performance.Features.SaveLoadReadBuffer;
 using TajsCOI.Performance.Features.StreamingSaveCompression;
 using TajsCOI.Performance.Features.LowProductTextures;
+using TajsCOI.Performance.Features.LazyResourceVisualization;
 using TajsCOI.Performance.Features.ProductBufferShrink;
 
 namespace TajsCOI.Performance
@@ -23,25 +25,56 @@ namespace TajsCOI.Performance
     [GlobalDependency(RegistrationMode.AsSelf)]
     internal sealed class PerformanceFeatureHost
     {
-        private static readonly IReadOnlyList<IPerformanceFeature> s_features =
-            new IPerformanceFeature[]
+        private sealed class FeatureDefinition
+        {
+            internal FeatureDefinition(string id, string configKey, Func<IPerformanceFeature> create)
             {
-                new SaveLoadReadBufferFeature(),
-                new StreamingSaveCompressionFeature(),
-                new LowProductTexturesFeature(),
-                new ProductBufferShrinkFeature(),
+                Id = id;
+                ConfigKey = configKey;
+                Create = create;
+            }
+
+            internal string Id { get; }
+            internal string ConfigKey { get; }
+            internal Func<IPerformanceFeature> Create { get; }
+        }
+
+        private static readonly IReadOnlyList<FeatureDefinition> s_features =
+            new FeatureDefinition[]
+            {
+                new("SaveLoadReadBuffer", SaveLoadReadBufferSettings.EnableConfigKey, () => new SaveLoadReadBufferFeature()),
+                new("StreamingSaveCompression", StreamingSaveCompressionSettings.EnableConfigKey, () => new StreamingSaveCompressionFeature()),
+                new("LowProductTextures", LowProductTexturesSettings.EnableConfigKey, () => new LowProductTexturesFeature()),
+                new("LazyResourceVisualization", LazyResourceVisualizationSettings.EnableConfigKey, () => new LazyResourceVisualizationFeature()),
+                new("ProductBufferShrink", ProductBufferShrinkSettings.EnableConfigKey, () => new ProductBufferShrinkFeature()),
             };
+
+        private static readonly object s_processConfigGate = new();
+        private static IReadOnlyDictionary<string, bool>? s_processEnabled;
 
         public PerformanceFeatureHost(ITajsRuntime runtime, ITajsSettings settings)
         {
             PerformanceSettingsCatalog.RegisterAll(settings);
-            PerformanceSettingsCatalog.LoadStartupValues(settings);
+            IReadOnlyDictionary<string, bool> processEnabled = GetProcessConfiguration(settings);
 
-            foreach (IPerformanceFeature feature in s_features)
+            foreach (FeatureDefinition definition in s_features)
             {
-                ITajsLogger log = runtime.GetLogger(PerformanceSettingsCatalog.ModId, feature.Id);
-                if (!settings.Get<bool>(PerformanceSettingsCatalog.ModId, feature.ConfigKey))
+                IPerformanceFeature feature = definition.Create();
+                ITajsLogger log = runtime.GetLogger(PerformanceSettingsCatalog.ModId, definition.Id);
+                if (!processEnabled[definition.Id])
                 {
+                    if (TryIsProcessPatchInstalled(feature))
+                    {
+                        runtime.ReportCompatibility(new CompatibilityReport(
+                            PerformanceSettingsCatalog.ModId,
+                            feature.Id,
+                            CompatibilityState.Compatible,
+                            "Feature configuration is snapshotted for the process lifetime",
+                            "Existing process patch is still installed",
+                            "This feature is disabled for the next process; restart the game to remove the current patch."));
+                        continue;
+                    }
+
                     runtime.ReportCompatibility(new CompatibilityReport(
                         PerformanceSettingsCatalog.ModId,
                         feature.Id,
@@ -58,14 +91,18 @@ namespace TajsCOI.Performance
                 }
                 catch (Exception exception)
                 {
-                    log.Exception(exception, $"Feature '{feature.Id}' could not be installed; vanilla behavior remains active.");
+                    bool existingPatch = TryIsProcessPatchInstalled(feature);
+                    string status = existingPatch
+                        ? "an existing compatible process patch remains active"
+                        : "vanilla behavior remains active";
+                    log.Exception(exception, $"Feature '{feature.Id}' could not be installed; {status}.");
                     runtime.ReportCompatibility(new CompatibilityReport(
                         PerformanceSettingsCatalog.ModId,
                         feature.Id,
                         CompatibilityState.Disabled,
                         "Compatible 0.8.7a targets and a successful patch installation",
                         exception.GetType().Name,
-                        "Installation failed open; vanilla behavior remains active."));
+                        $"Installation failed open; {status}."));
                 }
             }
 
@@ -76,6 +113,36 @@ namespace TajsCOI.Performance
                 "Only individually switchable patch features are registered",
                 $"{s_features.Count} patch feature(s) registered",
                 "Registered patch features were evaluated independently; manual command features report separately."));
+        }
+
+        private static IReadOnlyDictionary<string, bool> GetProcessConfiguration(ITajsSettings settings)
+        {
+            lock (s_processConfigGate)
+            {
+                if (s_processEnabled is not null)
+                {
+                    return s_processEnabled;
+                }
+
+                PerformanceSettingsCatalog.LoadStartupValues(settings);
+                s_processEnabled = s_features.ToDictionary(
+                    x => x.Id,
+                    x => settings.Get<bool>(PerformanceSettingsCatalog.ModId, x.ConfigKey),
+                    StringComparer.Ordinal);
+                return s_processEnabled;
+            }
+        }
+
+        private static bool TryIsProcessPatchInstalled(IPerformanceFeature feature)
+        {
+            try
+            {
+                return feature.IsProcessPatchInstalled();
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }

@@ -13,6 +13,8 @@ namespace TajsCOI.Performance
 
         string ConfigKey { get; }
 
+        bool IsProcessPatchInstalled();
+
         void Install(ITajsRuntime runtime, ITajsLogger log);
     }
 }

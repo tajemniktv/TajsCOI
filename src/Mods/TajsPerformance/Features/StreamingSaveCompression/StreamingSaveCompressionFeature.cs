@@ -29,15 +29,21 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
         public string Id => "StreamingSaveCompression";
         public string ConfigKey => StreamingSaveCompressionSettings.EnableConfigKey;
 
+        public bool IsProcessPatchInstalled()
+        {
+            MethodInfo? target = FindTarget();
+            MethodInfo? patchMethod = AccessTools.Method(typeof(StreamingSaveCompressionFeature), nameof(WriteStreaming));
+            return target is not null && patchMethod is not null &&
+                ProcessHarmonyPatchOwnership.HasExpected(
+                    Harmony.GetPatchInfo(target)?.Prefixes,
+                    HarmonyId,
+                    patchMethod);
+        }
+
         public void Install(ITajsRuntime runtime, ITajsLogger log)
         {
             Type? gameSaver = typeof(SaveLoadFileUtils).Assembly.GetType("Mafi.Core.SaveGame.GameSaver", false);
-            MethodInfo? target = gameSaver?.GetMethod(
-                "FinishSaveWriteToStream",
-                BindingFlags.Instance | BindingFlags.Public,
-                null,
-                new[] { typeof(Stream) },
-                null);
+            MethodInfo? target = FindTarget();
             // Harmony callbacks are static. Installation validates and publishes these fixed 0.8.7a
             // bindings once for the process-lifetime patch owner.
 #pragma warning disable S2696
@@ -64,9 +70,38 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
             // Target: GameSaver.FinishSaveWriteToStream(Stream). This behavior-changing prefix replaces
             // only gzip finalization. Before writer consumption it can return to vanilla; afterward it
             // invokes vanilla SaveDataWithHeaders directly on the retained stream if streaming fails.
-            new Harmony(HarmonyId).Patch(
-                target,
-                prefix: new HarmonyMethod(typeof(StreamingSaveCompressionFeature), nameof(WriteStreaming)));
+            MethodInfo patchMethod = AccessTools.Method(typeof(StreamingSaveCompressionFeature), nameof(WriteStreaming))!;
+            lock (s_installGate)
+            {
+                Patches? patches = Harmony.GetPatchInfo(target);
+                if (ProcessHarmonyPatchOwnership.HasExpected(patches?.Prefixes, HarmonyId, patchMethod))
+                {
+                    log.Info("Already installed / compatible; the process-lifetime streaming-save patch was not applied again.");
+                    runtime.ReportCompatibility(new CompatibilityReport(
+                        "TajsPerformance", Id, CompatibilityState.Compatible,
+                        "Existing process-lifetime Harmony owner and prefix method",
+                        "Already installed / compatible",
+                        "The validated 0.8.7a streaming-save patch remains active; no duplicate prefix was registered."));
+                    return;
+                }
+
+                if (ProcessHarmonyPatchOwnership.HasOwner(patches?.Prefixes, HarmonyId))
+                {
+                    throw new InvalidOperationException(
+                        $"Existing Harmony owner '{HarmonyId}' has an unexpected streaming-save prefix ({ProcessHarmonyPatchOwnership.Describe(patches)}).");
+                }
+
+                var harmony = new Harmony(HarmonyId);
+                try
+                {
+                    harmony.Patch(target, prefix: new HarmonyMethod(patchMethod));
+                }
+                catch
+                {
+                    harmony.Unpatch(target, HarmonyPatchType.Prefix, HarmonyId);
+                    throw;
+                }
+            }
 
             runtime.ReportCompatibility(new CompatibilityReport(
                 "TajsPerformance",
@@ -77,6 +112,19 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
                 StreamingSaveCompressionSettings.SkipUncompressedChecksum
                     ? "Compressed CRC and post-write validation remain active; uncompressed CRC is explicitly disabled."
                     : "Both compressed and uncompressed CRCs plus post-write validation remain active."));
+        }
+
+        private static readonly object s_installGate = new();
+
+        private static MethodInfo? FindTarget()
+        {
+            Type? gameSaver = typeof(SaveLoadFileUtils).Assembly.GetType("Mafi.Core.SaveGame.GameSaver", false);
+            return gameSaver?.GetMethod(
+                "FinishSaveWriteToStream",
+                BindingFlags.Instance | BindingFlags.Public,
+                null,
+                new[] { typeof(Stream) },
+                null);
         }
 
         private static bool WriteStreaming(object __instance, Stream outputStream)

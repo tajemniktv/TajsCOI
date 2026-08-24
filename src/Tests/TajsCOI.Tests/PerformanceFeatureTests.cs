@@ -6,11 +6,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection.Emit;
+using System.Reflection;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
 using HarmonyLib;
 using Mafi.Core.SaveGame;
+using Mafi.Serialization;
 using TajsCOI.Performance.Features.SaveLoadReadBuffer;
 using TajsCOI.Performance.Features.StreamingSaveCompression;
 using TajsCOI.Performance.Features.LowProductTextures;
@@ -40,18 +42,21 @@ namespace TajsCOI.Tests
         public void SaveLoadBufferTranspilerReplacesExactlyTheVanillaConstant()
         {
             SaveLoadReadBufferSettings.Update(64);
+            ConstructorInfo bufferedReader = typeof(BlobReader).Assembly
+                .GetType("Mafi.Serialization.BufferedReadStream")!
+                .GetConstructor(new[] { typeof(Stream), typeof(int), typeof(bool) })!;
             var input = new List<CodeInstruction>
             {
-                new(OpCodes.Nop),
                 new(OpCodes.Ldc_I4, SaveLoadReadBufferSettings.VanillaBufferBytes),
-                new(OpCodes.Ldc_I4, 123),
+                new(OpCodes.Ldc_I4_1),
+                new(OpCodes.Newobj, bufferedReader),
             };
 
             List<CodeInstruction> output = SaveLoadReadBufferFeature.ReplaceBufferSize(input).ToList();
 
             Assert.Equal(3, output.Count);
-            Assert.Equal(64 * 1024, output[1].operand);
-            Assert.Equal(123, output[2].operand);
+            Assert.Equal(64 * 1024, output[0].operand);
+            Assert.Equal(OpCodes.Ldc_I4_1, output[1].opcode);
         }
 
         [Fact]
@@ -69,11 +74,34 @@ namespace TajsCOI.Tests
         {
             Assert.Throws<InvalidOperationException>(() =>
                 SaveLoadReadBufferFeature.ReplaceBufferSize(new[] { new CodeInstruction(OpCodes.Nop) }).ToList());
+            ConstructorInfo bufferedReader = typeof(BlobReader).Assembly
+                .GetType("Mafi.Serialization.BufferedReadStream")!
+                .GetConstructor(new[] { typeof(Stream), typeof(int), typeof(bool) })!;
             Assert.Throws<InvalidOperationException>(() =>
                 SaveLoadReadBufferFeature.ReplaceBufferSize(new[]
                 {
                     new CodeInstruction(OpCodes.Ldc_I4, SaveLoadReadBufferSettings.VanillaBufferBytes),
+                    new CodeInstruction(OpCodes.Ldc_I4_1),
+                    new CodeInstruction(OpCodes.Newobj, bufferedReader),
                     new CodeInstruction(OpCodes.Ldc_I4, SaveLoadReadBufferSettings.VanillaBufferBytes),
+                    new CodeInstruction(OpCodes.Ldc_I4_1),
+                    new CodeInstruction(OpCodes.Newobj, bufferedReader),
+                }).ToList());
+        }
+
+        [Fact]
+        public void SaveLoadBufferTranspilerRejectsChangedSemanticConstant()
+        {
+            ConstructorInfo bufferedReader = typeof(BlobReader).Assembly
+                .GetType("Mafi.Serialization.BufferedReadStream")!
+                .GetConstructor(new[] { typeof(Stream), typeof(int), typeof(bool) })!;
+
+            Assert.Throws<InvalidOperationException>(() =>
+                SaveLoadReadBufferFeature.ReplaceBufferSize(new[]
+                {
+                    new CodeInstruction(OpCodes.Ldc_I4, 8192),
+                    new CodeInstruction(OpCodes.Ldc_I4_1),
+                    new CodeInstruction(OpCodes.Newobj, bufferedReader),
                 }).ToList());
         }
 
@@ -87,9 +115,19 @@ namespace TajsCOI.Tests
             try
             {
                 feature.Install(runtime, runtime.GetLogger("TajsPerformance", "SaveLoadReadBuffer"));
+                feature.Install(runtime, runtime.GetLogger("TajsPerformance", "SaveLoadReadBuffer"));
                 CompatibilityReport report = Assert.Single(runtime.GetCompatibilitySnapshot());
                 Assert.Equal(CompatibilityState.Compatible, report.State);
                 Assert.Equal("SaveLoadReadBuffer", report.ComponentId);
+                ConstructorInfo target = typeof(BlobReader).GetConstructor(new[]
+                {
+                    typeof(Stream),
+                    typeof(int),
+                    typeof(Mafi.Collections.ImmutableCollections.ImmutableArray<ISpecialSerializerFactory>),
+                })!;
+                Assert.Single(
+                    Harmony.GetPatchInfo(target)!.Transpilers,
+                    x => x.owner == "TajsCOI.Performance.SaveLoadReadBuffer");
             }
             finally
             {
