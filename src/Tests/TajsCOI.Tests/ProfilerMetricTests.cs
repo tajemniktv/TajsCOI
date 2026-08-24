@@ -168,6 +168,25 @@ namespace TajsCOI.Tests
             Assert.EndsWith("-slice", RuntimePerformanceDiagnosticsService.LoadResolverFinalization);
         }
 
+        [Theory]
+        [InlineData(-1, -1)]
+        [InlineData(0, -1)]
+        [InlineData(42, 42)]
+        public void ProcessMemoryMetricsTreatNonPositiveValuesAsUnavailable(long value, long expected)
+        {
+            Assert.Equal(expected, RuntimePerformanceDiagnosticsService.NormalizeProcessMemoryMetric(value));
+        }
+
+        [Fact]
+        public void HarmonyAuditMethodFormattingIncludesParameterSignatures()
+        {
+            MethodInfo method = typeof(ProfilerMetricTests).GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
+                .Single(x => x.Name == nameof(HarmonyAuditOverload) &&
+                             x.GetParameters().Single().ParameterType == typeof(int));
+
+            Assert.EndsWith("HarmonyAuditOverload(System.Int32)", RuntimePerformanceDiagnosticsService.FormatHarmonyMethod(method));
+        }
+
         [Fact]
         public void GcPassComparisonSelectsOnlyCaptureInterval()
         {
@@ -183,6 +202,14 @@ namespace TajsCOI.Tests
                 .SelectGcPassInterval(passes, afterSequence: 4, throughSequence: 6);
 
             Assert.Equal(new long[] { 5, 6 }, interval.Select(x => x.Sequence));
+        }
+
+        private static void HarmonyAuditOverload(int value)
+        {
+        }
+
+        private static void HarmonyAuditOverload(string value)
+        {
         }
     }
 }

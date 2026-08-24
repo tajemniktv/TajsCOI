@@ -65,6 +65,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private static readonly Dictionary<string, StageAccumulator> s_stages =
             s_stageOrder.ToDictionary(x => x, _ => new StageAccumulator(), StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<MethodBase, NamedTimingAccumulator> s_initializationTargets = new();
+        private static readonly ConcurrentDictionary<MethodBase, string> s_iteratorLifecycleTargets = new();
+        private static readonly ConditionalWeakTable<object, IteratorLifecycleState> s_iteratorLifecycleStates = new();
         private static readonly object s_historyGate = new();
         private static readonly object s_patchGate = new();
         private static readonly List<RuntimeProfileSnapshot> s_history = new(MaxHistory);
@@ -165,7 +167,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         }
 
         [ConsoleCommand(
-            documentation: "Audits current TajsCOI Harmony owners and flags duplicate registrations by target/kind/owner.",
+            documentation: "Audits current TajsCOI Harmony owners and flags duplicate registrations by target/kind/owner/patch method.",
             customCommandName: "tajs_runtime_harmony_audit")]
         public string HarmonyAudit() => BuildHarmonyAudit();
 
@@ -534,6 +536,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     required = 0;
                     optional = 0;
                     s_initializationTargets.Clear();
+                    s_iteratorLifecycleTargets.Clear();
                 }
                 s_patchSummary = new PatchSummary(requiredExpected, required, optionalExpected, optional);
                 s_patchAttempted = true;
@@ -626,9 +629,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         private static bool PatchIterator(Harmony harmony, string typeName, string assemblyName, string methodName, string stage)
         {
+            MethodInfo? factory = null;
+            MethodBase? moveNext = null;
             try
             {
-                MethodInfo? factory = FindType(typeName, assemblyName)?.GetMethod(
+                factory = FindType(typeName, assemblyName)?.GetMethod(
                     methodName,
                     BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
                 Type? stateMachine = factory?.GetCustomAttribute<IteratorStateMachineAttribute>()?.StateMachineType;
@@ -638,21 +643,38 @@ namespace TajsCOI.Profiler.Probes.Runtime
                         .FirstOrDefault(x => x.Name.IndexOf(methodName, StringComparison.Ordinal) >= 0 &&
                             typeof(System.Collections.IEnumerator).IsAssignableFrom(x));
                 }
-                MethodInfo? moveNext = stateMachine?.GetMethod("MoveNext", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                moveNext = stateMachine?.GetMethod("MoveNext", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 if (moveNext is null)
                 {
                     return false;
                 }
+
+                s_iteratorLifecycleTargets.TryAdd(factory!, stage);
+                s_iteratorLifecycleTargets.TryAdd(moveNext, stage);
                 TimedTargets.TryAdd(moveNext, stage);
                 harmony.Patch(
+                    factory!,
+                    prefix: new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), nameof(BeginIteratorLifecycle)));
+                harmony.Patch(
                     moveNext,
-                    new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), nameof(BeforeTimed)),
-                    new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), nameof(AfterTimed)),
-                    finalizer: new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), nameof(FinalizeTimed)));
+                    new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), nameof(BeforeIteratorTimed)),
+                    new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), nameof(AfterIteratorTimed)),
+                    finalizer: new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), nameof(FinalizeIteratorTimed)));
                 return true;
             }
             catch (Exception exception)
             {
+                if (factory is not null)
+                {
+                    harmony.Unpatch(factory, HarmonyPatchType.All, HarmonyId);
+                    s_iteratorLifecycleTargets.TryRemove(factory, out _);
+                }
+                if (moveNext is not null)
+                {
+                    harmony.Unpatch(moveNext, HarmonyPatchType.All, HarmonyId);
+                    s_iteratorLifecycleTargets.TryRemove(moveNext, out _);
+                    TimedTargets.TryRemove(moveNext, out _);
+                }
                 LogCallbackFailure(exception, $"patch iterator {typeName}.{methodName}");
                 return false;
             }
@@ -1094,6 +1116,73 @@ namespace TajsCOI.Profiler.Probes.Runtime
             }
         }
 
+        private static void BeginIteratorLifecycle(MethodBase __originalMethod)
+        {
+            try
+            {
+                if (s_iteratorLifecycleTargets.TryGetValue(__originalMethod, out string stage))
+                {
+                    RecordLifecycleCheckpoint(stage + "-start");
+                }
+            }
+            catch (Exception exception)
+            {
+                LogCallbackFailure(exception, "iterator lifecycle prefix");
+            }
+        }
+
+        private static void BeforeIteratorTimed(
+            MethodBase __originalMethod,
+            object __instance,
+            out TimingState? __state)
+        {
+            __state = null;
+            try
+            {
+                __state = new TimingState(
+                    Stopwatch.GetTimestamp(),
+                    GC.GetTotalMemory(false),
+                    __originalMethod,
+                    __instance);
+            }
+            catch (Exception exception)
+            {
+                LogCallbackFailure(exception, "iterator timing prefix");
+            }
+        }
+
+        private static void AfterIteratorTimed(TimingState? __state, bool __result)
+        {
+            Record(__state);
+            if (!__result && __state is not null)
+            {
+                CompleteIteratorLifecycle(__state);
+            }
+        }
+
+        private static Exception? FinalizeIteratorTimed(Exception? __exception, TimingState? __state)
+        {
+            Record(__state);
+            return __exception;
+        }
+
+        private static void CompleteIteratorLifecycle(TimingState state)
+        {
+            if (state.Instance is null ||
+                !s_iteratorLifecycleTargets.TryGetValue(state.Method, out string stage))
+            {
+                return;
+            }
+
+            IteratorLifecycleState lifecycle = s_iteratorLifecycleStates.GetValue(
+                state.Instance,
+                _ => new IteratorLifecycleState());
+            if (Interlocked.Exchange(ref lifecycle.Completed, 1) == 0)
+            {
+                RecordLifecycleCheckpoint(stage + "-complete");
+            }
+        }
+
         private static void AfterTimed(TimingState? __state)
         {
             Record(__state);
@@ -1126,8 +1215,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                         GC.CollectionCount(0) - state.Gen0Collections,
                         GC.CollectionCount(1) - state.Gen1Collections,
                         GC.CollectionCount(2) - state.Gen2Collections);
-                    if (stage == LoadHeaders || stage == LoadDeserialization || stage == LoadResolverFinalization ||
-                        stage == LoadFinalize || stage == SceneGarbageCollection)
+                    if (stage == LoadHeaders || stage == LoadDeserialization || stage == SceneGarbageCollection)
                     {
                         RecordLifecycleCheckpoint(stage + "-complete");
                     }
@@ -1264,8 +1352,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
             try
             {
                 using Process process = Process.GetCurrentProcess();
-                workingSet = process.WorkingSet64;
-                privateBytes = process.PrivateMemorySize64;
+                workingSet = NormalizeProcessMemoryMetric(process.WorkingSet64);
+                privateBytes = NormalizeProcessMemoryMetric(process.PrivateMemorySize64);
                 cpuMilliseconds = (long)process.TotalProcessorTime.TotalMilliseconds;
             }
             catch (Exception exception)
@@ -1396,6 +1484,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private static string FormatOptionalBytes(long right, long left) =>
             right < 0 || left < 0 ? "unavailable" : FormatBytes(right - left);
 
+        internal static long NormalizeProcessMemoryMetric(long value) => value <= 0 ? -1 : value;
+
         private static string FormatOptionalMilliseconds(long right, long left) =>
             right < 0 || left < 0
                 ? "unavailable"
@@ -1428,7 +1518,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
             return lines.Count == 0
                 ? "TajsCOI Harmony audit: no TajsCOI-owned patches found."
-                : $"TajsCOI Harmony audit: {lines.Count} owner entries, duplicate registrations={duplicateCount}.\n" + string.Join("\n", lines);
+                : $"TajsCOI Harmony audit: {lines.Count} patch entries, duplicate registrations={duplicateCount}.\n" + string.Join("\n", lines);
         }
 
         private static int AppendHarmonyAuditLines(
@@ -1443,20 +1533,27 @@ namespace TajsCOI.Profiler.Probes.Runtime
             }
 
             int duplicates = 0;
-            foreach (IGrouping<string, Patch> group in patches
+            foreach (var group in patches
                 .Where(x => x.owner.StartsWith("TajsCOI.", StringComparison.Ordinal))
-                .GroupBy(x => x.owner, StringComparer.Ordinal))
+                .GroupBy(x => new { x.owner, x.PatchMethod }))
             {
                 int count = group.Count();
                 if (count > 1)
                 {
                     duplicates++;
                 }
-                string methods = string.Join(", ", group.Select(x => x.PatchMethod.DeclaringType?.FullName + "." + x.PatchMethod.Name));
-                lines.Add($"  {original.DeclaringType?.FullName}.{original.Name} | {kind} | owner={group.Key} | count={count} | methods={methods}" +
+                lines.Add($"  original={FormatHarmonyMethod(original)} | kind={kind} | owner={group.Key.owner} | patch={FormatHarmonyMethod(group.Key.PatchMethod)} | count={count}" +
                     (count > 1 ? " | DUPLICATE" : string.Empty));
             }
             return duplicates;
+        }
+
+        internal static string FormatHarmonyMethod(MethodBase method)
+        {
+            string declaringType = method.DeclaringType?.FullName ?? "<global>";
+            string parameters = string.Join(", ", method.GetParameters().Select(x =>
+                x.ParameterType.FullName ?? x.ParameterType.Name));
+            return declaringType + "." + method.Name + "(" + parameters + ")";
         }
 
         internal static string FormatUnityGraphicsBytes(long unityGraphicsBytes, ProductRendererMetric products)
@@ -1604,20 +1701,27 @@ namespace TajsCOI.Profiler.Probes.Runtime
             internal readonly long StartTicks;
             internal readonly long ManagedBytes;
             internal readonly MethodBase Method;
+            internal readonly object? Instance;
             internal readonly int Gen0Collections;
             internal readonly int Gen1Collections;
             internal readonly int Gen2Collections;
             internal int Recorded;
 
-            internal TimingState(long startTicks, long managedBytes, MethodBase method)
+            internal TimingState(long startTicks, long managedBytes, MethodBase method, object? instance = null)
             {
                 StartTicks = startTicks;
                 ManagedBytes = managedBytes;
                 Method = method;
+                Instance = instance;
                 Gen0Collections = GC.CollectionCount(0);
                 Gen1Collections = GC.CollectionCount(1);
                 Gen2Collections = GC.CollectionCount(2);
             }
+        }
+
+        private sealed class IteratorLifecycleState
+        {
+            internal int Completed;
         }
 
         private sealed class TimedIoStream : Stream
