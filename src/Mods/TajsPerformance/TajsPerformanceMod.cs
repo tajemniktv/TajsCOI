@@ -18,6 +18,8 @@ namespace TajsCOI.Performance
 
         public override void RegisterPrototypes(ProtoRegistrator registrator)
         {
+            // TajsPerformance declares no prototypes; its global feature host installs
+            // evidence-backed runtime patches after dependency resolution.
         }
     }
 }
