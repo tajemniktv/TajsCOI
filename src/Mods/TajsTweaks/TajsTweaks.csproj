@@ -15,11 +15,7 @@
     <RootNamespace>TajsCOI.Tweaks</RootNamespace>
 
     <!--
-      TBD: move from ExampleMod.Unity to a dedicated TajsCOI.Unity project,
-      either change the shared UnityProjectDir in Directory.Build.props or
-      override it here.
-
-      When custom bundles, uncomment and adjust:
+      When custom bundles are used, uncomment and adjust:
       <AssetBundlesSource>$(UnityProjectDir)\AssetBundles</AssetBundlesSource>
     -->
   </PropertyGroup>

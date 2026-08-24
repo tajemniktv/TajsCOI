@@ -10,8 +10,8 @@
     <COIManagedDir>$(COIRoot)\Captain of Industry_Data\Managed</COIManagedDir>
     <COIModsDir>$(APPDATA)\Captain of Industry\Mods</COIModsDir>
 
-    <!-- Existing official Unity project by default. Easy to rename later. -->
-    <UnityProjectDir Condition="'$(UnityProjectDir)' == ''">$(MSBuildThisFileDirectory)..\ExampleMod.Unity</UnityProjectDir>
+    <!-- Shared Unity authoring project used for the suite's mod assets. -->
+    <UnityProjectDir Condition="'$(UnityProjectDir)' == ''">$(MSBuildThisFileDirectory)..\TajsCOI.Unity</UnityProjectDir>
 
     <!-- Development conveniences. Can be overridden per build/project. -->
     <DeployToModsFolder Condition="'$(DeployToModsFolder)' == ''">true</DeployToModsFolder>
