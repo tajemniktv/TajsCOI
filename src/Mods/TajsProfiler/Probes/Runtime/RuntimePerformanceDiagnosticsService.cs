@@ -283,6 +283,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     .Append("Runtime profile comparison: ").Append(first.Label).Append(" -> ").Append(second.Label)
                     .Append("\nProcess delta: working-set=").Append(FormatOptionalBytes(second.ProcessWorkingSetBytes, first.ProcessWorkingSetBytes))
                     .Append(", private=").Append(FormatOptionalBytes(second.ProcessPrivateBytes, first.ProcessPrivateBytes))
+                    .Append(", CPU=").Append(FormatOptionalMilliseconds(second.ProcessCpuMilliseconds, first.ProcessCpuMilliseconds))
                     .Append("\nMemory delta: managed=").Append(FormatBytes(second.ManagedBytes - first.ManagedBytes))
                     .Append(", Mono used=").Append(FormatOptionalBytes(second.MonoUsedBytes, first.MonoUsedBytes))
                     .Append(", Mono heap=").Append(FormatOptionalBytes(second.MonoHeapBytes, first.MonoHeapBytes))
@@ -721,6 +722,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private static bool PatchInitializationHotspots(Harmony harmony)
         {
             var targets = new List<(MethodBase Target, string Name)>();
+            int expected = 0;
+            expected++;
             AddTimedInitializationTarget(
                 targets,
                 "Mafi.Core.PathFinding.ClearancePathabilityProvider",
@@ -728,6 +731,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 "initSelf",
                 "ClearancePathabilityProvider.initSelf",
                 typeof(DependencyResolver));
+            expected++;
             AddTimedInitializationTarget(
                 targets,
                 "Mafi.Core.PathFinding.ShipsClearancePathabilityProvider",
@@ -736,6 +740,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 "ShipsClearancePathabilityProvider.initSelf",
                 typeof(int),
                 typeof(DependencyResolver));
+            expected++;
             AddTimedInitializationTarget(
                 targets,
                 "Mafi.Core.PathFinding.VehiclesConnectivityManager",
@@ -744,6 +749,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 "VehiclesConnectivityManager.initAfterLoad",
                 typeof(int),
                 typeof(DependencyResolver));
+            expected++;
             AddTimedInitializationTarget(
                 targets,
                 "Mafi.Unity.InputControl.ResVis.ResVisBarsRenderer",
@@ -756,12 +762,14 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 "Mafi.Unity",
                 "initState",
                 "TerrainRenderer.initState");
+            expected++;
             AddTimedInitializationTarget(
                 targets,
                 "Mafi.Unity.Terrain.WaterRendererFft",
                 "Mafi.Unity",
                 "initialize",
                 "WaterRendererFft.initialize");
+            expected++;
 
             MethodBase? productsFactory = FindType("Mafi.Unity.InstancedRendering.Products.ProductsRenderer", "Mafi.Unity")
                 ?.GetMethod("initState", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -770,9 +778,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
             {
                 return false;
             }
+            expected++;
             targets.Add((productsMoveNext, "ProductsRenderer.initState-slice"));
 
-            if (targets.Count != 7 || targets.Select(x => x.Target).Distinct().Count() != targets.Count)
+            if (targets.Count != expected || targets.Select(x => x.Target).Distinct().Count() != targets.Count)
             {
                 return false;
             }
@@ -1290,17 +1299,6 @@ namespace TajsCOI.Profiler.Probes.Runtime
             }
         }
 
-        private static void ReadUnityMemory(out long allocated, out long reserved, out long graphics)
-        {
-            UnityMemorySnapshot snapshot = ReadUnityMemorySnapshot();
-            allocated = snapshot.AllocatedBytes;
-            reserved = snapshot.ReservedBytes;
-            graphics = snapshot.GraphicsBytes;
-        }
-
-        private static long InvokeLong(Type type, string method) =>
-            Convert.ToInt64(type.GetMethod(method, BindingFlags.Static | BindingFlags.Public)!.Invoke(null, null), CultureInfo.InvariantCulture);
-
         private static long TryInvokeLong(Type type, string method)
         {
             try
@@ -1397,6 +1395,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         private static string FormatOptionalBytes(long right, long left) =>
             right < 0 || left < 0 ? "unavailable" : FormatBytes(right - left);
+
+        private static string FormatOptionalMilliseconds(long right, long left) =>
+            right < 0 || left < 0
+                ? "unavailable"
+                : (right - left).ToString(CultureInfo.InvariantCulture) + " ms";
 
         private static string FormatLifecycleCheckpoint(LifecycleCheckpoint checkpoint) =>
             $"  {checkpoint.Label} [sequence={checkpoint.Sequence}, captured={checkpoint.CapturedUtc:O}; " +

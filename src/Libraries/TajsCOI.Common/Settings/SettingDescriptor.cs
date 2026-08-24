@@ -310,9 +310,9 @@ namespace TajsCOI.Common.Settings
         private static string RequireId(string value, string parameter)
         {
             string result = RequireText(value, parameter);
-            if (result.Any(character => !(char.IsLetterOrDigit(character) || character == '.' || character == '_' || character == '-')))
+            if (result.Any(character => !(char.IsLetterOrDigit(character) || character == '_' || character == '-')))
             {
-                throw new ArgumentException("Setting IDs may contain only letters, digits, '.', '_' and '-'.", parameter);
+                throw new ArgumentException("Setting IDs may contain only letters, digits, '_' and '-'.", parameter);
             }
             return result;
         }

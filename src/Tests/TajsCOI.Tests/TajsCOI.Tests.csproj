@@ -6,6 +6,9 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <DeployToModsFolder>false</DeployToModsFolder>
+    <CopyToUnityProject>false</CopyToUnityProject>
+    <CreateReleaseZip>false</CreateReleaseZip>
     <AssemblyName>TajsCOI.Tests</AssemblyName>
     <RootNamespace>TajsCOI.Tests</RootNamespace>
 
@@ -30,9 +33,12 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="All"/>
 
     <ProjectReference Include="..\..\Libraries\TajsCOI.Common\TajsCOI.Common.csproj"/>
-    <ProjectReference Include="..\..\Mods\TajsCore\TajsCore.csproj"/>
-    <ProjectReference Include="..\..\Mods\TajsProfiler\TajsProfiler.csproj"/>
-    <ProjectReference Include="..\..\Mods\TajsPerformance\TajsPerformance.csproj"/>
+    <ProjectReference Include="..\..\Mods\TajsCore\TajsCore.csproj"
+                      AdditionalProperties="DeployToModsFolder=false;CopyToUnityProject=false;CreateReleaseZip=false"/>
+    <ProjectReference Include="..\..\Mods\TajsProfiler\TajsProfiler.csproj"
+                      AdditionalProperties="DeployToModsFolder=false;CopyToUnityProject=false;CreateReleaseZip=false"/>
+    <ProjectReference Include="..\..\Mods\TajsPerformance\TajsPerformance.csproj"
+                      AdditionalProperties="DeployToModsFolder=false;CopyToUnityProject=false;CreateReleaseZip=false"/>
 
     <Reference Include="Mafi">
       <HintPath>$(COIManagedDir)\Mafi.dll</HintPath>

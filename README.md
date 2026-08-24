@@ -224,6 +224,9 @@ TajsCOI.Profiler.RuntimePerformance
 TajsCOI.Performance.StreamingSaveCompression
 ```
 
+`TajsCOI.Tweaks.UnlockedSpeed` is a private-MaFi reflection seam, not a Harmony owner; it is
+documented separately from the scoped Harmony IDs above.
+
 Multiple scoped IDs do not imply a suite-wide patch manager; add orchestration only for a concrete
 shared lifecycle or coordination need. Prefer explicit patch installation over indiscriminate
 assembly-wide `PatchAll()` when practical. A mod should be able to explain exactly which patches

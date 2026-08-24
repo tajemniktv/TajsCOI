@@ -328,14 +328,19 @@ namespace TajsCOI.Core.Settings
                     break;
 
                 case SettingValueType.Choice:
+                    SettingChoice currentChoice = FindChoice(descriptor, snapshot.Value);
                     Dropdown<SettingChoice> dropdown = new Dropdown<SettingChoice>(
                             (choice, _, __) => new Label(choice.DisplayName.AsLoc()))
                         .SetOptions(descriptor.Choices)
-                        .SetValue(descriptor.Choices.Single(choice => string.Equals(
-                            choice.Value,
-                            (string)snapshot.Value,
-                            StringComparison.Ordinal)));
-                    dropdown.OnValueChanged((choice, _) => Set(descriptor, choice.Value, feedback));
+                        .SetValue(currentChoice);
+                    dropdown.OnValueChanged((choice, _) =>
+                    {
+                        SettingSetResult result = Set(descriptor, choice.Value, feedback);
+                        if (!result.Success)
+                        {
+                            dropdown.SetValue(FindChoice(descriptor, GetCurrentValue(descriptor)));
+                        }
+                    });
                     editor = dropdown;
                     break;
 
@@ -415,9 +420,19 @@ namespace TajsCOI.Core.Settings
 
         private string FormatCurrent(SettingDescriptor descriptor)
         {
-            SettingSnapshot current = m_settings.GetSnapshot().Single(snapshot =>
-                string.Equals(snapshot.Descriptor.StableId, descriptor.StableId, StringComparison.Ordinal));
-            return FormatValue(current.Value);
+            return FormatValue(GetCurrentValue(descriptor));
+        }
+
+        private object GetCurrentValue(SettingDescriptor descriptor) =>
+            m_settings.GetSnapshot().Single(snapshot =>
+                string.Equals(snapshot.Descriptor.StableId, descriptor.StableId, StringComparison.Ordinal)).Value;
+
+        private static SettingChoice FindChoice(SettingDescriptor descriptor, object value)
+        {
+            string currentValue = Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+            return descriptor.Choices.FirstOrDefault(choice =>
+                       string.Equals(choice.Value, currentValue, StringComparison.Ordinal))
+                   ?? descriptor.Choices[0];
         }
 
         private static Label SectionTitle(string text) =>

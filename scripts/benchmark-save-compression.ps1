@@ -17,6 +17,13 @@ $resolvedSave = (Resolve-Path -LiteralPath $SavePath).Path
 $saveStream = [System.IO.File]::OpenRead($resolvedSave)
 try {
     $saveStream.Position = 40
+    $gzipHeader = [byte[]]::new(2)
+    if ($saveStream.Read($gzipHeader, 0, 2) -ne 2 -or
+        $gzipHeader[0] -ne 0x1f -or
+        $gzipHeader[1] -ne 0x8b) {
+        throw "Selected save does not contain a GZip payload at offset 40."
+    }
+    $saveStream.Position = 40
     $gzip = [System.IO.Compression.GZipStream]::new(
         $saveStream,
         [System.IO.Compression.CompressionMode]::Decompress,

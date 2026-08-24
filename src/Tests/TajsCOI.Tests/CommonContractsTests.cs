@@ -148,5 +148,14 @@ namespace TajsCOI.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
                 "TajsCore", "Core", "step", "Step", "Step test.", 0, 0, 1, double.NegativeInfinity));
         }
+
+        [Fact]
+        public void SettingDescriptorRejectsDotsInStableIdComponents()
+        {
+            Assert.Throws<ArgumentException>(() => SettingDescriptor.Boolean(
+                "Tajs.Core", "Core", "enabled", "Enabled", "Dot in mod ID.", false));
+            Assert.Throws<ArgumentException>(() => SettingDescriptor.Boolean(
+                "TajsCore", "Core", "feature.enabled", "Enabled", "Dot in setting key.", false));
+        }
     }
 }

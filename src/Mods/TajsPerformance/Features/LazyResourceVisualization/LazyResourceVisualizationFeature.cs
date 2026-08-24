@@ -29,6 +29,7 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
         private static readonly ConditionalWeakTable<object, LazyState> s_states = new();
         private static MethodInfo? s_initState;
         private static MethodInfo? s_forceSetActive;
+        private static FieldInfo? s_rendererField;
 
         public string Id => "LazyResourceVisualization";
         public string ConfigKey => LazyResourceVisualizationSettings.EnableConfigKey;
@@ -131,27 +132,42 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
 
         private static void EnsureInitialized(object __instance)
         {
-            LazyState state = s_states.GetValue(__instance, _ => new LazyState());
-            if (!state.InitializationDeferred || state.Initialized || state.InitializationInProgress)
-            {
-                return;
-            }
-
-            state.InitializationInProgress = true;
             try
             {
-                state.Initialized = true;
-                // The initState prefix allows the original method through once Initialized is true.
-                s_initState!.Invoke(__instance, null);
+                object? renderer = s_rendererField?.GetValue(__instance);
+                if (renderer is null)
+                {
+                    return;
+                }
+
+                LazyState state = s_states.GetValue(renderer, _ => new LazyState());
+                if (!state.InitializationDeferred || state.Initialized || state.InitializationInProgress)
+                {
+                    return;
+                }
+
+                state.InitializationInProgress = true;
+                try
+                {
+                    state.Initialized = true;
+                    // The initState prefix allows the original method through once Initialized is true.
+                    s_initState!.Invoke(renderer, null);
+                }
+                catch
+                {
+                    // The activation itself must remain vanilla-safe after a failed deferred init.
+                    // Clearing the state lets a later initState call take the eager path.
+                    state.Initialized = false;
+                    state.InitializationDeferred = false;
+                }
+                finally
+                {
+                    state.InitializationInProgress = false;
+                }
             }
             catch
             {
-                state.Initialized = false;
-                throw;
-            }
-            finally
-            {
-                state.InitializationInProgress = false;
+                // A reflection/state failure must not break the vanilla overlay activation.
             }
         }
 
@@ -161,6 +177,9 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                 .FirstOrDefault(x => string.Equals(x.GetName().Name, "Mafi.Unity", StringComparison.Ordinal))
                 ?.GetType(RendererTypeName, false);
             Type? activator = renderer?.GetNestedType("Activator", BindingFlags.Public | BindingFlags.NonPublic);
+            FieldInfo? rendererField = activator?.GetField(
+                "Renderer",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             MethodInfo? initState = renderer is null
                 ? null
                 : renderer.GetMethod("initState", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
@@ -170,22 +189,41 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                 null,
                 new[] { typeof(bool) },
                 null);
-            MethodInfo[]? activators = activator?.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                .Where(x => x.DeclaringType == activator && !x.IsStatic &&
-                    ((x.Name == "ShowAll" && x.GetParameters().Length == 0) ||
-                     (x.Name == "Show" && x.GetParameters().Length == 1) ||
-                     (x.Name == "ShowExactly" && x.GetParameters().Length == 1)))
-                .OrderBy(x => x.Name)
-                .ThenBy(x => x.MetadataToken)
-                .ToArray();
+            BindingFlags activatorFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            MethodInfo? show = activator?.GetMethod(
+                "Show",
+                activatorFlags,
+                null,
+                new[] { typeof(Mafi.Core.Products.ProductProto) },
+                null);
+            MethodInfo? showAll = activator?.GetMethod(
+                "ShowAll",
+                activatorFlags,
+                null,
+                Type.EmptyTypes,
+                null);
+            Type productSequence = typeof(IEnumerable<>).MakeGenericType(typeof(Mafi.Core.Products.ProductProto));
+            Type productArray = typeof(Mafi.Collections.ImmutableCollections.ImmutableArray<>).MakeGenericType(typeof(Mafi.Core.Products.ProductProto));
+            MethodInfo[] showExactly = activator?.GetMethods(activatorFlags)
+                .Where(x => x.DeclaringType == activator && !x.IsStatic && x.Name == "ShowExactly" &&
+                    x.GetParameters().Length == 1 &&
+                    (x.GetParameters()[0].ParameterType == productSequence ||
+                     x.GetParameters()[0].ParameterType == productArray))
+                .OrderBy(x => x.GetParameters()[0].ParameterType == productSequence ? 0 : 1)
+                .ToArray() ?? Array.Empty<MethodInfo>();
 
-            if (initState is null || forceSetActive is null || activators is null || activators.Length != 4)
+            MethodInfo[]? activators = show is null || showAll is null || showExactly.Length != 2
+                ? null
+                : new[] { show, showAll, showExactly[0], showExactly[1] };
+
+            if (initState is null || forceSetActive is null || rendererField?.FieldType != renderer || activators is null)
             {
                 return null;
             }
 
             s_initState = initState;
             s_forceSetActive = forceSetActive;
+            s_rendererField = rendererField;
             return new TargetSet(initState, activators);
         }
 

@@ -25,28 +25,14 @@ namespace TajsCOI.Performance
     [GlobalDependency(RegistrationMode.AsSelf)]
     internal sealed class PerformanceFeatureHost
     {
-        private sealed class FeatureDefinition
-        {
-            internal FeatureDefinition(string id, string configKey, Func<IPerformanceFeature> create)
+        private static readonly IReadOnlyList<Func<IPerformanceFeature>> s_featureFactories =
+            new Func<IPerformanceFeature>[]
             {
-                Id = id;
-                ConfigKey = configKey;
-                Create = create;
-            }
-
-            internal string Id { get; }
-            internal string ConfigKey { get; }
-            internal Func<IPerformanceFeature> Create { get; }
-        }
-
-        private static readonly IReadOnlyList<FeatureDefinition> s_features =
-            new FeatureDefinition[]
-            {
-                new("SaveLoadReadBuffer", SaveLoadReadBufferSettings.EnableConfigKey, () => new SaveLoadReadBufferFeature()),
-                new("StreamingSaveCompression", StreamingSaveCompressionSettings.EnableConfigKey, () => new StreamingSaveCompressionFeature()),
-                new("LowProductTextures", LowProductTexturesSettings.EnableConfigKey, () => new LowProductTexturesFeature()),
-                new("LazyResourceVisualization", LazyResourceVisualizationSettings.EnableConfigKey, () => new LazyResourceVisualizationFeature()),
-                new("ProductBufferShrink", ProductBufferShrinkSettings.EnableConfigKey, () => new ProductBufferShrinkFeature()),
+                () => new SaveLoadReadBufferFeature(),
+                () => new StreamingSaveCompressionFeature(),
+                () => new LowProductTexturesFeature(),
+                () => new LazyResourceVisualizationFeature(),
+                () => new ProductBufferShrinkFeature(),
             };
 
         private static readonly object s_processConfigGate = new();
@@ -55,13 +41,13 @@ namespace TajsCOI.Performance
         public PerformanceFeatureHost(ITajsRuntime runtime, ITajsSettings settings)
         {
             PerformanceSettingsCatalog.RegisterAll(settings);
-            IReadOnlyDictionary<string, bool> processEnabled = GetProcessConfiguration(settings);
+            IPerformanceFeature[] features = s_featureFactories.Select(factory => factory()).ToArray();
+            IReadOnlyDictionary<string, bool> processEnabled = GetProcessConfiguration(settings, features);
 
-            foreach (FeatureDefinition definition in s_features)
+            foreach (IPerformanceFeature feature in features)
             {
-                IPerformanceFeature feature = definition.Create();
-                ITajsLogger log = runtime.GetLogger(PerformanceSettingsCatalog.ModId, definition.Id);
-                if (!processEnabled[definition.Id])
+                ITajsLogger log = runtime.GetLogger(PerformanceSettingsCatalog.ModId, feature.Id);
+                if (!processEnabled[feature.Id])
                 {
                     if (TryIsProcessPatchInstalled(feature))
                     {
@@ -111,11 +97,13 @@ namespace TajsCOI.Performance
                 "FeatureHost",
                 CompatibilityState.Compatible,
                 "Only individually switchable patch features are registered",
-                $"{s_features.Count} patch feature(s) registered",
+                $"{features.Length} patch feature(s) registered",
                 "Registered patch features were evaluated independently; manual command features report separately."));
         }
 
-        private static IReadOnlyDictionary<string, bool> GetProcessConfiguration(ITajsSettings settings)
+        private static IReadOnlyDictionary<string, bool> GetProcessConfiguration(
+            ITajsSettings settings,
+            IReadOnlyList<IPerformanceFeature> features)
         {
             lock (s_processConfigGate)
             {
@@ -125,9 +113,9 @@ namespace TajsCOI.Performance
                 }
 
                 PerformanceSettingsCatalog.LoadStartupValues(settings);
-                s_processEnabled = s_features.ToDictionary(
-                    x => x.Id,
-                    x => settings.Get<bool>(PerformanceSettingsCatalog.ModId, x.ConfigKey),
+                s_processEnabled = features.ToDictionary(
+                    feature => feature.Id,
+                    feature => settings.Get<bool>(PerformanceSettingsCatalog.ModId, feature.ConfigKey),
                     StringComparer.Ordinal);
                 return s_processEnabled;
             }
