@@ -38,12 +38,16 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
                 null,
                 new[] { typeof(Stream) },
                 null);
+            // Harmony callbacks are static. Installation validates and publishes these fixed 0.8.7a
+            // bindings once for the process-lifetime patch owner.
+#pragma warning disable S2696
             s_writerField = gameSaver?.GetField("m_mainWriter", BindingFlags.Instance | BindingFlags.NonPublic);
             s_compressionField = gameSaver?.GetField("m_compressionType", BindingFlags.Instance | BindingFlags.NonPublic);
             s_durationSetter = gameSaver?.GetProperty("LastSaveFinalizeDuration", BindingFlags.Instance | BindingFlags.Public)
                 ?.GetSetMethod(true);
             Type? saveHeaders = typeof(SaveLoadFileUtils).Assembly.GetType("Mafi.Core.SaveGame.SaveHeaders", false);
             s_mainHeaderField = saveHeaders?.GetField("HEADER_MAIN_LE", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+#pragma warning restore S2696
             if (target is null || s_writerField?.FieldType != typeof(Option<MemoryBlobWriter>) ||
                 s_compressionField?.FieldType != typeof(SaveCompressionType) ||
                 s_durationSetter is null || s_durationSetter.IsStatic || s_durationSetter.ReturnType != typeof(void) ||
@@ -54,7 +58,9 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
                 throw new MissingMemberException("The 0.8.7a GameSaver streaming-save contract was not found.");
             }
 
+#pragma warning disable S2696
             s_log = log;
+#pragma warning restore S2696
             // Target: GameSaver.FinishSaveWriteToStream(Stream). This behavior-changing prefix replaces
             // only gzip finalization, returns true on any recoverable failure so vanilla runs, and is
             // owned for the process lifetime by this feature-specific Harmony ID.

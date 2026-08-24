@@ -624,7 +624,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
             try
             {
+                // The transpiler replaces vanilla's exact GC.Collect call with this measuring
+                // wrapper. Removing or changing it would alter scene-cleanup semantics.
+#pragma warning disable S1215
                 GC.Collect(generation, mode, blocking, compacting);
+#pragma warning restore S1215
             }
             catch
             {

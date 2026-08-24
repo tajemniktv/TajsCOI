@@ -31,7 +31,11 @@ namespace TajsCOI.Performance.Features.ProductBufferShrink
                 throw new MissingMethodException(typeof(ProductsRenderer).FullName, "uploadFrame()");
             }
 
+            // Harmony callbacks are static, so the process-lifetime feature logger is intentionally
+            // published to static callback state from this one-time installation method.
+#pragma warning disable S2696
             s_log = log;
+#pragma warning restore S2696
             // Target: ProductsRenderer.uploadFrame(). This behavior-changing prefix releases only
             // validated remappable buffers after a sustained low-utilization window; a missing target
             // disables installation, and the feature-specific Harmony owner lives for the process.

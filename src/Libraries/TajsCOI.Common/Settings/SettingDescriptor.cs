@@ -121,67 +121,19 @@ namespace TajsCOI.Common.Settings
                 switch (ValueType)
                 {
                     case SettingValueType.Boolean:
-                        if (input is bool boolean)
-                        {
-                            normalized = boolean;
-                            return true;
-                        }
-                        if (input is string boolText && bool.TryParse(boolText, out boolean))
-                        {
-                            normalized = boolean;
-                            return true;
-                        }
-                        error = "Expected true or false.";
-                        return false;
+                        return TryNormalizeBoolean(input, out normalized, out error);
 
                     case SettingValueType.Integer:
-                        if (input is null)
-                        {
-                            error = "Expected a whole 32-bit integer.";
-                            return false;
-                        }
-                        double integerNumber = Convert.ToDouble(input, CultureInfo.InvariantCulture);
-                        if (double.IsNaN(integerNumber) || double.IsInfinity(integerNumber) ||
-                            integerNumber != Math.Truncate(integerNumber) || integerNumber < int.MinValue || integerNumber > int.MaxValue)
-                        {
-                            error = "Expected a whole 32-bit integer.";
-                            return false;
-                        }
-                        int integer = (int)integerNumber;
-                        return ValidateNumber(integer, out normalized, out error);
+                        return TryNormalizeInteger(input, out normalized, out error);
 
                     case SettingValueType.Float:
-                        if (input is null)
-                        {
-                            error = "Expected a finite number.";
-                            return false;
-                        }
-                        double number = Convert.ToDouble(input, CultureInfo.InvariantCulture);
-                        if (double.IsNaN(number) || double.IsInfinity(number))
-                        {
-                            error = "Expected a finite number.";
-                            return false;
-                        }
-                        return ValidateNumber(number, out normalized, out error);
+                        return TryNormalizeFloat(input, out normalized, out error);
 
                     case SettingValueType.Choice:
-                        string choice = Convert.ToString(input, CultureInfo.InvariantCulture) ?? string.Empty;
-                        if (Choices.Any(x => string.Equals(x.Value, choice, StringComparison.Ordinal)))
-                        {
-                            normalized = choice;
-                            return true;
-                        }
-                        error = "Expected one of: " + string.Join(", ", Choices.Select(x => x.Value)) + ".";
-                        return false;
+                        return TryNormalizeChoice(input, out normalized, out error);
 
                     case SettingValueType.String:
-                        if (input is string text)
-                        {
-                            normalized = text;
-                            return true;
-                        }
-                        error = "Expected text.";
-                        return false;
+                        return TryNormalizeString(input, out normalized, out error);
 
                     default:
                         error = "Unsupported setting type.";
@@ -193,6 +145,84 @@ namespace TajsCOI.Common.Settings
                 error = "Value could not be converted to " + ValueType + ".";
                 return false;
             }
+        }
+
+        private static bool TryNormalizeBoolean(object? input, out object normalized, out string error)
+        {
+            if (input is bool boolean || input is string text && bool.TryParse(text, out boolean))
+            {
+                normalized = boolean;
+                error = string.Empty;
+                return true;
+            }
+            normalized = false;
+            error = "Expected true or false.";
+            return false;
+        }
+
+        private bool TryNormalizeInteger(object? input, out object normalized, out string error)
+        {
+            normalized = 0;
+            if (input is null)
+            {
+                error = "Expected a whole 32-bit integer.";
+                return false;
+            }
+            double number = Convert.ToDouble(input, CultureInfo.InvariantCulture);
+            // Exact comparison is intentional: integer settings reject every fractional value.
+#pragma warning disable S1244
+            bool hasFraction = number != Math.Truncate(number);
+#pragma warning restore S1244
+            if (!IsFinite(number) || hasFraction || number < int.MinValue || number > int.MaxValue)
+            {
+                error = "Expected a whole 32-bit integer.";
+                return false;
+            }
+            return ValidateNumber((int)number, out normalized, out error);
+        }
+
+        private bool TryNormalizeFloat(object? input, out object normalized, out string error)
+        {
+            normalized = 0d;
+            if (input is null)
+            {
+                error = "Expected a finite number.";
+                return false;
+            }
+            double number = Convert.ToDouble(input, CultureInfo.InvariantCulture);
+            if (!IsFinite(number))
+            {
+                error = "Expected a finite number.";
+                return false;
+            }
+            return ValidateNumber(number, out normalized, out error);
+        }
+
+        private bool TryNormalizeChoice(object? input, out object normalized, out string error)
+        {
+            string choice = Convert.ToString(input, CultureInfo.InvariantCulture) ?? string.Empty;
+            if (Choices.Any(x => string.Equals(x.Value, choice, StringComparison.Ordinal)))
+            {
+                normalized = choice;
+                error = string.Empty;
+                return true;
+            }
+            normalized = string.Empty;
+            error = "Expected one of: " + string.Join(", ", Choices.Select(x => x.Value)) + ".";
+            return false;
+        }
+
+        private static bool TryNormalizeString(object? input, out object normalized, out string error)
+        {
+            if (input is string text)
+            {
+                normalized = text;
+                error = string.Empty;
+                return true;
+            }
+            normalized = string.Empty;
+            error = "Expected text.";
+            return false;
         }
 
         private bool ValidateNumber(double number, out object normalized, out string error)
@@ -218,6 +248,12 @@ namespace TajsCOI.Common.Settings
 
         private void ValidateShape()
         {
+            ValidateNumericShape();
+            ValidateChoiceShape();
+        }
+
+        private void ValidateNumericShape()
+        {
             if (Minimum.HasValue && !IsFinite(Minimum.Value) ||
                 Maximum.HasValue && !IsFinite(Maximum.Value) ||
                 Step.HasValue && !IsFinite(Step.Value))
@@ -240,6 +276,10 @@ namespace TajsCOI.Common.Settings
             {
                 throw new ArgumentException("Numeric settings require bounds.");
             }
+        }
+
+        private void ValidateChoiceShape()
+        {
             if (ValueType == SettingValueType.Choice && Choices.Count == 0)
             {
                 throw new ArgumentException("Choice settings require at least one option.");

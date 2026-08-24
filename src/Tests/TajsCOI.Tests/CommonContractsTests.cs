@@ -118,7 +118,7 @@ namespace TajsCOI.Tests
             SettingDescriptor boolean = SettingDescriptor.Boolean(
                 "TajsCore", "Core", "enabled", "Enabled", "Boolean test.", false);
             Assert.True(boolean.TryNormalize("true", out object normalizedBoolean, out _));
-            Assert.Equal(true, normalizedBoolean);
+            Assert.True(Assert.IsType<bool>(normalizedBoolean));
 
             SettingDescriptor floating = SettingDescriptor.Float(
                 "TajsCore", "Core", "ratio", "Ratio", "Float test.", 0.5, 0, 1, 0.1);
