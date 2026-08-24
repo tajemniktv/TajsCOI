@@ -23,10 +23,10 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
         public override bool CanRead => false;
         public override bool CanSeek => false;
         public override bool CanWrite => m_inner.CanWrite;
-        public override long Length => BytesWritten;
+        public override long Length => throw new NotSupportedException();
         public override long Position
         {
-            get => BytesWritten;
+            get => throw new NotSupportedException();
             set => throw new NotSupportedException();
         }
 

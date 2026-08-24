@@ -40,6 +40,7 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
             }
 
             long originalPosition = uncompressedInput.Position;
+            long outputStartPosition = output.Position;
             try
             {
                 uncompressedInput.Position = 0;
@@ -84,6 +85,12 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
                     crcOutput.Checksum,
                     uncompressedBytes,
                     uncompressedChecksum);
+            }
+            catch
+            {
+                output.SetLength(outputStartPosition);
+                output.Position = outputStartPosition;
+                throw;
             }
             finally
             {

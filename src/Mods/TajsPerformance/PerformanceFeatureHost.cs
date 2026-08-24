@@ -39,11 +39,11 @@ namespace TajsCOI.Performance
 
             foreach (IPerformanceFeature feature in s_features)
             {
-                ITajsLogger log = runtime.GetLogger("TajsPerformance", feature.Id);
+                ITajsLogger log = runtime.GetLogger(PerformanceSettingsCatalog.ModId, feature.Id);
                 if (!settings.Get<bool>(PerformanceSettingsCatalog.ModId, feature.ConfigKey))
                 {
                     runtime.ReportCompatibility(new CompatibilityReport(
-                        "TajsPerformance",
+                        PerformanceSettingsCatalog.ModId,
                         feature.Id,
                         CompatibilityState.Disabled,
                         "Feature explicitly enabled after a supporting profiler capture",
@@ -60,7 +60,7 @@ namespace TajsCOI.Performance
                 {
                     log.Exception(exception, $"Feature '{feature.Id}' could not be installed; vanilla behavior remains active.");
                     runtime.ReportCompatibility(new CompatibilityReport(
-                        "TajsPerformance",
+                        PerformanceSettingsCatalog.ModId,
                         feature.Id,
                         CompatibilityState.Disabled,
                         "Compatible 0.8.7a targets and a successful patch installation",
@@ -70,7 +70,7 @@ namespace TajsCOI.Performance
             }
 
             runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsPerformance",
+                PerformanceSettingsCatalog.ModId,
                 "FeatureHost",
                 CompatibilityState.Compatible,
                 "Only individually switchable patch features are registered",

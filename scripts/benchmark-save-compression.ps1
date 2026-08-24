@@ -14,11 +14,11 @@ if ([string]::IsNullOrWhiteSpace($SavePath)) {
 }
 
 $resolvedSave = (Resolve-Path -LiteralPath $SavePath).Path
-$input = [System.IO.File]::OpenRead($resolvedSave)
+$saveStream = [System.IO.File]::OpenRead($resolvedSave)
 try {
-    $input.Position = 40
+    $saveStream.Position = 40
     $gzip = [System.IO.Compression.GZipStream]::new(
-        $input,
+        $saveStream,
         [System.IO.Compression.CompressionMode]::Decompress,
         $true)
     try {
@@ -36,12 +36,12 @@ try {
     }
 }
 finally {
-    $input.Dispose()
+    $saveStream.Dispose()
 }
 
 $results = [System.Collections.Generic.List[object]]::new()
-foreach ($mode in @('MemoryStream', 'FileStream')) {
-    foreach ($round in 1..$Rounds) {
+foreach ($round in 0..$Rounds) {
+    foreach ($mode in @('MemoryStream', 'FileStream')) {
         [GC]::Collect()
         [GC]::WaitForPendingFinalizers()
         [GC]::Collect()
@@ -105,14 +105,25 @@ foreach ($mode in @('MemoryStream', 'FileStream')) {
         }
 
         $timer.Stop()
-        $results.Add([pscustomobject]@{
-            Mode = $mode
-            Round = $round
-            Milliseconds = $timer.Elapsed.TotalMilliseconds
-            ManagedDeltaBytes = $afterBytes - $beforeBytes
-            CompressedBytes = $compressedBytes
-        })
+        if ($round -gt 0) {
+            $results.Add([pscustomobject]@{
+                Mode = $mode
+                Round = $round
+                Milliseconds = $timer.Elapsed.TotalMilliseconds
+                ManagedDeltaBytes = $afterBytes - $beforeBytes
+                CompressedBytes = $compressedBytes
+            })
+        }
     }
+}
+
+function Get-Median([object[]]$Values) {
+    $sorted = @($Values | Sort-Object)
+    $middle = [Math]::Floor($sorted.Count / 2)
+    if (($sorted.Count % 2) -eq 1) {
+        return $sorted[$middle]
+    }
+    return ($sorted[$middle - 1] + $sorted[$middle]) / 2
 }
 
 $summary = foreach ($mode in @('MemoryStream', 'FileStream')) {
@@ -124,8 +135,8 @@ $summary = foreach ($mode in @('MemoryStream', 'FileStream')) {
         Rounds = $Rounds
         PayloadBytes = $payload.LongLength
         CompressedBytes = $modeResults[0].CompressedBytes
-        MedianMilliseconds = [Math]::Round($times[[Math]::Floor($times.Count / 2)], 2)
-        MedianManagedDeltaBytes = $deltas[[Math]::Floor($deltas.Count / 2)]
+        MedianMilliseconds = [Math]::Round((Get-Median $times), 2)
+        MedianManagedDeltaBytes = Get-Median $deltas
     }
 }
 

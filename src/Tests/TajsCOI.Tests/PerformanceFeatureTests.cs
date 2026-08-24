@@ -2,6 +2,7 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection.Emit;
@@ -13,14 +14,28 @@ using Mafi.Core.SaveGame;
 using TajsCOI.Performance.Features.SaveLoadReadBuffer;
 using TajsCOI.Performance.Features.StreamingSaveCompression;
 using TajsCOI.Performance.Features.LowProductTextures;
+using TajsCOI.Performance.Features.ProductBufferShrink;
 using TajsCOI.Core.Runtime;
 using TajsCOI.Common.Compatibility;
 using Xunit;
 
 namespace TajsCOI.Tests
 {
-    public sealed class PerformanceFeatureTests
+    public sealed class PerformanceFeatureTests : IDisposable
     {
+        private readonly int m_saveLoadBufferKiB = SaveLoadReadBufferSettings.BufferBytes / 1024;
+        private readonly bool m_skipChecksum = StreamingSaveCompressionSettings.SkipUncompressedChecksum;
+        private readonly int m_mipBias = LowProductTexturesSettings.MipBias;
+        private readonly int m_observationFrames = ProductBufferShrinkSettings.ObservationFrames;
+
+        public void Dispose()
+        {
+            SaveLoadReadBufferSettings.Update(m_saveLoadBufferKiB);
+            StreamingSaveCompressionSettings.Update(m_skipChecksum);
+            LowProductTexturesSettings.Update(m_mipBias);
+            ProductBufferShrinkSettings.Update(m_observationFrames);
+        }
+
         [Fact]
         public void SaveLoadBufferTranspilerReplacesExactlyTheVanillaConstant()
         {
@@ -47,6 +62,19 @@ namespace TajsCOI.Tests
 
             SaveLoadReadBufferSettings.Update(999);
             Assert.Equal(256 * 1024, SaveLoadReadBufferSettings.BufferBytes);
+        }
+
+        [Fact]
+        public void SaveLoadBufferTranspilerRejectsMissingOrDuplicateVanillaConstants()
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+                SaveLoadReadBufferFeature.ReplaceBufferSize(new[] { new CodeInstruction(OpCodes.Nop) }).ToList());
+            Assert.Throws<InvalidOperationException>(() =>
+                SaveLoadReadBufferFeature.ReplaceBufferSize(new[]
+                {
+                    new CodeInstruction(OpCodes.Ldc_I4, SaveLoadReadBufferSettings.VanillaBufferBytes),
+                    new CodeInstruction(OpCodes.Ldc_I4, SaveLoadReadBufferSettings.VanillaBufferBytes),
+                }).ToList());
         }
 
         [Fact]
@@ -145,6 +173,8 @@ namespace TajsCOI.Tests
             Assert.Throws<IOException>(() =>
                 StreamingSaveWriter.Write(input, output, 7, 328, 1, false));
             Assert.Equal(123, input.Position);
+            Assert.Equal(0, output.Position);
+            Assert.Equal(0, output.Length);
         }
 
         [Fact]

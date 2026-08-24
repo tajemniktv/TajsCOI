@@ -32,6 +32,9 @@ namespace TajsCOI.Performance.Features.ProductBufferShrink
             }
 
             s_log = log;
+            // Target: ProductsRenderer.uploadFrame(). This behavior-changing prefix releases only
+            // validated remappable buffers after a sustained low-utilization window; a missing target
+            // disables installation, and the feature-specific Harmony owner lives for the process.
             new Harmony(HarmonyId).Patch(
                 target,
                 prefix: new HarmonyMethod(typeof(ProductBufferShrinkFeature), nameof(BeforeUploadFrame)));
@@ -58,9 +61,9 @@ namespace TajsCOI.Performance.Features.ProductBufferShrink
                 __instance,
                 _ => new RendererShrinkState(ProductBufferShrinkSettings.ObservationFrames));
 
-            if (state.Live.Observe(___m_liveCountDraw, ___m_liveBuffer?.count ?? 0))
+            if (___m_liveBuffer is { } liveBuffer &&
+                state.Live.Observe(___m_liveCountDraw, liveBuffer.count))
             {
-                GraphicsBuffer liveBuffer = ___m_liveBuffer!;
                 int oldCapacity = liveBuffer.count;
                 liveBuffer.Release();
                 ___m_liveBuffer = null;
@@ -68,9 +71,9 @@ namespace TajsCOI.Performance.Features.ProductBufferShrink
                 s_log?.Info($"Released under-utilized live product buffer ({___m_liveCountDraw}/{oldCapacity}); vanilla will rebuild it.");
             }
 
-            if (state.Reserve.Observe(___m_reserveCount, ___m_reserveBuffer?.count ?? 0))
+            if (___m_reserveBuffer is { } reserveBuffer &&
+                state.Reserve.Observe(___m_reserveCount, reserveBuffer.count))
             {
-                GraphicsBuffer reserveBuffer = ___m_reserveBuffer!;
                 int oldCapacity = reserveBuffer.count;
                 reserveBuffer.Release();
                 ___m_reserveBuffer = null;

@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
@@ -37,6 +38,9 @@ namespace TajsCOI.Performance.Features.LowProductTextures
                 throw new MissingMethodException(MeshTableTypeName, "RebuildTextureArrays(bool)");
             }
 
+            // Target: ProductMeshTable.RebuildTextureArrays(bool). This behavior-changing transpiler
+            // replaces exactly one int field load, throws before emitting altered IL on any signature
+            // mismatch, and remains installed for the process lifetime under this feature's Harmony ID.
             new Harmony(HarmonyId).Patch(
                 rebuild,
                 transpiler: new HarmonyMethod(typeof(LowProductTexturesFeature), nameof(OverrideMipBiasRead)));
@@ -60,7 +64,9 @@ namespace TajsCOI.Performance.Features.LowProductTextures
             foreach (CodeInstruction instruction in instructions)
             {
                 result.Add(instruction);
-                if (instruction.operand is FieldInfo field &&
+                if (instruction.opcode == OpCodes.Ldfld &&
+                    instruction.operand is FieldInfo field &&
+                    !field.IsStatic && field.FieldType == typeof(int) &&
                     field.Name == "Value" &&
                     field.DeclaringType?.FullName == "Mafi.Unity.RenderingSettingOption")
                 {
@@ -77,6 +83,11 @@ namespace TajsCOI.Performance.Features.LowProductTextures
             return result;
         }
 
-        private static int OverrideMipBias(int vanillaMipBias) => LowProductTexturesSettings.MipBias;
+        private static int OverrideMipBias(int vanillaMipBias)
+        {
+            // The argument is consumed from the original ldfld stack value; the configured bias replaces it.
+            _ = vanillaMipBias;
+            return LowProductTexturesSettings.MipBias;
+        }
     }
 }

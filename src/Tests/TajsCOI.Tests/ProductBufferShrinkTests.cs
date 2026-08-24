@@ -2,13 +2,18 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
+using System;
 using TajsCOI.Performance.Features.ProductBufferShrink;
 using Xunit;
 
 namespace TajsCOI.Tests
 {
-    public sealed class ProductBufferShrinkTests
+    public sealed class ProductBufferShrinkTests : IDisposable
     {
+        private readonly int m_observationFrames = ProductBufferShrinkSettings.ObservationFrames;
+
+        public void Dispose() => ProductBufferShrinkSettings.Update(m_observationFrames);
+
         [Fact]
         public void RequiresSustainedLargeUnderutilization()
         {

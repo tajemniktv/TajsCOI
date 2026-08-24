@@ -19,7 +19,6 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
     internal sealed class StreamingSaveCompressionFeature : IPerformanceFeature
     {
         private const string HarmonyId = "TajsCOI.Performance.StreamingSaveCompression";
-        private const int CurrentSaveVersion = 328;
 
         private static FieldInfo? s_writerField;
         private static FieldInfo? s_compressionField;
@@ -45,12 +44,20 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
                 ?.GetSetMethod(true);
             Type? saveHeaders = typeof(SaveLoadFileUtils).Assembly.GetType("Mafi.Core.SaveGame.SaveHeaders", false);
             s_mainHeaderField = saveHeaders?.GetField("HEADER_MAIN_LE", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            if (target is null || s_writerField is null || s_compressionField is null || s_durationSetter is null || s_mainHeaderField is null)
+            if (target is null || s_writerField?.FieldType != typeof(Option<MemoryBlobWriter>) ||
+                s_compressionField?.FieldType != typeof(SaveCompressionType) ||
+                s_durationSetter is null || s_durationSetter.IsStatic || s_durationSetter.ReturnType != typeof(void) ||
+                s_durationSetter.GetParameters().Length != 1 ||
+                s_durationSetter.GetParameters()[0].ParameterType != typeof(TimeSpan) ||
+                s_mainHeaderField is null || !s_mainHeaderField.IsStatic || s_mainHeaderField.FieldType != typeof(ulong))
             {
                 throw new MissingMemberException("The 0.8.7a GameSaver streaming-save contract was not found.");
             }
 
             s_log = log;
+            // Target: GameSaver.FinishSaveWriteToStream(Stream). This behavior-changing prefix replaces
+            // only gzip finalization, returns true on any recoverable failure so vanilla runs, and is
+            // owned for the process lifetime by this feature-specific Harmony ID.
             new Harmony(HarmonyId).Patch(
                 target,
                 prefix: new HarmonyMethod(typeof(StreamingSaveCompressionFeature), nameof(WriteStreaming)));
@@ -73,26 +80,52 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
                 return true;
             }
 
-            var writerOption = (Option<MemoryBlobWriter>)s_writerField!.GetValue(__instance);
-            SaveCompressionType compression = (SaveCompressionType)s_compressionField!.GetValue(__instance);
+            if (s_writerField?.GetValue(__instance) is not Option<MemoryBlobWriter> writerOption ||
+                s_compressionField?.GetValue(__instance) is not SaveCompressionType compression ||
+                s_mainHeaderField?.GetValue(null) is not ulong mainHeader)
+            {
+                s_log?.ErrorOnce("Streaming save fields no longer match the validated 0.8.7a contract; vanilla finalization will run.");
+                return true;
+            }
             MemoryBlobWriter? writer = writerOption.ValueOrNull;
             if (writer is null || compression != SaveCompressionType.Gzip)
             {
                 return true;
             }
 
+            long outputStartPosition = outputStream.Position;
             Stopwatch timer = Stopwatch.StartNew();
-            ulong mainHeader = (ulong)s_mainHeaderField!.GetValue(null);
-            ISaveCompressor compressor = SaveLoadFileUtils.GetCompressorOrThrow(compression).Value;
-            StreamingSaveResult result = StreamingSaveWriter.Write(
-                writer.FinalizeAndReturnStream(),
-                outputStream,
-                mainHeader,
-                CurrentSaveVersion,
-                (int)compression,
-                StreamingSaveCompressionSettings.SkipUncompressedChecksum,
-                compressor.CreateCompressingStream);
-            timer.Stop();
+            StreamingSaveResult result;
+            try
+            {
+                ISaveCompressor compressor = SaveLoadFileUtils.GetCompressorOrThrow(compression).Value;
+                result = StreamingSaveWriter.Write(
+                    writer.FinalizeAndReturnStream(),
+                    outputStream,
+                    mainHeader,
+                    SaveVersion.CURRENT_SAVE_VERSION,
+                    (int)compression,
+                    StreamingSaveCompressionSettings.SkipUncompressedChecksum,
+                    compressor.CreateCompressingStream);
+                timer.Stop();
+            }
+            catch (Exception exception)
+            {
+                try
+                {
+                    outputStream.SetLength(outputStartPosition);
+                    outputStream.Position = outputStartPosition;
+                }
+                catch (Exception rollbackException)
+                {
+                    throw new IOException(
+                        "Streaming save failed and the partial output could not be rolled back; vanilla finalization was not attempted.",
+                        new AggregateException(exception, rollbackException));
+                }
+                s_log?.Exception(exception, "Streaming save failed after a clean rollback; vanilla finalization will run.");
+                return true;
+            }
+
             try
             {
                 s_durationSetter!.Invoke(__instance, new object[] { timer.Elapsed });

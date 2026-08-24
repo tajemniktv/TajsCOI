@@ -53,14 +53,23 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
             Assembly? unityAssembly = AppDomain.CurrentDomain.GetAssemblies()
                 .FirstOrDefault(x => string.Equals(x.GetName().Name, "Mafi.Unity", StringComparison.Ordinal));
             m_assetsDbType = unityAssembly?.GetType("Mafi.Unity.AssetsDb", false);
-            m_clearCachedAssets = m_assetsDbType?.GetMethod("ClearCachedAssets", BindingFlags.Instance | BindingFlags.Public);
+            m_clearCachedAssets = m_assetsDbType?.GetMethod(
+                "ClearCachedAssets",
+                BindingFlags.Instance | BindingFlags.Public,
+                null,
+                Type.EmptyTypes,
+                null);
 
             Type? resources = FindType("UnityEngine.Resources", "UnityEngine.CoreModule");
-            m_unloadUnusedAssets = resources?.GetMethod("UnloadUnusedAssets", BindingFlags.Static | BindingFlags.Public);
+            m_unloadUnusedAssets = resources?.GetMethod(
+                "UnloadUnusedAssets",
+                BindingFlags.Static | BindingFlags.Public,
+                null,
+                Type.EmptyTypes,
+                null);
             m_asyncIsDone = m_unloadUnusedAssets?.ReturnType.GetProperty("isDone", BindingFlags.Instance | BindingFlags.Public);
 
-            bool compatible = m_assetsDbType is not null && m_clearCachedAssets is not null &&
-                m_unloadUnusedAssets is not null && m_asyncIsDone is not null;
+            bool compatible = BindingsAreCompatible();
             ReportCompatibility(compatible);
         }
 
@@ -73,8 +82,7 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
             }
 
             ManualAssetTrimSettings.Update((bool)change.NewValue);
-            bool compatible = m_assetsDbType is not null && m_clearCachedAssets is not null &&
-                m_unloadUnusedAssets is not null && m_asyncIsDone is not null;
+            bool compatible = BindingsAreCompatible();
             ReportCompatibility(compatible);
         }
 
@@ -97,6 +105,7 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
         }
 
         [ConsoleCommand(
+            invokeOnMainThread: true,
             documentation: "Clears CoI's reloadable asset cache and starts Unity unused-asset unloading. Requires paused simulation and explicit config opt-in.",
             customCommandName: "trim_unused_assets")]
         public string TrimUnusedAssets()
@@ -114,15 +123,17 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
             {
                 return "Manual asset trim is already running.";
             }
-            if (m_assetsDbType is null || m_clearCachedAssets is null ||
-                m_unloadUnusedAssets is null || m_asyncIsDone is null)
+            if (!BindingsAreCompatible())
             {
                 return "Manual asset trim unavailable: required 0.8.7a bindings were not resolved.";
             }
 
             try
             {
-                object? assets = m_resolver.TryResolve(m_assetsDbType).ValueOrNull;
+                Type assetsDbType = m_assetsDbType!;
+                MethodInfo clearCachedAssets = m_clearCachedAssets!;
+                MethodInfo unloadUnusedAssets = m_unloadUnusedAssets!;
+                object? assets = m_resolver.TryResolve(assetsDbType).ValueOrNull;
                 if (assets is null)
                 {
                     return "Manual asset trim unavailable: no active gameplay AssetsDb was resolved.";
@@ -131,8 +142,8 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
                 m_managedBefore = GC.GetTotalMemory(false);
                 m_unityBefore = ReadUnityMemory();
                 m_startedTicks = Stopwatch.GetTimestamp();
-                m_clearCachedAssets.Invoke(assets, null);
-                m_operation = m_unloadUnusedAssets.Invoke(null, null);
+                clearCachedAssets.Invoke(assets, null);
+                m_operation = unloadUnusedAssets.Invoke(null, null);
                 if (m_operation is null)
                 {
                     throw new InvalidOperationException("Resources.UnloadUnusedAssets returned no operation.");
@@ -150,6 +161,7 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
         }
 
         [ConsoleCommand(
+            invokeOnMainThread: true,
             documentation: "Shows completion and memory deltas for the last explicit unused-asset trim.",
             customCommandName: "trim_unused_assets_status")]
         public string GetStatus()
@@ -190,6 +202,21 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
                 m_log.Exception(exception, "Manual asset trim status inspection failed.");
                 m_lastResult = "Manual asset trim status unavailable: " + Unwrap(exception).Message;
             }
+        }
+
+        private bool BindingsAreCompatible()
+        {
+            MethodInfo? clear = m_clearCachedAssets;
+            MethodInfo? unload = m_unloadUnusedAssets;
+            PropertyInfo? isDone = m_asyncIsDone;
+            MethodInfo? isDoneGetter = isDone?.GetGetMethod(false);
+            return m_assetsDbType is not null &&
+                clear is { IsPublic: true, IsStatic: false } && clear.ReturnType == typeof(void) &&
+                clear.GetParameters().Length == 0 &&
+                unload is { IsPublic: true, IsStatic: true } && unload.GetParameters().Length == 0 &&
+                string.Equals(unload.ReturnType.FullName, "UnityEngine.AsyncOperation", StringComparison.Ordinal) &&
+                isDone is not null && isDone.PropertyType == typeof(bool) &&
+                isDoneGetter is { IsPublic: true, IsStatic: false } && isDoneGetter.GetParameters().Length == 0;
         }
 
         private double ElapsedMilliseconds() =>

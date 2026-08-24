@@ -39,6 +39,9 @@ namespace TajsCOI.Performance.Features.SaveLoadReadBuffer
                 throw new MissingMethodException(typeof(BlobReader).FullName, ".ctor(Stream, int, ImmutableArray<ISpecialSerializerFactory>)");
             }
 
+            // Target: BlobReader(Stream, int, ImmutableArray<ISpecialSerializerFactory>). This
+            // behavior-changing transpiler replaces exactly one 4 KiB constant, throws before
+            // altered IL is returned on mismatch, and remains installed for the process lifetime.
             var harmony = new Harmony(HarmonyId);
             harmony.Patch(
                 target,
