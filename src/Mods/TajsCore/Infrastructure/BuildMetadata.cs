@@ -5,10 +5,11 @@
 #region
 
 using System.Globalization;
+using System;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using Mafi.Core.Mods;
+using TajsCOI.Common.Build;
 
 #endregion
 
@@ -16,14 +17,14 @@ namespace TajsCOI.Core.Infrastructure
 {
     internal static class BuildMetadata
     {
-        private const string Unknown = "unknown";
-
         private static readonly Assembly s_assembly = typeof(BuildMetadata).Assembly;
+        private static AssemblyBuildInfo s_info = AssemblyBuildInfo.Read(s_assembly);
 
-        internal static string Version => Get("ModVersion", s_assembly.GetName().Version?.ToString() ?? Unknown);
-        internal static string Configuration => Get("BuildConfiguration");
-        internal static string GitCommit => Get("GitCommit");
-        internal static string BuildTimestampUtc { get; private set; } = Unknown;
+        internal static string Version => s_info.Version;
+        internal static string Configuration => s_info.Configuration;
+        internal static string GitCommit => s_info.GitCommit;
+        internal static string BuildTimestampUtc =>
+            s_info.BuildTimestampUtc?.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture) ?? "unknown";
 
         internal static void Initialize(ModManifest manifest)
         {
@@ -31,26 +32,12 @@ namespace TajsCOI.Core.Infrastructure
             {
                 string assemblyName = s_assembly.GetName().Name ?? "TajsCore";
                 string assemblyPath = Path.Combine(manifest.RootDirectoryPath, assemblyName + ".dll");
-
-                if (File.Exists(assemblyPath))
-                {
-                    BuildTimestampUtc = File.GetLastWriteTimeUtc(assemblyPath)
-                        .ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
-                }
+                s_info = AssemblyBuildInfo.Read(s_assembly, assemblyPath);
             }
-            catch
+            catch (Exception)
             {
-                BuildTimestampUtc = Unknown;
+                s_info = AssemblyBuildInfo.Read(s_assembly);
             }
-        }
-
-        private static string Get(string key, string fallback = Unknown)
-        {
-            return s_assembly
-                       .GetCustomAttributes<AssemblyMetadataAttribute>()
-                       .FirstOrDefault(attribute => attribute.Key == key)
-                       ?.Value
-                   ?? fallback;
         }
     }
 }

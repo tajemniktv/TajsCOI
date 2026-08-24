@@ -26,6 +26,10 @@ using Mafi.Core.Vehicles;
 using Mafi.Core.Vehicles.Jobs;
 using Mafi.Core.Vehicles.Trucks;
 using Mafi.Core.Vehicles.Trucks.JobProviders;
+using TajsCOI.Common.Compatibility;
+using TajsCOI.Common.Logging;
+using TajsCOI.Common.Runtime;
+using TajsCOI.Profiler.Probes.Runtime;
 
 #endregion
 
@@ -61,7 +65,8 @@ namespace TajsCOI.Profiler.Probes.Dumping
         private static readonly object s_profileGate = new();
         private static readonly List<ProfileSnapshot> s_profileHistory = new(MaxProfileHistory);
 
-        private static IGameConsole? s_console;
+        private static WeakReference<IGameConsole>? s_console;
+        private static ITajsLogger? s_log;
 
         private static int s_patchesApplied;
         private static int s_tickBoundaryPatchApplied;
@@ -160,10 +165,20 @@ namespace TajsCOI.Profiler.Probes.Dumping
             "other", "VehicleBuffersRegistry.balanceBuffers", "DumpingJob", "DefaultTruckJobProvider.TryGetJobFor",
         };
 
-        public DumpSearchDiagnosticsService(IGameConsole console)
+        public DumpSearchDiagnosticsService(IGameConsole console, ITajsRuntime runtime)
         {
-            s_console = console;
+            // Static Harmony callbacks publish deferred reports through a weak scene-console
+            // reference. CoI recreates this dependency per gameplay resolver, so this must not
+            // retain the old scene through console event subscribers.
+#pragma warning disable S2696
+            s_console = new WeakReference<IGameConsole>(console);
+            s_log = runtime.GetLogger("TajsProfiler", "Dumping");
+#pragma warning restore S2696
+            RuntimePerformanceDiagnosticsService.RecordLifecycleCheckpoint("dump-service/current-console");
+            RuntimePerformanceDiagnosticsService.RecordWeakLifecycleWatch("dump-service/console", console);
+            RuntimePerformanceDiagnosticsService.RecordWeakLifecycleWatch("dump-service/service", this);
             EnsurePatchesApplied();
+            ReportCompatibility(runtime);
         }
 
         [ConsoleCommand(
@@ -659,7 +674,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
             if (dumpSearch is null)
             {
-                Log.Error("TajsProfiler: dump-search diagnostics disabled; expected CoI 0.8.7/0.8.7a dumping-search signature was not found.");
+                LogError("Dump-search diagnostics disabled; expected CoI 0.8.7/0.8.7a dumping-search signature was not found.");
                 return;
             }
 
@@ -685,10 +700,10 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 }
                 catch (Exception rollbackException)
                 {
-                    Log.Error($"TajsProfiler: dump-search diagnostics rollback also failed: {rollbackException}");
+                    LogError($"Dump-search diagnostics rollback also failed: {rollbackException}");
                 }
 
-                Log.Error($"TajsProfiler: dump-search diagnostics failed to patch dumping search: {ex}");
+                LogError($"Dump-search diagnostics failed to patch dumping search: {ex}");
                 return;
             }
 
@@ -698,8 +713,8 @@ namespace TajsCOI.Profiler.Probes.Dumping
             PatchCacheMethods(harmony);
             PatchBreakdownMethods(harmony);
 
-            Log.Info(
-                $"TajsProfiler: dump-search diagnostics active; functional limiter disabled, PF tick buckets={ReadInt(ref s_tickBoundaryPatchApplied) != 0}, " +
+            LogInfo(
+                $"Dump-search diagnostics active; functional limiter disabled, PF tick buckets={ReadInt(ref s_tickBoundaryPatchApplied) != 0}, " +
                 $"PF enqueue diagnostics={ReadInt(ref s_pfEnqueuePatchApplied) != 0}, caller patches={ReadInt(ref s_callerPatchCount)}, cache patches={ReadInt(ref s_cachePatchCount)}, breakdown patches={ReadInt(ref s_breakdownPatchCount)}.");
         }
 
@@ -1401,7 +1416,10 @@ namespace TajsCOI.Profiler.Probes.Dumping
             try
             {
                 string prefix = automatic ? "[TajsProfiler] " : string.Empty;
-                s_console?.WriteLine(prefix + FormatProfileReport(profile), ColorRgba.White);
+                if (s_console?.TryGetTarget(out IGameConsole? console) == true)
+                {
+                    console.WriteLine(prefix + FormatProfileReport(profile), ColorRgba.White);
+                }
             }
             catch (Exception ex)
             {
@@ -1663,7 +1681,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
         }
 
         private static void LogOptionalPatchFailure(string message) =>
-            Log.Error($"TajsProfiler: {message}; diagnostics will remain fail-open.");
+            LogError($"{message}; diagnostics will remain fail-open.");
 
         private static void logOnce(ref int alreadyLogged, string operation, Exception? exception)
         {
@@ -1673,8 +1691,46 @@ namespace TajsCOI.Profiler.Probes.Dumping
             }
 
             string suffix = exception is null ? string.Empty : $": {exception}";
-            Log.Error($"TajsProfiler: {operation}; diagnostics will remain fail-open{suffix}");
+            LogError($"{operation}; diagnostics will remain fail-open{suffix}");
         }
+
+        private static void ReportCompatibility(ITajsRuntime runtime)
+        {
+            bool rootPatched = ReadInt(ref s_patchesApplied) != 0;
+            bool optionalPatchesComplete =
+                ReadInt(ref s_tickBoundaryPatchApplied) != 0 &&
+                ReadInt(ref s_pfEnqueuePatchApplied) != 0 &&
+                ReadInt(ref s_callerPatchCount) > 0 &&
+                ReadInt(ref s_cachePatchCount) == 2 &&
+                ReadInt(ref s_breakdownPatchCount) > 0;
+            CompatibilityState state = !rootPatched
+                ? CompatibilityState.Disabled
+                : optionalPatchesComplete
+                    ? CompatibilityState.Compatible
+                    : CompatibilityState.Degraded;
+            string observed =
+                $"root={rootPatched}, PF tick={ReadInt(ref s_tickBoundaryPatchApplied) != 0}, " +
+                $"PF enqueue={ReadInt(ref s_pfEnqueuePatchApplied) != 0}, callers={ReadInt(ref s_callerPatchCount)}, " +
+                $"cache={ReadInt(ref s_cachePatchCount)}, breakdown={ReadInt(ref s_breakdownPatchCount)}";
+            string reason = state switch
+            {
+                CompatibilityState.Compatible => "All required and optional dumping instrumentation resolved.",
+                CompatibilityState.Degraded => "The root probe is active, but optional instrumentation is incomplete.",
+                _ => "The required dumping-search signature or root patch could not be installed.",
+            };
+
+            runtime.ReportCompatibility(new CompatibilityReport(
+                "TajsProfiler",
+                "Dumping",
+                state,
+                "CoI 0.8.7/0.8.7a dumping-search root and optional diagnostic signatures",
+                observed,
+                reason));
+        }
+
+        private static void LogInfo(string message) => s_log?.Info(message);
+
+        private static void LogError(string message) => s_log?.Error(message);
 
         private static long Read(ref long value) => Interlocked.Read(ref value);
 

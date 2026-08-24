@@ -1,5 +1,8 @@
 <Solution>
-    <Project Path="src/Mods/TajsCore/TajsCore.csproj"/>
-    <Project Path="src/Mods/TajsProfiler/TajsProfiler.csproj"/>
-    <Project Path="src/Mods/TajsTweaks/TajsTweaks.csproj"/>
+    <Project Path="src/Libraries/TajsCOI.Common/TajsCOI.Common.csproj" />
+    <Project Path="src/Mods/TajsCore/TajsCore.csproj" />
+    <Project Path="src/Mods/TajsProfiler/TajsProfiler.csproj" />
+    <Project Path="src/Mods/TajsPerformance/TajsPerformance.csproj" />
+    <Project Path="src/Mods/TajsTweaks/TajsTweaks.csproj" />
+    <Project Path="src/Tests/TajsCOI.Tests/TajsCOI.Tests.csproj" />
 </Solution>

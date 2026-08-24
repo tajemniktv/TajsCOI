@@ -4,7 +4,6 @@
 
 #region
 
-using Mafi;
 using Mafi.Core.Mods;
 using TajsCOI.Core.Infrastructure;
 
@@ -20,7 +19,6 @@ namespace TajsCOI.Core
         public TajsCoreMod(ModManifest manifest) : base(manifest)
         {
             BuildMetadata.Initialize(manifest);
-            Log.Info("TajsCore: constructed");
         }
 
         public override void RegisterPrototypes(ProtoRegistrator registrator)

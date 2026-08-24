@@ -15,17 +15,15 @@
     <RootNamespace>TajsCOI.Tweaks</RootNamespace>
 
     <!--
-      TBD: move from ExampleMod.Unity to a dedicated TajsCOI.Unity project,
-      either change the shared UnityProjectDir in Directory.Build.props or
-      override it here.
-
-      When custom bundles, uncomment and adjust:
+      When custom bundles are used, uncomment and adjust:
       <AssetBundlesSource>$(UnityProjectDir)\AssetBundles</AssetBundlesSource>
     -->
   </PropertyGroup>
 
   <ItemGroup>
     <ModDependency Include="TajsCore&gt;=0.1.0"/>
-    <ProjectReference Include="..\TajsCore\TajsCore.csproj" ReferenceOutputAssembly="false"/>
+    <ProjectReference Include="..\..\Libraries\TajsCOI.Common\TajsCOI.Common.csproj">
+      <Private>false</Private>
+    </ProjectReference>
   </ItemGroup>
 </Project>

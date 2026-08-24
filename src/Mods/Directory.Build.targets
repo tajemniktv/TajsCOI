@@ -49,10 +49,29 @@
     <Message Text="Build metadata: $(ModVersion) | $(Configuration) | git $(_GitCommit)" Importance="High"/>
   </Target>
 
+  <!-- Primary DLL declaration order is the runtime load order used by CoI. -->
+  <Target Name="PreparePrimaryModDlls"
+          BeforeTargets="GenerateCoiManifest;ValidatePrimaryModDllOutputs"
+          Condition="'$(IsCoiMod)' == 'true'">
+    <ItemGroup Condition="'@(PrimaryModDll)' == ''">
+      <PrimaryModDll Include="$(TargetFileName)"/>
+    </ItemGroup>
+    <ItemGroup>
+      <_PrimaryTargetDll Remove="@(_PrimaryTargetDll)"/>
+      <_PrimaryTargetDll Include="@(PrimaryModDll)"
+                         Condition="'%(PrimaryModDll.Identity)' == '$(TargetFileName)'"/>
+    </ItemGroup>
+    <Error Condition="'@(_PrimaryTargetDll)' == ''"
+           Text="PrimaryModDll for $(ModId) must include the mod assembly '$(TargetFileName)' in its intended load-order position."/>
+  </Target>
+
   <!-- Generate manifest.json from the same properties used for assembly metadata. -->
   <Target Name="GenerateCoiManifest"
           BeforeTargets="BeforeBuild"
           Condition="'$(IsCoiMod)' == 'true'">
+    <PropertyGroup>
+      <_PrimaryDllJson>@(PrimaryModDll->'&quot;%(Identity)&quot;', ',')</_PrimaryDllJson>
+    </PropertyGroup>
     <ItemGroup>
       <_ManifestLines Remove="@(_ManifestLines)"/>
       <!-- Keep this canonical layout stable: manifest.json is tracked and is also copied into release packages. -->
@@ -76,13 +95,7 @@
         <Text>&quot;authors&quot;:&quot;$(ModAuthor)&quot;,</Text>
       </_ManifestLines>
       <_ManifestLines Include="line07">
-        <Text>&quot;primary_dlls&quot;:[</Text>
-      </_ManifestLines>
-      <_ManifestLines Include="line08">
-        <Text>&quot;$(TargetFileName)&quot;</Text>
-      </_ManifestLines>
-      <_ManifestLines Include="line09">
-        <Text>],</Text>
+        <Text>&quot;primary_dlls&quot;:[$(_PrimaryDllJson)],</Text>
       </_ManifestLines>
       <_ManifestLines Include="line10" Condition="'@(ModDependency)' != ''">
         <Text>&quot;mod_dependencies&quot;:[@(ModDependency->'&quot;%(Identity)&quot;', ',')],</Text>
@@ -116,6 +129,14 @@
                       Encoding="UTF-8"/>
 
     <Message Text="Generated manifest.json for $(ModId) $(ModVersion)" Importance="High"/>
+  </Target>
+
+  <Target Name="ValidatePrimaryModDllOutputs"
+          BeforeTargets="DeployCoiMod;CopyCoiDllToUnity;CreateCoiReleasePackage"
+          Condition="'$(IsCoiMod)' == 'true'
+                  and ('$(DeployToModsFolder)' == 'true' or '$(CopyToUnityProject)' == 'true' or '$(CreateReleaseZip)' == 'true')">
+    <Error Condition="!Exists('$(TargetDir)%(PrimaryModDll.Identity)')"
+           Text="Primary mod DLL '%(PrimaryModDll.Identity)' was declared for $(ModId) but was not found in '$(TargetDir)'."/>
   </Target>
 
   <!-- Keep Unity's Assets/DLLs supplied with the latest normal-mod assembly -->
