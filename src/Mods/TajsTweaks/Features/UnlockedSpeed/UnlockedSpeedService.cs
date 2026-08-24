@@ -11,7 +11,6 @@ using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
-using TajsCOI.Tweaks.Interop;
 using System.Threading;
 
 #endregion

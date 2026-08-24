@@ -178,6 +178,25 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void StreamingSaveWriterRejectsNonAppendOutputWithoutMutation()
+        {
+            byte[] payload = Encoding.UTF8.GetBytes("serialized payload");
+            byte[] existing = Encoding.UTF8.GetBytes("existing output tail");
+            using var input = new MemoryStream(payload);
+            input.Position = 4;
+            using var output = new MemoryStream();
+            output.Write(existing, 0, existing.Length);
+            output.Position = 3;
+
+            Assert.Throws<ArgumentException>(() =>
+                StreamingSaveWriter.Write(input, output, 7, 328, 1, false));
+
+            Assert.Equal(4, input.Position);
+            Assert.Equal(3, output.Position);
+            Assert.Equal(existing, output.ToArray());
+        }
+
+        [Fact]
         public void StreamingSaveWriterUsesProvidedGameCompressorFactory()
         {
             bool invoked = false;

@@ -93,14 +93,51 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
                 return true;
             }
 
-            long outputStartPosition = outputStream.Position;
+            long outputStartPosition;
+            try
+            {
+                outputStartPosition = outputStream.Position;
+                if (outputStartPosition != outputStream.Length)
+                {
+                    s_log?.WarningOnce("Streaming save requires append-positioned output; vanilla finalization will run.");
+                    return true;
+                }
+            }
+            catch (Exception exception)
+            {
+                s_log?.Exception(exception, "Streaming save could not validate the output position; vanilla finalization will run.");
+                return true;
+            }
+
+            ISaveCompressor compressor;
+            try
+            {
+                compressor = SaveLoadFileUtils.GetCompressorOrThrow(compression).Value;
+            }
+            catch (Exception exception)
+            {
+                s_log?.Exception(exception, "Streaming save could not resolve the vanilla compressor; vanilla finalization will run.");
+                return true;
+            }
+
+            Stream uncompressedInput;
+            try
+            {
+                // This consumes m_mainWriter. No path below this point may return true and let
+                // GameSaver call FinalizeAndReturnStream() on the same writer a second time.
+                uncompressedInput = writer.FinalizeAndReturnStream();
+            }
+            catch (Exception exception)
+            {
+                throw new IOException("Streaming save could not finalize the serialized snapshot.", exception);
+            }
+
             Stopwatch timer = Stopwatch.StartNew();
             StreamingSaveResult result;
             try
             {
-                ISaveCompressor compressor = SaveLoadFileUtils.GetCompressorOrThrow(compression).Value;
                 result = StreamingSaveWriter.Write(
-                    writer.FinalizeAndReturnStream(),
+                    uncompressedInput,
                     outputStream,
                     mainHeader,
                     SaveVersion.CURRENT_SAVE_VERSION,
@@ -119,11 +156,12 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
                 catch (Exception rollbackException)
                 {
                     throw new IOException(
-                        "Streaming save failed and the partial output could not be rolled back; vanilla finalization was not attempted.",
+                        "Streaming save failed after consuming the snapshot writer, and the partial output could not be rolled back.",
                         new AggregateException(exception, rollbackException));
                 }
-                s_log?.Exception(exception, "Streaming save failed after a clean rollback; vanilla finalization will run.");
-                return true;
+                throw new IOException(
+                    "Streaming save failed after consuming the snapshot writer; partial output was rolled back and vanilla finalization was not attempted.",
+                    exception);
             }
 
             try

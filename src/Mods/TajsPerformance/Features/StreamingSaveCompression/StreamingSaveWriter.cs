@@ -41,6 +41,12 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
 
             long originalPosition = uncompressedInput.Position;
             long outputStartPosition = output.Position;
+            if (outputStartPosition != output.Length)
+            {
+                throw new ArgumentException(
+                    "Streaming save output must be positioned at its end so rollback cannot destroy existing data.",
+                    nameof(output));
+            }
             try
             {
                 uncompressedInput.Position = 0;

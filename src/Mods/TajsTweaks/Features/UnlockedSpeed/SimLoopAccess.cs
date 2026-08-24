@@ -11,10 +11,10 @@ using static System.Reflection.BindingFlags;
 
 #endregion
 
-namespace TajsCOI.Tweaks.Interop
+namespace TajsCOI.Tweaks.Features.UnlockedSpeed
 {
     /// <summary>
-    ///     Contains the fragile/private SimLoopEvents access used by runtime features.
+    ///     Contains the fragile/private SimLoopEvents access used by Unlocked Speed.
     ///     If MaFi changes these internals, this should be the only place that needs fixing.
     /// </summary>
     internal static class SimLoopAccess
@@ -90,10 +90,16 @@ namespace TajsCOI.Tweaks.Interop
 
         private static MethodInfo? GetValidatedSetter(PropertyInfo? property, Type expectedType)
         {
-            MethodInfo? setter = property?.GetSetMethod(true);
+            if (property is null ||
+                property.PropertyType != expectedType ||
+                property.GetIndexParameters().Length != 0)
+            {
+                return null;
+            }
+
+            MethodInfo? setter = property.GetSetMethod(true);
             ParameterInfo[] parameters = setter?.GetParameters() ?? Array.Empty<ParameterInfo>();
-            return property?.PropertyType == expectedType && property.GetIndexParameters().Length == 0 &&
-                setter is { IsStatic: false } && setter.ReturnType == typeof(void) &&
+            return setter is { IsStatic: false } && setter.ReturnType == typeof(void) &&
                 parameters.Length == 1 && parameters[0].ParameterType == expectedType
                     ? setter
                     : null;
@@ -102,10 +108,30 @@ namespace TajsCOI.Tweaks.Interop
         private static bool ValidateField(FieldInfo? field, Type expectedType) =>
             field is { IsStatic: false } && field.FieldType == expectedType;
 
-        private static string DescribeSetter(PropertyInfo? property, Type expectedType) =>
-            property is null ? "missing" : GetValidatedSetter(property, expectedType) is null ? "invalid" : "resolved";
+        private static string DescribeSetter(PropertyInfo? property, Type expectedType)
+        {
+            if (property is null)
+            {
+                return "missing";
+            }
+            if (GetValidatedSetter(property, expectedType) is null)
+            {
+                return "invalid";
+            }
+            return "resolved";
+        }
 
-        private static string DescribeField(FieldInfo? field, Type expectedType) =>
-            field is null ? "missing" : ValidateField(field, expectedType) ? "resolved" : "invalid";
+        private static string DescribeField(FieldInfo? field, Type expectedType)
+        {
+            if (field is null)
+            {
+                return "missing";
+            }
+            if (!ValidateField(field, expectedType))
+            {
+                return "invalid";
+            }
+            return "resolved";
+        }
     }
 }

@@ -224,7 +224,11 @@ namespace TajsCOI.Common.Settings
             {
                 throw new ArgumentOutOfRangeException("numericMetadata", "Numeric bounds and step must be finite.");
             }
-            if (Minimum.HasValue != Maximum.HasValue || Minimum.HasValue && Minimum.Value > Maximum.Value)
+            if (Minimum.HasValue != Maximum.HasValue)
+            {
+                throw new ArgumentException("Numeric settings require an ordered minimum and maximum.");
+            }
+            if (Minimum is double minimum && Maximum is double maximum && minimum > maximum)
             {
                 throw new ArgumentException("Numeric settings require an ordered minimum and maximum.");
             }

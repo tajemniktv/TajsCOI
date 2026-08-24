@@ -61,8 +61,9 @@ namespace TajsCOI.Performance.Features.ProductBufferShrink
                 __instance,
                 _ => new RendererShrinkState(ProductBufferShrinkSettings.ObservationFrames));
 
-            if (___m_liveBuffer is { } liveBuffer &&
-                state.Live.Observe(___m_liveCountDraw, liveBuffer.count))
+            GraphicsBuffer? liveBuffer = ___m_liveBuffer;
+            bool shrinkLive = state.Live.Observe(___m_liveCountDraw, liveBuffer?.count ?? 0);
+            if (liveBuffer is not null && shrinkLive)
             {
                 int oldCapacity = liveBuffer.count;
                 liveBuffer.Release();
@@ -71,8 +72,9 @@ namespace TajsCOI.Performance.Features.ProductBufferShrink
                 s_log?.Info($"Released under-utilized live product buffer ({___m_liveCountDraw}/{oldCapacity}); vanilla will rebuild it.");
             }
 
-            if (___m_reserveBuffer is { } reserveBuffer &&
-                state.Reserve.Observe(___m_reserveCount, reserveBuffer.count))
+            GraphicsBuffer? reserveBuffer = ___m_reserveBuffer;
+            bool shrinkReserve = state.Reserve.Observe(___m_reserveCount, reserveBuffer?.count ?? 0);
+            if (reserveBuffer is not null && shrinkReserve)
             {
                 int oldCapacity = reserveBuffer.count;
                 reserveBuffer.Release();

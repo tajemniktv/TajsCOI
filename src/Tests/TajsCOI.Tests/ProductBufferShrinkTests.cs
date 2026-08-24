@@ -48,5 +48,18 @@ namespace TajsCOI.Tests
             ProductBufferShrinkSettings.Update(10_000);
             Assert.Equal(3600, ProductBufferShrinkSettings.ObservationFrames);
         }
+
+        [Fact]
+        public void MissingBufferResetsSustainedUnderutilizationObservation()
+        {
+            var tracker = new BufferShrinkTracker(observationFrames: 3, cooldownFrames: 0, minimumCapacity: 1024);
+
+            Assert.False(tracker.Observe(200, 2048));
+            Assert.False(tracker.Observe(200, 2048));
+            Assert.False(tracker.Observe(200, 0));
+            Assert.False(tracker.Observe(200, 2048));
+            Assert.False(tracker.Observe(200, 2048));
+            Assert.True(tracker.Observe(200, 2048));
+        }
     }
 }
