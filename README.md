@@ -218,7 +218,7 @@ Core packages the Harmony runtime binary. Independently installed patch sets use
 Harmony IDs so a feature or probe can validate and roll back without disturbing unrelated patches:
 
 ```text
-TajsCOI.Tweaks.FreeCamera
+TajsCOI.Tweaks.UnlockedSpeed
 TajsCOI.Profiler.Dumping
 TajsCOI.Profiler.RuntimePerformance
 TajsCOI.Performance.StreamingSaveCompression
