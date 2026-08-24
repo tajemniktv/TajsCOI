@@ -2,6 +2,16 @@
 
 This file defines implementation rules for agents working in the TajsCOI repository.
 
+## Documentation boundary
+
+`README.md` is public, user-facing documentation. Keep it short and practical: describe the
+available mods, their user-visible features, and how those features are used in-game. Do not put
+installation instructions there until the supported distribution flow is ready.
+
+Keep implementation architecture, project layout, dependency rules, private API details, build and
+test commands, compatibility assumptions, profiling internals, and contributor workflow in this
+file or in the relevant `docs/` document. Do not duplicate those details in the public README.
+
 ## Project intent
 
 TajsCOI is a monorepo containing multiple Captain of Industry mods plus shared libraries. Preserve architectural boundaries even when a shortcut would make one task locally easier.
@@ -59,6 +69,10 @@ Not allowed:
 
 Rule: **if only one mod uses it, keep it in that mod.**
 
+The current shared contracts cover compatibility reports, runtime and logger interfaces, typed
+settings descriptors/snapshots/change results, and assembly build-provenance metadata. Common has
+no MaFi or Harmony dependency.
+
 ### TajsCore
 
 `TajsCore` is an installable Captain of Industry mod and the suite runtime foundation.
@@ -78,6 +92,8 @@ Installing only TajsCore should produce essentially no gameplay-visible change.
 
 `TajsCOI.Common` is a library below Core, not a second mod. Core owns and explicitly loads the runtime copies of Harmony, Common, and Core in dependency order. Dependent mods reference Common with copy-local disabled and receive Core services only through Common interfaces.
 
+The packaged runtime load order is `0Harmony.dll`, `TajsCOI.Common.dll`, then `TajsCore.dll`.
+
 ### TajsTweaks
 
 Contains user-facing QoL and gameplay tweaks.
@@ -85,6 +101,11 @@ Contains user-facing QoL and gameplay tweaks.
 Organize each feature as a vertical slice under `Features/<FeatureName>/`. Keep its config, patches, bindings, runtime state, and helpers together unless a helper is genuinely shared.
 
 Do not turn `Infrastructure/`, `Interop/`, `Services/`, or `Managers/` into catch-all directories.
+
+The current user-facing feature is `UnlockedSpeed`. It bypasses the vanilla 20x requested-speed
+validation through a scoped private-MaFi compatibility seam. Its global maximum is configurable
+between 20x and 500x; the feature must report a compatibility failure and leave vanilla behavior
+available when that seam no longer matches the supported game version.
 
 ### TajsProfiler
 
@@ -113,11 +134,50 @@ Probes/GC/
 Probes/Frame/
 ```
 
+The runtime baseline probe exposes bounded named captures for save/load timing, managed and Unity
+memory, process CPU, GC collections, product-renderer telemetry, and lifecycle checkpoints. The
+current diagnostic commands are:
+
+```text
+tajs_runtime_profile_capture <label>
+tajs_runtime_profiles
+tajs_runtime_profile_show <label>
+tajs_runtime_profile_compare <before> <after>
+tajs_runtime_profile_clear
+tajs_runtime_profile_reset
+tajs_runtime_lifecycle_checkpoint <label>
+tajs_runtime_lifecycle_checkpoints
+tajs_runtime_lifecycle_watches
+tajs_runtime_harmony_audit
+tajs_runtime_initialization_hotspots
+```
+
+Capture before and after a representative operation. Comparisons subtract cumulative counters,
+while worst-event values remain explicitly non-subtractive. The dumping/pathfinding split follows
+the same boundary: generic capture and reporting belong in `TajsProfiler/Core`, while dumping-specific
+hooks, paths, counters, and snapshots belong in `TajsProfiler/Probes/Dumping`.
+
 ### TajsPerformance
 
 Contains only evidence-backed performance fixes.
 
 Do not create or populate it merely because code is performance-related. Profiling/diagnostics belong in TajsProfiler. A Performance feature should have a measured problem, a clear behavioral contract, and validation that the fix does not silently break intended simulation semantics.
+
+The current default-off performance candidates are:
+
+- larger buffered save/load reads;
+- streaming save compression;
+- lower product-texture mip modes;
+- lazy resource-visualization building;
+- paused-only manual asset trimming; and
+- conservative product-buffer shrinking after sustained under-utilization.
+
+Product-buffer shrinking may touch only remappable live/reserve buffers after its utilization gate;
+stable product-owner and slot buffers are never compacted.
+
+Proxy benchmarks live under `docs/benchmarks`. A candidate remains experimental until its own
+issue-specific in-game A/B acceptance is complete; profiler evidence and a proxy benchmark alone
+are not enough to enable it by default.
 
 ### TajsDebugger
 
@@ -244,6 +304,12 @@ Do not add `ModJsonConfig` or per-mod `config.json` files. Use stable ordinal `M
 declare `Immediate`, `ReloadSave`, or `RestartGame` honestly, and keep gameplay-specific descriptor
 knowledge in the owning mod. Invalid persisted values must fall back to descriptor defaults.
 
+Global values are stored outside savegames in `%APPDATA%\Captain of Industry\TajsCOI\settings.json`.
+Use `tajs_dashboard` during a running game to inspect loaded suite components and edit registered
+settings. `tajs_settings_list` and `tajs_settings_set <ModId.key> <value>` remain available as
+console fallbacks. Apply modes state whether a value is immediate, requires a save reload, or
+requires a game restart.
+
 The runtime dashboard is gameplay-scene-only until a separate main-menu bootstrap is deliberately
 implemented. Do not make gameplay-scene services resolve in the main-menu lifetime by accident.
 
@@ -310,6 +376,24 @@ Before declaring a code change complete:
 Do not commit local game installation paths, Rider user settings, build output, game DLLs, or recovered artifacts.
 
 Keep `src/Mods/Directory.Build.props` and `Directory.Build.targets` generic. Mod-specific hacks belong in the owning project unless they are truly required by every CoI mod in the repository.
+
+The normal local development commands are:
+
+```powershell
+.\build.ps1
+.\build-and-run.ps1
+.\build-and-run.ps1 -Configuration Release
+.\tail-log.ps1
+.\tail-log.ps1 -All
+.\tail-log.ps1 -Pattern "Tajs|Path|Simulation"
+```
+
+Successful mod builds can deploy to `%APPDATA%\Captain of Industry\Mods\<ModId>` and Release builds
+can produce a versioned ZIP. Test project references must explicitly disable deployment, Unity
+copying, and release packaging so ordinary test builds do not touch those destinations.
+
+The per-mod project properties are the source of truth for mod identity, version, game compatibility,
+generated manifests, and build metadata.
 
 ## Tests
 
