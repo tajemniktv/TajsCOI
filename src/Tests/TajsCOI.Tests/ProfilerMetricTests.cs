@@ -36,15 +36,15 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
-        public void StageMetricDifferenceUsesIntervalCountsAndTotals()
+        public void StageMetricDifferenceRequiresExplicitIntervalMaximum()
         {
             var first = new StageMetric(2, 100, 70, 50, 1, 1, 0);
             var second = new StageMetric(5, 260, 90, -10, 4, 2, 1);
 
-            StageMetric delta = second - first;
+            StageMetric delta = StageMetric.Difference(second, first, intervalMaxTicks: 40);
             Assert.Equal(3, delta.Count);
             Assert.Equal(160, delta.TotalTicks);
-            Assert.Equal(90, delta.MaxTicks);
+            Assert.Equal(40, delta.MaxTicks);
             Assert.Equal(-60, delta.ManagedBytesDelta);
             Assert.Equal(3, delta.Gen0Collections);
             Assert.Equal(1, delta.Gen1Collections);
@@ -92,7 +92,7 @@ namespace TajsCOI.Tests
                     "s_stages",
                     BindingFlags.Static | BindingFlags.NonPublic)!;
                 var stages = (System.Collections.Generic.Dictionary<string, StageAccumulator>)stagesField.GetValue(null)!;
-                checksumStage = stages[RuntimePerformanceDiagnosticsService.ChecksumValidation];
+                checksumStage = stages[RuntimePerformanceDiagnosticsService.FileChecksumValidation];
                 Assert.True(checksumStage.Snapshot().Count >= 1);
 
             }
@@ -155,6 +155,17 @@ namespace TajsCOI.Tests
             Assert.Equal(1_048, metric.UnusedCapacitySlots);
             Assert.Equal(600 * 100.0 / 2_048, metric.Utilization, 8);
             Assert.Equal(1_120_256, metric.GpuBytes);
+            Assert.Equal(
+                "unavailable/inconsistent",
+                RuntimePerformanceDiagnosticsService.FormatUnityGraphicsBytes(0, metric));
+        }
+
+        [Fact]
+        public void RuntimeStageLabelsDescribeChecksumAndIteratorScope()
+        {
+            Assert.Equal("file.checksum-validation", RuntimePerformanceDiagnosticsService.FileChecksumValidation);
+            Assert.EndsWith("-slice", RuntimePerformanceDiagnosticsService.LoadFinalize);
+            Assert.EndsWith("-slice", RuntimePerformanceDiagnosticsService.LoadResolverFinalization);
         }
 
         [Fact]

@@ -39,11 +39,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
         internal const string SaveFinalize = "save.compression-write-total";
         internal const string SaveCompression = "save.compression-io";
         internal const string SaveChecksum = "save.checksum-nested";
-        internal const string ChecksumValidation = "load.checksum-validation";
+        internal const string FileChecksumValidation = "file.checksum-validation";
         internal const string LoadHeaders = "load.headers-config";
-        internal const string LoadFinalize = "load.deserialize-resolve-finalize";
+        internal const string LoadFinalize = "load.deserialize-resolve-finalize-slice";
         internal const string LoadDeserialization = "load.deserialization";
-        internal const string LoadResolverFinalization = "load.resolver-finalization";
+        internal const string LoadResolverFinalization = "load.resolver-finalization-slice";
         internal const string SceneGarbageCollection = "scene.cleanup-full-gc";
 
         private static readonly string[] s_stageOrder =
@@ -52,7 +52,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             SaveFinalize,
             SaveCompression,
             SaveChecksum,
-            ChecksumValidation,
+            FileChecksumValidation,
             LoadHeaders,
             LoadFinalize,
             LoadDeserialization,
@@ -203,7 +203,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     .Append("\nMemory delta: managed=").Append(FormatBytes(second.ManagedBytes - first.ManagedBytes))
                     .Append(", Unity allocated=").Append(FormatOptionalBytes(second.UnityAllocatedBytes, first.UnityAllocatedBytes))
                     .Append(", Unity reserved=").Append(FormatOptionalBytes(second.UnityReservedBytes, first.UnityReservedBytes))
-                    .Append(", graphics=").Append(FormatOptionalBytes(second.UnityGraphicsBytes, first.UnityGraphicsBytes));
+                    .Append(", graphics=").Append(FormatUnityGraphicsDelta(second, first));
 
                 foreach (string stage in s_stageOrder)
                 {
@@ -361,7 +361,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameSaver", "Mafi.Core", "StartSave", SaveSerialization) ? 1 : 0;
                 requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameSaver", "Mafi.Core", "FinishSaveWriteToStream", SaveFinalize) ? 1 : 0;
                 requiredExpected++; required += PatchSaveChecksum(harmony) ? 1 : 0;
-                requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.SaveLoadFileUtils", "Mafi.Core", "ValidateChecksum", ChecksumValidation, typeof(string)) ? 1 : 0;
+                requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.SaveLoadFileUtils", "Mafi.Core", "ValidateChecksum", FileChecksumValidation, typeof(string)) ? 1 : 0;
                 requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "StartGameLoad", LoadHeaders) ? 1 : 0;
                 requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "ContinueGameLoad", LoadHeaders) ? 1 : 0;
                 requiredExpected++; required += PatchCompressionIo(
@@ -840,6 +840,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         private static string Format(RuntimeProfileSnapshot snapshot)
         {
+            ProductRendererMetric products = snapshot.Products;
             var builder = new StringBuilder(1536)
                 .Append("Runtime profile '").Append(snapshot.Label).Append("' [sequence=")
                 .Append(snapshot.Sequence).Append(", reset generation=").Append(snapshot.ResetGeneration)
@@ -848,14 +849,13 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 .Append("\nMemory: managed=").Append(FormatBytes(snapshot.ManagedBytes))
                 .Append(", Unity allocated=").Append(FormatOptionalBytes(snapshot.UnityAllocatedBytes))
                 .Append(", Unity reserved=").Append(FormatOptionalBytes(snapshot.UnityReservedBytes))
-                .Append(", graphics=").Append(FormatOptionalBytes(snapshot.UnityGraphicsBytes));
+                .Append(", graphics=").Append(FormatUnityGraphicsBytes(snapshot.UnityGraphicsBytes, products));
 
             foreach (string stage in s_stageOrder)
             {
                 AppendStage(builder, stage, snapshot.Stages[stage]);
             }
 
-            ProductRendererMetric products = snapshot.Products;
             if (products.Available)
             {
                 builder.Append("\nProducts renderer: GPU=").Append(FormatBytes(products.GpuBytes))
@@ -1052,6 +1052,32 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         private static string FormatOptionalBytes(long right, long left) =>
             right < 0 || left < 0 ? "unavailable" : FormatBytes(right - left);
+
+        internal static string FormatUnityGraphicsBytes(long unityGraphicsBytes, ProductRendererMetric products)
+        {
+            if (unityGraphicsBytes < 0)
+            {
+                return "unavailable";
+            }
+            if (IsUnityGraphicsInconsistent(unityGraphicsBytes, products))
+            {
+                return "unavailable/inconsistent";
+            }
+            return FormatBytes(unityGraphicsBytes);
+        }
+
+        private static string FormatUnityGraphicsDelta(RuntimeProfileSnapshot right, RuntimeProfileSnapshot left)
+        {
+            if (IsUnityGraphicsInconsistent(right.UnityGraphicsBytes, right.Products) ||
+                IsUnityGraphicsInconsistent(left.UnityGraphicsBytes, left.Products))
+            {
+                return "unavailable/inconsistent";
+            }
+            return FormatOptionalBytes(right.UnityGraphicsBytes, left.UnityGraphicsBytes);
+        }
+
+        private static bool IsUnityGraphicsInconsistent(long unityGraphicsBytes, ProductRendererMetric products) =>
+            unityGraphicsBytes == 0 && products.Available && products.GpuBytes > 0;
 
         private static RuntimeProfileSnapshot? FindLocked(string label) =>
             s_history.FirstOrDefault(x => string.Equals(x.Label, label, StringComparison.Ordinal));

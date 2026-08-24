@@ -62,8 +62,8 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
             s_log = log;
 #pragma warning restore S2696
             // Target: GameSaver.FinishSaveWriteToStream(Stream). This behavior-changing prefix replaces
-            // only gzip finalization, returns true on any recoverable failure so vanilla runs, and is
-            // owned for the process lifetime by this feature-specific Harmony ID.
+            // only gzip finalization. Before writer consumption it can return to vanilla; afterward it
+            // invokes vanilla SaveDataWithHeaders directly on the retained stream if streaming fails.
             new Harmony(HarmonyId).Patch(
                 target,
                 prefix: new HarmonyMethod(typeof(StreamingSaveCompressionFeature), nameof(WriteStreaming)));
@@ -139,48 +139,113 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
             }
 
             Stopwatch timer = Stopwatch.StartNew();
-            StreamingSaveResult result;
-            try
-            {
-                result = StreamingSaveWriter.Write(
-                    uncompressedInput,
-                    outputStream,
-                    mainHeader,
-                    SaveVersion.CURRENT_SAVE_VERSION,
-                    (int)compression,
-                    StreamingSaveCompressionSettings.SkipUncompressedChecksum,
-                    compressor.CreateCompressingStream);
-                timer.Stop();
-            }
-            catch (Exception exception)
-            {
-                try
-                {
-                    outputStream.SetLength(outputStartPosition);
-                    outputStream.Position = outputStartPosition;
-                }
-                catch (Exception rollbackException)
-                {
-                    throw new IOException(
-                        "Streaming save failed after consuming the snapshot writer, and the partial output could not be rolled back.",
-                        new AggregateException(exception, rollbackException));
-                }
-                throw new IOException(
-                    "Streaming save failed after consuming the snapshot writer; partial output was rolled back and vanilla finalization was not attempted.",
-                    exception);
-            }
+            StreamingSaveResult? result = WriteStreamingOrVanilla(
+                uncompressedInput,
+                outputStream,
+                mainHeader,
+                SaveVersion.CURRENT_SAVE_VERSION,
+                compression,
+                StreamingSaveCompressionSettings.SkipUncompressedChecksum,
+                compressor.CreateCompressingStream,
+                out Exception? streamingFailure);
+            timer.Stop();
 
             try
             {
                 s_durationSetter!.Invoke(__instance, new object[] { timer.Elapsed });
-                s_log?.Info(
-                    $"Streamed save payload {result.UncompressedBytes} -> {result.CompressedBytes} bytes in {timer.Elapsed.TotalMilliseconds:F1} ms.");
+                if (result is StreamingSaveResult streamed)
+                {
+                    s_log?.Info(
+                        $"Streamed save payload {streamed.UncompressedBytes} -> {streamed.CompressedBytes} bytes in {timer.Elapsed.TotalMilliseconds:F1} ms.");
+                }
+                else
+                {
+                    if (streamingFailure is Exception failure)
+                    {
+                        s_log?.Exception(
+                            failure,
+                            $"Streaming save failed cleanly; vanilla SaveDataWithHeaders completed from the retained snapshot in {timer.Elapsed.TotalMilliseconds:F1} ms.");
+                    }
+                }
             }
             catch (Exception exception)
             {
                 s_log?.Exception(exception, "Streaming save completed, but finalize-duration diagnostics could not be updated.");
             }
             return false;
+        }
+
+        // This mirrors the fixed vanilla save-header contract and additionally accepts the streaming
+        // compressor seam plus a failure result; grouping those values would obscure this boundary.
+#pragma warning disable S107
+        internal static StreamingSaveResult? WriteStreamingOrVanilla(
+            Stream uncompressedInput,
+            Stream outputStream,
+            ulong mainHeader,
+            int saveVersion,
+            SaveCompressionType compression,
+            bool skipUncompressedChecksum,
+            Func<Stream, Stream> createCompressor,
+            out Exception? streamingFailure)
+        {
+            long outputStartPosition = outputStream.Position;
+            streamingFailure = null;
+            Exception streamingException;
+            try
+            {
+                return StreamingSaveWriter.Write(
+                    uncompressedInput,
+                    outputStream,
+                    mainHeader,
+                    saveVersion,
+                    (int)compression,
+                    skipUncompressedChecksum,
+                    createCompressor);
+            }
+            catch (Exception exception)
+            {
+                streamingException = exception;
+                streamingFailure = streamingException;
+                RollbackOutputOrThrow(outputStream, outputStartPosition, exception);
+            }
+
+            try
+            {
+                uncompressedInput.Position = 0;
+                SaveLoadFileUtils.SaveDataWithHeaders(
+                    mainHeader,
+                    saveVersion,
+                    uncompressedInput,
+                    outputStream,
+                    compression);
+                return null;
+            }
+            catch (Exception fallbackException)
+            {
+                RollbackOutputOrThrow(
+                    outputStream,
+                    outputStartPosition,
+                    new AggregateException(streamingException, fallbackException));
+                throw new IOException(
+                    "Both streaming and vanilla save finalization failed after consuming the serialized snapshot.",
+                    new AggregateException(streamingException, fallbackException));
+            }
+        }
+#pragma warning restore S107
+
+        private static void RollbackOutputOrThrow(Stream output, long position, Exception originalFailure)
+        {
+            try
+            {
+                output.SetLength(position);
+                output.Position = position;
+            }
+            catch (Exception rollbackException)
+            {
+                throw new IOException(
+                    "Save finalization failed and the partial output could not be rolled back.",
+                    new AggregateException(originalFailure, rollbackException));
+            }
         }
     }
 }

@@ -214,25 +214,21 @@ This keeps the source tree coherent while preserving simple mod IDs and assembly
 
 ## Harmony policy
 
-Use one Harmony owner per installable mod, for example:
-
-```text
-TajsCOI.Core
-TajsCOI.Tweaks
-TajsCOI.Profiler
-TajsCOI.Performance
-```
-
-Use categories for individual features/probes where useful:
+Core packages the Harmony runtime binary. Independently installed patch sets use stable, scoped
+Harmony IDs so a feature or probe can validate and roll back without disturbing unrelated patches:
 
 ```text
 TajsCOI.Tweaks.FreeCamera
 TajsCOI.Profiler.Dumping
-TajsCOI.Profiler.VehiclePathFinding
-TajsCOI.Performance.DumpingSearch
+TajsCOI.Profiler.RuntimePerformance
+TajsCOI.Performance.StreamingSaveCompression
 ```
 
-Prefer explicit patch installation over indiscriminate assembly-wide `PatchAll()` when practical. A mod should be able to explain exactly which patches are active and why. Profiler patches in particular must be fail-open and must not suppress vanilla exceptions, reorder jobs, mutate saves, or silently alter gameplay semantics.
+Multiple scoped IDs do not imply a suite-wide patch manager; add orchestration only for a concrete
+shared lifecycle or coordination need. Prefer explicit patch installation over indiscriminate
+assembly-wide `PatchAll()` when practical. A mod should be able to explain exactly which patches
+are active and why. Profiler patches in particular must be fail-open and must not suppress vanilla
+exceptions, reorder jobs, mutate saves, or silently alter gameplay semantics.
 
 ## Private MaFi APIs and interop
 

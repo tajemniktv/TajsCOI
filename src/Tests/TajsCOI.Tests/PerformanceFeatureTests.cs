@@ -178,6 +178,38 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void StreamingSaveFailureFallsBackToVanillaUsingRetainedSnapshot()
+        {
+            byte[] payload = Enumerable.Range(0, 100_000).Select(x => (byte)(x * 13)).ToArray();
+            using var input = new MemoryStream(payload);
+            input.Position = 123;
+            using var output = new MemoryStream();
+
+            StreamingSaveResult? result = StreamingSaveCompressionFeature.WriteStreamingOrVanilla(
+                input,
+                output,
+                0x1122334455667788,
+                Mafi.SaveVersion.CURRENT_SAVE_VERSION,
+                SaveCompressionType.Gzip,
+                skipUncompressedChecksum: false,
+                _ => throw new InvalidOperationException("Deliberate streaming compressor failure."),
+                out Exception? streamingFailure);
+
+            Assert.Null(result);
+            Assert.IsType<InvalidOperationException>(streamingFailure);
+            output.Position = 0;
+            Assert.Equal(
+                SaveChecksumValidationResults.Success,
+                SaveLoadFileUtils.ValidateChecksum(output, out SaveHeader _, out Mafi.Option<System.Exception> _));
+
+            output.Position = StreamingSaveWriter.HeaderSize;
+            using var gzip = new GZipStream(output, CompressionMode.Decompress, leaveOpen: true);
+            using var restored = new MemoryStream();
+            gzip.CopyTo(restored);
+            Assert.Equal(payload, restored.ToArray());
+        }
+
+        [Fact]
         public void StreamingSaveWriterRejectsNonAppendOutputWithoutMutation()
         {
             byte[] payload = Encoding.UTF8.GetBytes("serialized payload");

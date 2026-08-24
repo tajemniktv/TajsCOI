@@ -148,16 +148,19 @@ Do not rename user-facing mod IDs casually because they are part of manifests, d
 
 ## Harmony rules
 
-Use one Harmony owner per installable mod, for example:
+Core owns the packaged Harmony runtime binary. Each independently installed patch set owns a
+stable, scoped Harmony ID so it can validate, roll back, and evolve without disturbing unrelated
+features or probes, for example:
 
 ```text
-TajsCOI.Core
-TajsCOI.Tweaks
-TajsCOI.Profiler
-TajsCOI.Performance
+TajsCOI.Tweaks.UnlockedSpeed
+TajsCOI.Profiler.Dumping
+TajsCOI.Profiler.RuntimePerformance
+TajsCOI.Performance.StreamingSaveCompression
 ```
 
-Use feature/probe categories where helpful, for example `TajsCOI.Profiler.Dumping`.
+Do not introduce a suite-wide patch manager merely because multiple scoped owners exist. Add
+orchestration only for a concrete shared lifecycle or coordination requirement.
 
 Prefer explicit patch installation to broad assembly-wide `PatchAll()` when practical.
 

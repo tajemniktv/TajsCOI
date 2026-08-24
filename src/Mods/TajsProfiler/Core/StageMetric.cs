@@ -37,9 +37,6 @@ namespace TajsCOI.Profiler.Core
         internal double TotalMilliseconds => TotalTicks * 1000.0 / Stopwatch.Frequency;
         internal double MaxMilliseconds => MaxTicks * 1000.0 / Stopwatch.Frequency;
 
-        public static StageMetric operator -(StageMetric right, StageMetric left) =>
-            Difference(right, left, right.MaxTicks);
-
         internal static StageMetric Difference(StageMetric right, StageMetric left, long intervalMaxTicks) =>
             new(
                 Math.Max(0, right.Count - left.Count),
