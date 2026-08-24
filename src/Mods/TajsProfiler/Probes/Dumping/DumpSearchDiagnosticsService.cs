@@ -1689,7 +1689,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 ReadInt(ref s_tickBoundaryPatchApplied) != 0 &&
                 ReadInt(ref s_pfEnqueuePatchApplied) != 0 &&
                 ReadInt(ref s_callerPatchCount) > 0 &&
-                ReadInt(ref s_cachePatchCount) > 0 &&
+                ReadInt(ref s_cachePatchCount) == 2 &&
                 ReadInt(ref s_breakdownPatchCount) > 0;
             CompatibilityState state = !rootPatched
                 ? CompatibilityState.Disabled

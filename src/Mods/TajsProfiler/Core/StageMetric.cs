@@ -4,7 +4,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Threading;
 
 namespace TajsCOI.Profiler.Core
 {
@@ -39,10 +38,13 @@ namespace TajsCOI.Profiler.Core
         internal double MaxMilliseconds => MaxTicks * 1000.0 / Stopwatch.Frequency;
 
         public static StageMetric operator -(StageMetric right, StageMetric left) =>
+            Difference(right, left, right.MaxTicks);
+
+        internal static StageMetric Difference(StageMetric right, StageMetric left, long intervalMaxTicks) =>
             new(
                 Math.Max(0, right.Count - left.Count),
                 Math.Max(0, right.TotalTicks - left.TotalTicks),
-                Math.Max(0, right.MaxTicks),
+                Math.Max(0, intervalMaxTicks),
                 right.ManagedBytesDelta - left.ManagedBytesDelta,
                 Math.Max(0, right.Gen0Collections - left.Gen0Collections),
                 Math.Max(0, right.Gen1Collections - left.Gen1Collections),
@@ -51,9 +53,10 @@ namespace TajsCOI.Profiler.Core
 
     internal sealed class StageAccumulator
     {
+        private readonly object m_gate = new();
         private long m_count;
         private long m_totalTicks;
-        private long m_maxTicks;
+        private long m_intervalMaxTicks;
         private long m_managedBytesDelta;
         private long m_gen0Collections;
         private long m_gen1Collections;
@@ -71,44 +74,58 @@ namespace TajsCOI.Profiler.Core
                 return;
             }
 
-            Interlocked.Increment(ref m_count);
-            Interlocked.Add(ref m_totalTicks, elapsedTicks);
-            Interlocked.Add(ref m_managedBytesDelta, managedBytesDelta);
-            Interlocked.Add(ref m_gen0Collections, gen0Collections);
-            Interlocked.Add(ref m_gen1Collections, gen1Collections);
-            Interlocked.Add(ref m_gen2Collections, gen2Collections);
-
-            long observed = Volatile.Read(ref m_maxTicks);
-            while (elapsedTicks > observed)
+            lock (m_gate)
             {
-                long exchanged = Interlocked.CompareExchange(ref m_maxTicks, elapsedTicks, observed);
-                if (exchanged == observed)
-                {
-                    break;
-                }
-                observed = exchanged;
+                m_count++;
+                m_totalTicks += elapsedTicks;
+                m_managedBytesDelta += managedBytesDelta;
+                m_gen0Collections += gen0Collections;
+                m_gen1Collections += gen1Collections;
+                m_gen2Collections += gen2Collections;
+                m_intervalMaxTicks = Math.Max(m_intervalMaxTicks, elapsedTicks);
             }
         }
 
-        internal StageMetric Snapshot() =>
-            new(
-                Interlocked.Read(ref m_count),
-                Interlocked.Read(ref m_totalTicks),
-                Interlocked.Read(ref m_maxTicks),
-                Interlocked.Read(ref m_managedBytesDelta),
-                Interlocked.Read(ref m_gen0Collections),
-                Interlocked.Read(ref m_gen1Collections),
-                Interlocked.Read(ref m_gen2Collections));
+        internal StageMetric Snapshot()
+        {
+            lock (m_gate)
+            {
+                return CreateSnapshot();
+            }
+        }
+
+        internal StageMetric SnapshotAndResetIntervalMax()
+        {
+            lock (m_gate)
+            {
+                StageMetric snapshot = CreateSnapshot();
+                m_intervalMaxTicks = 0;
+                return snapshot;
+            }
+        }
 
         internal void Reset()
         {
-            Interlocked.Exchange(ref m_count, 0);
-            Interlocked.Exchange(ref m_totalTicks, 0);
-            Interlocked.Exchange(ref m_maxTicks, 0);
-            Interlocked.Exchange(ref m_managedBytesDelta, 0);
-            Interlocked.Exchange(ref m_gen0Collections, 0);
-            Interlocked.Exchange(ref m_gen1Collections, 0);
-            Interlocked.Exchange(ref m_gen2Collections, 0);
+            lock (m_gate)
+            {
+                m_count = 0;
+                m_totalTicks = 0;
+                m_intervalMaxTicks = 0;
+                m_managedBytesDelta = 0;
+                m_gen0Collections = 0;
+                m_gen1Collections = 0;
+                m_gen2Collections = 0;
+            }
         }
+
+        private StageMetric CreateSnapshot() =>
+            new(
+                m_count,
+                m_totalTicks,
+                m_intervalMaxTicks,
+                m_managedBytesDelta,
+                m_gen0Collections,
+                m_gen1Collections,
+                m_gen2Collections);
     }
 }

@@ -23,9 +23,9 @@ namespace TajsCOI.Tweaks.Interop
             s_adaptiveModeSetter is not null && (s_simSpeedSetter is not null || s_simSpeedBackingField is not null);
 
         internal static string BindingStatus =>
-            $"adaptive setter={(s_adaptiveModeSetter is null ? "missing" : "resolved")}, " +
-            $"requested-speed setter={(s_simSpeedSetter is null ? "missing" : "resolved")}, " +
-            $"requested-speed backing field={(s_simSpeedBackingField is null ? "missing" : "resolved")}";
+            $"adaptive setter={DescribeSetter(s_adaptiveModeProperty, typeof(SimAdaptiveSpeedMode))}, " +
+            $"requested-speed setter={DescribeSetter(s_simSpeedProperty, typeof(int))}, " +
+            $"requested-speed backing field={DescribeField(s_rawSimSpeedBackingField, typeof(int))}";
 
         internal static bool TrySetRequestedSpeedUncapped(SimLoopEvents simLoop, int speed, out string error)
         {
@@ -74,16 +74,38 @@ namespace TajsCOI.Tweaks.Interop
             typeof(SimLoopEvents).GetProperty("SimSpeedMult", s_instanceFlags);
 
         private static readonly MethodInfo? s_simSpeedSetter =
-            s_simSpeedProperty?.GetSetMethod(true);
+            GetValidatedSetter(s_simSpeedProperty, typeof(int));
 
-        private static readonly FieldInfo? s_simSpeedBackingField =
+        private static readonly FieldInfo? s_rawSimSpeedBackingField =
             typeof(SimLoopEvents).GetField("<SimSpeedMult>k__BackingField", s_instanceFlags);
+        private static readonly FieldInfo? s_simSpeedBackingField =
+            ValidateField(s_rawSimSpeedBackingField, typeof(int)) ? s_rawSimSpeedBackingField : null;
 
         private static readonly PropertyInfo? s_adaptiveModeProperty =
             typeof(SimLoopEvents).GetProperty("AdaptiveSimSpeedMode", s_instanceFlags);
 
         private static readonly MethodInfo? s_adaptiveModeSetter =
-            s_adaptiveModeProperty?.GetSetMethod(true);
+            GetValidatedSetter(s_adaptiveModeProperty, typeof(SimAdaptiveSpeedMode));
 #pragma warning restore S3011
+
+        private static MethodInfo? GetValidatedSetter(PropertyInfo? property, Type expectedType)
+        {
+            MethodInfo? setter = property?.GetSetMethod(true);
+            ParameterInfo[] parameters = setter?.GetParameters() ?? Array.Empty<ParameterInfo>();
+            return property?.PropertyType == expectedType && property.GetIndexParameters().Length == 0 &&
+                setter is { IsStatic: false } && setter.ReturnType == typeof(void) &&
+                parameters.Length == 1 && parameters[0].ParameterType == expectedType
+                    ? setter
+                    : null;
+        }
+
+        private static bool ValidateField(FieldInfo? field, Type expectedType) =>
+            field is { IsStatic: false } && field.FieldType == expectedType;
+
+        private static string DescribeSetter(PropertyInfo? property, Type expectedType) =>
+            property is null ? "missing" : GetValidatedSetter(property, expectedType) is null ? "invalid" : "resolved";
+
+        private static string DescribeField(FieldInfo? field, Type expectedType) =>
+            field is null ? "missing" : ValidateField(field, expectedType) ? "resolved" : "invalid";
     }
 }

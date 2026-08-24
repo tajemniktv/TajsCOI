@@ -41,7 +41,6 @@ namespace TajsCOI.Profiler.Probes.Runtime
         internal const string SaveChecksum = "save.checksum-nested";
         internal const string ChecksumValidation = "load.checksum-validation";
         internal const string LoadHeaders = "load.headers-config";
-        internal const string LoadDecompression = "load.decompression-io";
         internal const string LoadFinalize = "load.deserialize-resolve-finalize";
         internal const string LoadDeserialization = "load.deserialization";
         internal const string LoadResolverFinalization = "load.resolver-finalization";
@@ -55,7 +54,6 @@ namespace TajsCOI.Profiler.Probes.Runtime
             SaveChecksum,
             ChecksumValidation,
             LoadHeaders,
-            LoadDecompression,
             LoadFinalize,
             LoadDeserialization,
             LoadResolverFinalization,
@@ -71,8 +69,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private static readonly List<GcPassMetric> s_gcPassHistory = new(MaxGcPassHistory);
 
         private static ITajsLogger? s_log;
-        private static int s_callbackErrorLogged;
+        private static readonly ConcurrentDictionary<string, byte> s_loggedCallbackFailures =
+            new(StringComparer.Ordinal);
         private static long s_sequence;
+        private static long s_resetGeneration;
         private static long s_gcPassSequence;
         private static bool s_patchAttempted;
         private static PatchSummary s_patchSummary;
@@ -84,9 +84,6 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         [ThreadStatic]
         private static int s_mainSaveFinalizeDepth;
-
-        [ThreadStatic]
-        private static int s_mainLoadStartDepth;
 
         [ThreadStatic]
         private static GcPassState? s_gcPassState;
@@ -185,6 +182,17 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 {
                     return $"Runtime profile compare: missing capture(s); A='{firstLabel}', B='{secondLabel}'.";
                 }
+                if (first.Sequence >= second.Sequence)
+                {
+                    return "Runtime profile compare: the second capture must be newer than the first.";
+                }
+                if (first.ResetGeneration != second.ResetGeneration)
+                {
+                    return "Runtime profile compare: captures cross a counter reset and cannot be compared.";
+                }
+
+                int firstIndex = s_history.IndexOf(first);
+                int secondIndex = s_history.IndexOf(second);
 
                 var builder = new StringBuilder(1024)
                     .Append("Runtime profile comparison: ").Append(first.Label).Append(" -> ").Append(second.Label)
@@ -195,7 +203,15 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
                 foreach (string stage in s_stageOrder)
                 {
-                    StageMetric delta = second.Stages[stage] - first.Stages[stage];
+                    long intervalMaxTicks = 0;
+                    for (int index = firstIndex + 1; index <= secondIndex; index++)
+                    {
+                        intervalMaxTicks = Math.Max(intervalMaxTicks, s_history[index].Stages[stage].MaxTicks);
+                    }
+                    StageMetric delta = StageMetric.Difference(
+                        second.Stages[stage],
+                        first.Stages[stage],
+                        intervalMaxTicks);
                     AppendStage(builder, stage, delta);
                 }
 
@@ -237,11 +253,15 @@ namespace TajsCOI.Profiler.Probes.Runtime
             customCommandName: "tajs_runtime_profile_reset")]
         public string Reset()
         {
-            foreach (StageAccumulator stage in s_stages.Values)
+            lock (s_historyGate)
             {
-                stage.Reset();
+                foreach (StageAccumulator stage in s_stages.Values)
+                {
+                    stage.Reset();
+                }
+                Interlocked.Increment(ref s_resetGeneration);
             }
-            return "Runtime profile counters reset; stored captures unchanged.";
+            return "Runtime profile counters reset; stored captures remain visible but comparisons cannot cross this reset.";
         }
 
         private RuntimeProfileSnapshot CreateSnapshot(string label)
@@ -249,13 +269,14 @@ namespace TajsCOI.Profiler.Probes.Runtime
             var stages = new Dictionary<string, StageMetric>(StringComparer.Ordinal);
             foreach (string stage in s_stageOrder)
             {
-                stages.Add(stage, s_stages[stage].Snapshot());
+                stages.Add(stage, s_stages[stage].SnapshotAndResetIntervalMax());
             }
 
             ReadUnityMemory(out long unityAllocated, out long unityReserved, out long unityGraphics);
             return new RuntimeProfileSnapshot(
                 label,
                 Interlocked.Increment(ref s_sequence),
+                Interlocked.Read(ref s_resetGeneration),
                 DateTime.UtcNow,
                 GC.GetTotalMemory(false),
                 unityAllocated,
@@ -314,7 +335,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             catch (Exception exception)
             {
                 LogCallbackFailure(exception, "ProductsRenderer snapshot");
-                return UnavailableProducts(exception.GetType().Name);
+                return UnavailableProducts($"{exception.GetType().Name}: {exception.Message}");
             }
         }
 
@@ -328,16 +349,18 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 }
 
                 var harmony = new Harmony(HarmonyId);
+                int requiredExpected = 0;
                 int required = 0;
+                int optionalExpected = 0;
                 int optional = 0;
 
-                required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameSaver", "Mafi.Core", "StartSave", SaveSerialization) ? 1 : 0;
-                required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameSaver", "Mafi.Core", "FinishSaveWriteToStream", SaveFinalize) ? 1 : 0;
-                required += PatchSaveChecksum(harmony) ? 1 : 0;
-                required += PatchTimed(harmony, "Mafi.Core.SaveGame.SaveLoadFileUtils", "Mafi.Core", "ValidateChecksum", ChecksumValidation, typeof(string)) ? 1 : 0;
-                required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "StartGameLoad", LoadHeaders) ? 1 : 0;
-                required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "ContinueGameLoad", LoadHeaders) ? 1 : 0;
-                required += PatchCompressionIo(
+                requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameSaver", "Mafi.Core", "StartSave", SaveSerialization) ? 1 : 0;
+                requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameSaver", "Mafi.Core", "FinishSaveWriteToStream", SaveFinalize) ? 1 : 0;
+                requiredExpected++; required += PatchSaveChecksum(harmony) ? 1 : 0;
+                requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.SaveLoadFileUtils", "Mafi.Core", "ValidateChecksum", ChecksumValidation, typeof(string)) ? 1 : 0;
+                requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "StartGameLoad", LoadHeaders) ? 1 : 0;
+                requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "ContinueGameLoad", LoadHeaders) ? 1 : 0;
+                requiredExpected++; required += PatchCompressionIo(
                     harmony,
                     "Mafi.Core.SaveGame.GameSaver",
                     "FinishSaveWriteToStream",
@@ -345,21 +368,19 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     nameof(BeginMainSaveFinalize),
                     nameof(EndMainSaveFinalize),
                     nameof(WrapCompressingStream)) ? 1 : 0;
-                required += PatchCompressionIo(
-                    harmony,
-                    "Mafi.Core.SaveGame.GameLoader",
-                    "StartGameLoad",
-                    "CreateDecompressingStream",
-                    nameof(BeginMainLoadStart),
-                    nameof(EndMainLoadStart),
-                    nameof(WrapDecompressingStream)) ? 1 : 0;
-                required += PatchIterator(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "FinishGameLoadAndDisposeTimeSliced", LoadFinalize) ? 1 : 0;
-                required += PatchTimed(harmony, "Mafi.DependencyResolver", "Mafi", "DeserializeInto", LoadDeserialization) ? 1 : 0;
-                required += PatchIterator(harmony, "Mafi.Serialization.BlobReader", "Mafi", "FinalizeLoadingTimeSliced", LoadResolverFinalization) ? 1 : 0;
-                optional += PatchTimed(harmony, "Mafi.Unity.Main", "Mafi.Unity", "collectGarbageDrainingFinalizers", SceneGarbageCollection) ? 1 : 0;
-                optional += PatchSceneGcPasses(harmony) ? 1 : 0;
+                requiredExpected++; required += PatchIterator(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "FinishGameLoadAndDisposeTimeSliced", LoadFinalize) ? 1 : 0;
+                requiredExpected++; required += PatchTimed(harmony, "Mafi.DependencyResolver", "Mafi", "DeserializeInto", LoadDeserialization) ? 1 : 0;
+                requiredExpected++; required += PatchIterator(harmony, "Mafi.Serialization.BlobReader", "Mafi", "FinalizeLoadingTimeSliced", LoadResolverFinalization) ? 1 : 0;
+                optionalExpected++; optional += PatchTimed(harmony, "Mafi.Unity.Main", "Mafi.Unity", "collectGarbageDrainingFinalizers", SceneGarbageCollection) ? 1 : 0;
+                optionalExpected++; optional += PatchSceneGcPasses(harmony) ? 1 : 0;
 
-                s_patchSummary = new PatchSummary(11, required, 2, optional);
+                if (required != requiredExpected)
+                {
+                    harmony.UnpatchAll(HarmonyId);
+                    required = 0;
+                    optional = 0;
+                }
+                s_patchSummary = new PatchSummary(requiredExpected, required, optionalExpected, optional);
                 s_patchAttempted = true;
                 return s_patchSummary;
             }
@@ -668,14 +689,6 @@ namespace TajsCOI.Profiler.Probes.Runtime
             return __exception;
         }
 
-        private static void BeginMainLoadStart() => s_mainLoadStartDepth++;
-
-        private static Exception? EndMainLoadStart(Exception? __exception)
-        {
-            s_mainLoadStartDepth = Math.Max(0, s_mainLoadStartDepth - 1);
-            return __exception;
-        }
-
         private static void WrapCompressingStream(ref Stream __result)
         {
             try
@@ -688,21 +701,6 @@ namespace TajsCOI.Profiler.Probes.Runtime
             catch (Exception exception)
             {
                 LogCallbackFailure(exception, "wrap save compression stream");
-            }
-        }
-
-        private static void WrapDecompressingStream(ref Stream __result)
-        {
-            try
-            {
-                if (s_mainLoadStartDepth > 0 && __result is not TimedIoStream)
-                {
-                    __result = new TimedIoStream(__result, s_stages[LoadDecompression]);
-                }
-            }
-            catch (Exception exception)
-            {
-                LogCallbackFailure(exception, "wrap load decompression stream");
             }
         }
 
@@ -836,7 +834,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
         {
             var builder = new StringBuilder(1536)
                 .Append("Runtime profile '").Append(snapshot.Label).Append("' [sequence=")
-                .Append(snapshot.Sequence).Append(", captured=").Append(snapshot.CapturedUtc.ToString("O")).Append(']')
+                .Append(snapshot.Sequence).Append(", reset generation=").Append(snapshot.ResetGeneration)
+                .Append(", captured=").Append(snapshot.CapturedUtc.ToString("O")).Append(']')
+                .Append("\nStage maxima cover the interval since the previous capture or counter reset.")
                 .Append("\nMemory: managed=").Append(FormatBytes(snapshot.ManagedBytes))
                 .Append(", Unity allocated=").Append(FormatOptionalBytes(snapshot.UnityAllocatedBytes))
                 .Append(", Unity reserved=").Append(FormatOptionalBytes(snapshot.UnityReservedBytes))
@@ -1058,7 +1058,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         private static void LogCallbackFailure(Exception exception, string operation)
         {
-            if (Interlocked.Exchange(ref s_callbackErrorLogged, 1) == 0)
+            if (s_loggedCallbackFailures.TryAdd(operation, 0))
             {
                 s_log?.Exception(exception, $"Runtime performance {operation} failed; instrumentation remains fail-open.");
             }
@@ -1107,70 +1107,74 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 set => m_inner.Position = value;
             }
 
-            public override void Flush() => Measure(m_inner.Flush);
+            public override void Flush()
+            {
+                long started = Stopwatch.GetTimestamp();
+                try
+                {
+                    m_inner.Flush();
+                }
+                finally
+                {
+                    RecordElapsed(started, "gzip flush timing");
+                }
+            }
 
             public override int Read(byte[] buffer, int offset, int count)
             {
-                int result = 0;
-                Measure(() => result = m_inner.Read(buffer, offset, count));
-                return result;
+                long started = Stopwatch.GetTimestamp();
+                try
+                {
+                    return m_inner.Read(buffer, offset, count);
+                }
+                finally
+                {
+                    RecordElapsed(started, "gzip read timing");
+                }
             }
 
             public override long Seek(long offset, SeekOrigin origin) => m_inner.Seek(offset, origin);
             public override void SetLength(long value) => m_inner.SetLength(value);
 
-            public override void Write(byte[] buffer, int offset, int count) =>
-                Measure(() => m_inner.Write(buffer, offset, count));
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                long started = Stopwatch.GetTimestamp();
+                try
+                {
+                    m_inner.Write(buffer, offset, count);
+                }
+                finally
+                {
+                    RecordElapsed(started, "gzip write timing");
+                }
+            }
 
             protected override void Dispose(bool disposing)
             {
                 if (disposing && Interlocked.Exchange(ref m_disposed, 1) == 0)
                 {
-                    Measure(m_inner.Dispose);
+                    long started = Stopwatch.GetTimestamp();
+                    try
+                    {
+                        m_inner.Dispose();
+                    }
+                    finally
+                    {
+                        RecordElapsed(started, "gzip dispose timing");
+                    }
                 }
                 base.Dispose(disposing);
             }
 
-            private void Measure(Action operation)
+            private void RecordElapsed(long started, string operation)
             {
-                long started;
-                long managedBefore;
-                int gen0;
-                int gen1;
-                int gen2;
                 try
                 {
-                    started = Stopwatch.GetTimestamp();
-                    managedBefore = GC.GetTotalMemory(false);
-                    gen0 = GC.CollectionCount(0);
-                    gen1 = GC.CollectionCount(1);
-                    gen2 = GC.CollectionCount(2);
+                    m_accumulator.Record(Stopwatch.GetTimestamp() - started, 0);
                 }
                 catch (Exception exception)
                 {
-                    LogCallbackFailure(exception, "gzip I/O timing prefix");
-                    operation();
-                    return;
-                }
-                try
-                {
-                    operation();
-                }
-                finally
-                {
-                    try
-                    {
-                        m_accumulator.Record(
-                            Stopwatch.GetTimestamp() - started,
-                            GC.GetTotalMemory(false) - managedBefore,
-                            GC.CollectionCount(0) - gen0,
-                            GC.CollectionCount(1) - gen1,
-                            GC.CollectionCount(2) - gen2);
-                    }
-                    catch (Exception exception)
-                    {
-                        LogCallbackFailure(exception, "gzip I/O timing result");
-                    }
+                    LogCallbackFailure(exception, operation);
                 }
             }
         }

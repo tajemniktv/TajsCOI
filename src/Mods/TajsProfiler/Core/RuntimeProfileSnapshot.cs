@@ -12,6 +12,7 @@ namespace TajsCOI.Profiler.Core
         internal RuntimeProfileSnapshot(
             string label,
             long sequence,
+            long resetGeneration,
             DateTime capturedUtc,
             long managedBytes,
             long unityAllocatedBytes,
@@ -24,6 +25,7 @@ namespace TajsCOI.Profiler.Core
         {
             Label = label;
             Sequence = sequence;
+            ResetGeneration = resetGeneration;
             CapturedUtc = capturedUtc;
             ManagedBytes = managedBytes;
             UnityAllocatedBytes = unityAllocatedBytes;
@@ -37,6 +39,7 @@ namespace TajsCOI.Profiler.Core
 
         internal string Label { get; }
         internal long Sequence { get; }
+        internal long ResetGeneration { get; }
         internal DateTime CapturedUtc { get; }
         internal long ManagedBytes { get; }
         internal long UnityAllocatedBytes { get; }
