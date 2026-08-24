@@ -135,6 +135,11 @@ namespace TajsCOI.Common.Settings
                         return false;
 
                     case SettingValueType.Integer:
+                        if (input is null)
+                        {
+                            error = "Expected a whole 32-bit integer.";
+                            return false;
+                        }
                         double integerNumber = Convert.ToDouble(input, CultureInfo.InvariantCulture);
                         if (double.IsNaN(integerNumber) || double.IsInfinity(integerNumber) ||
                             integerNumber != Math.Truncate(integerNumber) || integerNumber < int.MinValue || integerNumber > int.MaxValue)
@@ -146,6 +151,11 @@ namespace TajsCOI.Common.Settings
                         return ValidateNumber(integer, out normalized, out error);
 
                     case SettingValueType.Float:
+                        if (input is null)
+                        {
+                            error = "Expected a finite number.";
+                            return false;
+                        }
                         double number = Convert.ToDouble(input, CultureInfo.InvariantCulture);
                         if (double.IsNaN(number) || double.IsInfinity(number))
                         {
@@ -208,13 +218,19 @@ namespace TajsCOI.Common.Settings
 
         private void ValidateShape()
         {
-            if (Minimum.HasValue != Maximum.HasValue || Minimum.HasValue && Minimum.Value > Maximum!.Value)
+            if (Minimum.HasValue && !IsFinite(Minimum.Value) ||
+                Maximum.HasValue && !IsFinite(Maximum.Value) ||
+                Step.HasValue && !IsFinite(Step.Value))
+            {
+                throw new ArgumentOutOfRangeException("numericMetadata", "Numeric bounds and step must be finite.");
+            }
+            if (Minimum.HasValue != Maximum.HasValue || Minimum.HasValue && Minimum.Value > Maximum.Value)
             {
                 throw new ArgumentException("Numeric settings require an ordered minimum and maximum.");
             }
             if (Step.HasValue && Step.Value <= 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(Step), "Setting step must be positive.");
+                throw new ArgumentOutOfRangeException("step", "Setting step must be positive.");
             }
             if ((ValueType == SettingValueType.Integer || ValueType == SettingValueType.Float) && !Minimum.HasValue)
             {
@@ -224,11 +240,18 @@ namespace TajsCOI.Common.Settings
             {
                 throw new ArgumentException("Choice settings require at least one option.");
             }
+            if (ValueType == SettingValueType.Choice &&
+                Choices.Select(x => x.Value).Distinct(StringComparer.Ordinal).Count() != Choices.Count)
+            {
+                throw new ArgumentException("Choice setting values must be unique.");
+            }
             if (ValueType != SettingValueType.Choice && Choices.Count != 0)
             {
                 throw new ArgumentException("Only choice settings can declare options.");
             }
         }
+
+        private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
 
         private static object DefaultFor(SettingValueType type) =>
             type == SettingValueType.Boolean ? (object)false :

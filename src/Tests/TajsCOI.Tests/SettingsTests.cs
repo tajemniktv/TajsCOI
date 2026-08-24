@@ -17,7 +17,7 @@ namespace TajsCOI.Tests
     public sealed class SettingsTests
     {
         [Fact]
-        public void Performance_catalog_migrates_every_legacy_config_key()
+        public void PerformanceCatalogDeclaresEveryExpectedSetting()
         {
             Assert.Equal(9, PerformanceSettingsCatalog.All.Count);
             Assert.Equal(9, PerformanceSettingsCatalog.All.Select(x => x.Key).Distinct(StringComparer.Ordinal).Count());
@@ -106,25 +106,35 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
-        public void PerSaveSettingChangesInMemoryWithoutWritingGlobalFile()
+        public void PerSaveSettingRegistrationIsRejectedUntilSavePersistenceExists()
         {
             string directory = CreateTemporaryDirectory();
             string path = Path.Combine(directory, "settings.json");
             try
             {
                 var settings = new TajsSettings(path, new NullLogger());
-                settings.Register(SettingDescriptor.Boolean(
-                    "TajsTweaks",
-                    "Tweaks",
-                    "island_option",
-                    "Island option",
-                    "Test per-save setting.",
-                    false,
-                    scope: SettingScope.PerSave));
-
-                Assert.True(settings.TrySet("TajsTweaks", "island_option", true).Success);
-                Assert.True(settings.Get<bool>("TajsTweaks", "island_option"));
+                Assert.Throws<NotSupportedException>(() => settings.Register(SettingDescriptor.Boolean(
+                    "TajsTweaks", "Tweaks", "island_option", "Island option",
+                    "Test per-save setting.", false, scope: SettingScope.PerSave)));
                 Assert.False(File.Exists(path));
+            }
+            finally
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+
+        [Fact]
+        public void SchemaZeroFlatValuesMigrateIntoTheGlobalRegistry()
+        {
+            string directory = CreateTemporaryDirectory();
+            string path = Path.Combine(directory, "settings.json");
+            try
+            {
+                File.WriteAllText(path, "{\"TajsTweaks.unlocked_speed_max\":125}", Encoding.UTF8);
+                var settings = new TajsSettings(path, new NullLogger());
+                settings.Register(CreateSpeedDescriptor());
+                Assert.Equal(125, settings.Get<int>("TajsTweaks", "unlocked_speed_max"));
             }
             finally
             {

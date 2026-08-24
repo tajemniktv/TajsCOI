@@ -13,6 +13,13 @@
     <COIManagedDir>$(COIRoot)\Captain of Industry_Data\Managed</COIManagedDir>
   </PropertyGroup>
 
+  <Target Name="ValidateCoiTestReferences" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(COIRoot)' == ''"
+           Text="COI_ROOT must point to the Captain of Industry 0.8.7a reference root when building TajsCOI.Tests."/>
+    <Error Condition="!Exists('$(COIManagedDir)\Mafi.dll')"
+           Text="Captain of Industry 0.8.7a test references were not found at '$(COIManagedDir)'."/>
+  </Target>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="All"/>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1"/>

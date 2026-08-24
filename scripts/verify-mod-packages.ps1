@@ -23,6 +23,9 @@ foreach ($entry in $expectedDlls.GetEnumerator()) {
     }
 
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    if ([string]$manifest.id -cne $modId) {
+        throw "$modId manifest ID mismatch. Expected '$modId', got '$($manifest.id)'."
+    }
     $primaryDlls = @($manifest.primary_dlls)
     $expected = @($entry.Value)
 
@@ -37,9 +40,9 @@ foreach ($entry in $expectedDlls.GetEnumerator()) {
         }
     }
 
-    $actualDlls = @(Get-ChildItem -LiteralPath $modRoot -Filter '*.dll' -File |
-        Sort-Object Name |
-        ForEach-Object Name)
+    $actualDlls = @(Get-ChildItem -LiteralPath $modRoot -Filter '*.dll' -File -Recurse |
+        ForEach-Object { $_.FullName.Substring($modRoot.Length).TrimStart('\', '/').Replace('\', '/') } |
+        Sort-Object)
     $expectedSorted = @($expected | Sort-Object)
     if (($actualDlls -join '|') -cne ($expectedSorted -join '|')) {
         throw "$modId DLL contents mismatch. Expected '$($expectedSorted -join ', ')', got '$($actualDlls -join ', ')'."

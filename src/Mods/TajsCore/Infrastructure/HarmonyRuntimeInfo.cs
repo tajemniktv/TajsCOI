@@ -13,6 +13,8 @@ namespace TajsCOI.Core.Infrastructure
     internal sealed class HarmonyRuntimeInfo
     {
         private const string HarmonyAssemblyName = "0Harmony";
+        private const string UnknownVersion = "unknown";
+        private const string UnavailableVersion = "unavailable";
 
         private HarmonyRuntimeInfo(
             string packagedVersion,
@@ -40,13 +42,13 @@ namespace TajsCOI.Core.Infrastructure
             string packagedVersion = ReadPackagedVersion(packagedPath);
             string[] loadedVersions = AppDomain.CurrentDomain.GetAssemblies()
                 .Where(assembly => string.Equals(assembly.GetName().Name, HarmonyAssemblyName, StringComparison.Ordinal))
-                .Select(assembly => assembly.GetName().Version?.ToString() ?? "unknown")
+                .Select(assembly => assembly.GetName().Version?.ToString() ?? UnknownVersion)
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(version => version, StringComparer.Ordinal)
                 .ToArray();
-            string loadedVersion = loadedVersions.Length == 0 ? "unavailable" : string.Join(", ", loadedVersions);
+            string loadedVersion = loadedVersions.Length == 0 ? UnavailableVersion : string.Join(", ", loadedVersions);
 
-            if (packagedVersion == "unavailable")
+            if (packagedVersion == UnavailableVersion)
             {
                 return new HarmonyRuntimeInfo(
                     packagedVersion,
@@ -85,7 +87,7 @@ namespace TajsCOI.Core.Infrastructure
                 "TajsCore",
                 "HarmonyRuntime",
                 State,
-                $"Loaded Harmony version {PackagedVersion}",
+                $"Packaged Harmony version: {PackagedVersion}",
                 $"Loaded Harmony version(s): {LoadedVersion}",
                 Reason);
 
@@ -94,12 +96,12 @@ namespace TajsCOI.Core.Infrastructure
             try
             {
                 return File.Exists(path)
-                    ? AssemblyName.GetAssemblyName(path).Version?.ToString() ?? "unknown"
-                    : "unavailable";
+                    ? AssemblyName.GetAssemblyName(path).Version?.ToString() ?? UnknownVersion
+                    : UnavailableVersion;
             }
             catch (Exception)
             {
-                return "unavailable";
+                return UnavailableVersion;
             }
         }
     }

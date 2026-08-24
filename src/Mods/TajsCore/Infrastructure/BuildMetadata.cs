@@ -5,6 +5,7 @@
 #region
 
 using System.Globalization;
+using System;
 using System.IO;
 using System.Reflection;
 using Mafi.Core.Mods;
@@ -27,9 +28,16 @@ namespace TajsCOI.Core.Infrastructure
 
         internal static void Initialize(ModManifest manifest)
         {
-            string assemblyName = s_assembly.GetName().Name ?? "TajsCore";
-            string assemblyPath = Path.Combine(manifest.RootDirectoryPath, assemblyName + ".dll");
-            s_info = AssemblyBuildInfo.Read(s_assembly, assemblyPath);
+            try
+            {
+                string assemblyName = s_assembly.GetName().Name ?? "TajsCore";
+                string assemblyPath = Path.Combine(manifest.RootDirectoryPath, assemblyName + ".dll");
+                s_info = AssemblyBuildInfo.Read(s_assembly, assemblyPath);
+            }
+            catch (Exception)
+            {
+                s_info = AssemblyBuildInfo.Read(s_assembly);
+            }
         }
     }
 }

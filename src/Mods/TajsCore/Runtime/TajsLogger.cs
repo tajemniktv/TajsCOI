@@ -44,7 +44,7 @@ namespace TajsCOI.Core.Runtime
                 throw new ArgumentNullException(nameof(exception));
             }
 
-            Log.Exception(exception, Prefix(message ?? string.Empty).TrimEnd());
+            Log.Exception(exception, string.IsNullOrEmpty(message) ? m_prefix.TrimEnd() : Prefix(message));
         }
 
         private string Prefix(string? message) => m_prefix + (message ?? string.Empty);

@@ -60,6 +60,7 @@ namespace TajsCOI.Tests
                 logger.ErrorOnce("error-once-" + unique);
                 var exception = new InvalidOperationException("failure-" + unique);
                 logger.Exception(exception, "context-" + unique);
+                logger.Exception(exception, "context-with-space-" + unique + "  ");
 
                 Assert.Contains(entries, entry =>
                     entry.Type == LogType.Info &&
@@ -70,10 +71,14 @@ namespace TajsCOI.Tests
                 Assert.Single(entries.FindAll(entry =>
                     entry.Type == LogType.Error &&
                     entry.Message == $"[TajsCOI][TajsProfiler][Dumping] error-once-{unique}"));
-                LogEntry exceptionEntry = Assert.Single(entries.FindAll(entry => entry.Type == LogType.Exception));
+                LogEntry exceptionEntry = Assert.Single(entries.FindAll(entry =>
+                    entry.Type == LogType.Exception && entry.Message == $"[TajsCOI][TajsProfiler][Dumping] context-{unique}"));
                 Assert.Equal($"[TajsCOI][TajsProfiler][Dumping] context-{unique}", exceptionEntry.Message);
                 Assert.True(exceptionEntry.Exception.HasValue);
                 Assert.Same(exception, exceptionEntry.Exception.Value);
+                Assert.Contains(entries, entry =>
+                    entry.Type == LogType.Exception &&
+                    entry.Message == $"[TajsCOI][TajsProfiler][Dumping] context-with-space-{unique}  ");
             }
             finally
             {

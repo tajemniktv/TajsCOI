@@ -56,6 +56,13 @@
     <ItemGroup Condition="'@(PrimaryModDll)' == ''">
       <PrimaryModDll Include="$(TargetFileName)"/>
     </ItemGroup>
+    <ItemGroup>
+      <_PrimaryTargetDll Remove="@(_PrimaryTargetDll)"/>
+      <_PrimaryTargetDll Include="@(PrimaryModDll)"
+                         Condition="'%(PrimaryModDll.Identity)' == '$(TargetFileName)'"/>
+    </ItemGroup>
+    <Error Condition="'@(_PrimaryTargetDll)' == ''"
+           Text="PrimaryModDll for $(ModId) must include the mod assembly '$(TargetFileName)' in its intended load-order position."/>
   </Target>
 
   <!-- Generate manifest.json from the same properties used for assembly metadata. -->
@@ -125,9 +132,9 @@
   </Target>
 
   <Target Name="ValidatePrimaryModDllOutputs"
-          BeforeTargets="DeployCoiMod;CopyCoiDllToUnity"
+          BeforeTargets="DeployCoiMod;CopyCoiDllToUnity;CreateCoiReleasePackage"
           Condition="'$(IsCoiMod)' == 'true'
-                  and ('$(DeployToModsFolder)' == 'true' or '$(CopyToUnityProject)' == 'true')">
+                  and ('$(DeployToModsFolder)' == 'true' or '$(CopyToUnityProject)' == 'true' or '$(CreateReleaseZip)' == 'true')">
     <Error Condition="!Exists('$(TargetDir)%(PrimaryModDll.Identity)')"
            Text="Primary mod DLL '%(PrimaryModDll.Identity)' was declared for $(ModId) but was not found in '$(TargetDir)'."/>
   </Target>

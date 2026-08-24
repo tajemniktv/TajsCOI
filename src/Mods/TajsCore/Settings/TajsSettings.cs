@@ -24,6 +24,7 @@ namespace TajsCOI.Core.Settings
         internal const int CurrentSchemaVersion = 1;
 
         private readonly object m_gate = new();
+        private readonly object m_persistenceGate = new();
         private readonly string m_filePath;
         private readonly string m_backupPath;
         private readonly ITajsLogger m_log;
@@ -54,6 +55,11 @@ namespace TajsCOI.Core.Settings
             {
                 throw new ArgumentNullException(nameof(descriptor));
             }
+            if (descriptor.Scope != SettingScope.Global)
+            {
+                throw new NotSupportedException(
+                    $"Setting '{descriptor.StableId}' uses {descriptor.Scope}, but TajsCore currently supports only global persistence.");
+            }
 
             lock (m_gate)
             {
@@ -68,8 +74,7 @@ namespace TajsCOI.Core.Settings
                 }
 
                 object value = descriptor.DefaultValue;
-                if (descriptor.Scope == SettingScope.Global &&
-                    m_persistedValues.TryGetValue(descriptor.StableId, out object persisted))
+                if (m_persistedValues.TryGetValue(descriptor.StableId, out object persisted))
                 {
                     if (descriptor.TryNormalize(persisted, out object normalized, out string error))
                     {
@@ -117,33 +122,41 @@ namespace TajsCOI.Core.Settings
                 return SettingSetResult.Rejected(exception.Message);
             }
 
-            SettingChangedEventArgs? change;
+            SettingChangedEventArgs change;
             SettingSetResult result;
-            lock (m_gate)
+            lock (m_persistenceGate)
             {
-                if (!m_descriptors.TryGetValue(stableId, out SettingDescriptor descriptor))
+                SettingDescriptor descriptor;
+                object normalized;
+                object oldValue;
+                string json;
+                lock (m_gate)
                 {
-                    return SettingSetResult.Rejected($"Setting '{stableId}' is not registered.");
-                }
-                if (!descriptor.TryNormalize(value, out object normalized, out string error))
-                {
-                    return SettingSetResult.Rejected(error);
+                    if (!m_descriptors.TryGetValue(stableId, out descriptor))
+                    {
+                        return SettingSetResult.Rejected($"Setting '{stableId}' is not registered.");
+                    }
+                    if (!descriptor.TryNormalize(value, out normalized, out string error))
+                    {
+                        return SettingSetResult.Rejected(error);
+                    }
+
+                    oldValue = m_values[stableId];
+                    if (Equals(oldValue, normalized))
+                    {
+                        return SettingSetResult.Accepted(oldValue, descriptor.ApplyMode);
+                    }
+                    json = CreatePersistenceJson(stableId, normalized);
                 }
 
-                object oldValue = m_values[stableId];
-                if (Equals(oldValue, normalized))
+                if (!TryPersist(json, out string persistError))
                 {
-                    return SettingSetResult.Accepted(oldValue, descriptor.ApplyMode);
+                    return SettingSetResult.Rejected(persistError);
                 }
 
-                if (descriptor.Scope == SettingScope.Global && !TryPersist(stableId, normalized, out error))
+                lock (m_gate)
                 {
-                    return SettingSetResult.Rejected(error);
-                }
-
-                m_values[stableId] = normalized;
-                if (descriptor.Scope == SettingScope.Global)
-                {
+                    m_values[stableId] = normalized;
                     m_persistedValues[stableId] = normalized;
                 }
                 change = new SettingChangedEventArgs(descriptor, oldValue, normalized);
@@ -156,10 +169,11 @@ namespace TajsCOI.Core.Settings
                 return result;
             }
 
-            foreach (EventHandler<SettingChangedEventArgs> subscriber in changed.GetInvocationList())
+            foreach (Delegate handler in changed.GetInvocationList())
             {
                 try
                 {
+                    var subscriber = (EventHandler<SettingChangedEventArgs>)handler;
                     subscriber(this, change);
                 }
                 catch (Exception exception)
@@ -297,7 +311,7 @@ namespace TajsCOI.Core.Settings
             return values.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal);
         }
 
-        private bool TryPersist(string changedId, object changedValue, out string error)
+        private string CreatePersistenceJson(string changedId, object changedValue)
         {
             var values = new Dictionary<string, object>(m_persistedValues, StringComparer.Ordinal)
             {
@@ -316,7 +330,11 @@ namespace TajsCOI.Core.Settings
                 ["schema_version"] = CurrentSchemaVersion,
                 ["values"] = values,
             };
-            string json = SerializeSettings(root);
+            return SerializeSettings(root);
+        }
+
+        private bool TryPersist(string json, out string error)
+        {
             string? directory = Path.GetDirectoryName(m_filePath);
             string tempPath = m_filePath + ".tmp." + Guid.NewGuid().ToString("N");
             try
