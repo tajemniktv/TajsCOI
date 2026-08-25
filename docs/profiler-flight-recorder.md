@@ -86,9 +86,11 @@ independently and are shown in compatibility status. Phase-registration conflict
 compatibility output instead of silently leaving users with unexplained `UNKNOWN` labels.
 
 The runtime summary includes the last deep-capture callback count and measured instrumentation
-overhead per captured frame. `tajs_profiler_deep_overhead_bench` compares a direct callback,
-the deep-disabled wrapper, and the deep-enabled wrapper; it uses an isolated temporary span ring
-and does not replace an existing capture.
+overhead per captured frame. `tajs_profiler_deep_overhead_bench` compares a direct callback, the
+deep-disabled wrapper, the complete deep-enabled wrapper, and a separate deep-enabled core path
+that includes metadata/owner lookup, timestamping, callback execution, and span recording. The
+last case isolates the likely expensive work from phase-scope and overhead-accounting costs. It
+uses an isolated temporary span ring and does not replace an existing capture.
 `tajs_profiler_overhead_bench` separately measures the validated GameLoopTimings reader and the
 bounded primitive flight-recorder write, while `tajs_profiler_counter_overhead_bench` measures
 the optional counter sampler.
@@ -100,7 +102,9 @@ explicitly reports that it performs no forced GC. Counter handles are disposed w
 service terminates, so optional Unity diagnostics do not outlive the resolver scene.
 
 Subsystem probes publish through a bounded Core-owned telemetry store. Counter registration happens
-once during probe setup; hot-path publication is an atomic numeric add/increment with no strings,
+once during probe setup; each counter also records an explicit owner such as
+`TajsProfiler.Dumping`, `TajsProfiler.Pathfinding`, or `TajsProfiler.Terrain`. Hot-path publication
+is an atomic numeric add/increment with no strings,
 LINQ, locks, or per-call allocation. Frame capture copies counter deltas into fixed value fields,
 so the runtime summary, spike records, subsystem report, and trace export consume the same timeline
 model. Sparse probe events use a preallocated ring and are intended for state changes or threshold
@@ -108,7 +112,10 @@ crossings such as dumping-profile transitions and unusually long dump searches.
 
 The dumping probe owns the COI-specific Harmony bindings and detailed search breakdowns, while
 Core owns the shared counter/event transport. `tajs_profiler_subsystems` aggregates the published
-counters over a paused-excluded interval, and `tajs_profiler_dumping` is the unified-prefixed entry
+counters over a paused-excluded interval, prints each counter's owner, and adds a top-contributor
+roll-up ranked only from stopwatch-duration counters. `tajs_profiler_subsystems_clear` resets the
+shared counter interval and clears the frame timeline so a new experiment starts cleanly.
+`tajs_profiler_dumping` is the unified-prefixed entry
 point for the detailed dumping view. The existing `tajs_dump_*` commands remain compatibility
 views for product/path/cache breakdowns and timed dump comparisons; their duplicate timed history
 is retained until a future shared interval-comparison view can represent those probe-specific
@@ -131,6 +138,7 @@ being misrepresented as zero.
 tajs_profiler_status
 tajs_profiler_runtime [seconds]
 tajs_profiler_subsystems [seconds]
+tajs_profiler_subsystems_clear
 tajs_profiler_dumping
 tajs_profiler_spikes [count]
 tajs_profiler_runtime_raw [count]

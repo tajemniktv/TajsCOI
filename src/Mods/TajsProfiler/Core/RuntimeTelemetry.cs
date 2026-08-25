@@ -18,7 +18,8 @@ namespace TajsCOI.Profiler.Core
 
     /// <summary>
     ///     Stable numeric identity for a registered runtime counter. Registration is setup work;
-    ///     publishing uses only the index and an atomic operation.
+    ///     publishing uses only the index and an atomic operation. The owner is registry metadata,
+    ///     not part of the hot-path handle.
     /// </summary>
     internal readonly struct RuntimeTelemetryCounter
     {
@@ -168,6 +169,7 @@ namespace TajsCOI.Profiler.Core
 
         private static readonly object s_registryGate = new object();
         private static readonly string[] s_counterNames = new string[RuntimeTelemetrySnapshot.MaximumCounters];
+        private static readonly string[] s_counterOwners = new string[RuntimeTelemetrySnapshot.MaximumCounters];
         private static readonly long[] s_counterValues = new long[RuntimeTelemetrySnapshot.MaximumCounters];
         private static readonly long[] s_previousCounterValues = new long[RuntimeTelemetrySnapshot.MaximumCounters];
         private static readonly RuntimeTelemetryUnit[] s_counterUnits = new RuntimeTelemetryUnit[RuntimeTelemetrySnapshot.MaximumCounters];
@@ -181,7 +183,8 @@ namespace TajsCOI.Profiler.Core
 
         internal static RuntimeTelemetryCounter RegisterCounter(
             string name,
-            RuntimeTelemetryUnit unit = RuntimeTelemetryUnit.Count)
+            RuntimeTelemetryUnit unit = RuntimeTelemetryUnit.Count,
+            string? owner = null)
         {
             if (string.IsNullOrWhiteSpace(name))
             {
@@ -205,6 +208,7 @@ namespace TajsCOI.Profiler.Core
                 }
 
                 s_counterNames[count] = name;
+                s_counterOwners[count] = string.IsNullOrWhiteSpace(owner) ? "TajsProfiler" : owner!.Trim();
                 s_counterUnits[count] = unit;
                 Volatile.Write(ref s_counterCount, count + 1);
                 return new RuntimeTelemetryCounter(count);
@@ -249,6 +253,14 @@ namespace TajsCOI.Profiler.Core
         internal static RuntimeTelemetryUnit CounterUnit(int index) =>
             index >= 0 && index < CounterCount ? s_counterUnits[index] : RuntimeTelemetryUnit.Count;
 
+        internal static string CounterOwner(int index)
+        {
+            int count = CounterCount;
+            return index >= 0 && index < count && !string.IsNullOrWhiteSpace(s_counterOwners[index])
+                ? s_counterOwners[index]
+                : "TajsProfiler";
+        }
+
         internal static long Read(RuntimeTelemetryCounter counter) =>
             counter.IsValid ? Interlocked.Read(ref s_counterValues[counter.Index]) : 0;
 
@@ -275,6 +287,21 @@ namespace TajsCOI.Profiler.Core
                 Interlocked.Exchange(ref s_counterValues[counter.Index], 0);
                 Interlocked.Exchange(ref s_previousCounterValues[counter.Index], 0);
             }
+        }
+
+        /// <summary>
+        ///     Resets all registered counters at a measurement boundary. The next Capture call
+        ///     starts a new delta interval; registration and counter ownership remain intact.
+        /// </summary>
+        internal static int ResetAllCounters()
+        {
+            int count = CounterCount;
+            for (int index = 0; index < count; index++)
+            {
+                Interlocked.Exchange(ref s_counterValues[index], 0);
+                Interlocked.Exchange(ref s_previousCounterValues[index], 0);
+            }
+            return count;
         }
 
         internal static RuntimeTelemetrySnapshot Capture()

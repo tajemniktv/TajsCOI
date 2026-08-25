@@ -242,13 +242,15 @@ namespace TajsCOI.Profiler.Core
             int iterations,
             long baselineTicks,
             long disabledTicks,
-            long enabledTicks)
+            long enabledTicks,
+            long metadataAndSpanTicks)
         {
             Available = true;
             Iterations = iterations;
             BaselineTicks = baselineTicks;
             DisabledTicks = disabledTicks;
             EnabledTicks = enabledTicks;
+            MetadataAndSpanTicks = metadataAndSpanTicks;
         }
 
         internal bool Available { get; }
@@ -256,6 +258,7 @@ namespace TajsCOI.Profiler.Core
         internal long BaselineTicks { get; }
         internal long DisabledTicks { get; }
         internal long EnabledTicks { get; }
+        internal long MetadataAndSpanTicks { get; }
         internal long EnabledOverheadTicks => Math.Max(0, EnabledTicks - DisabledTicks);
     }
 
@@ -504,13 +507,14 @@ namespace TajsCOI.Profiler.Core
             }
 
             Action callback = NoOpCallback;
+            object benchmarkOwner = new object();
             object eventSource = new object();
             RuntimeTracePhaseContext.RegisterEvent(eventSource, RuntimeTracePhase.SimUpdate);
             const int WarmupIterations = 256;
             for (int index = 0; index < WarmupIterations; index++)
             {
                 callback();
-                InvokeWithOwner(null, callback, RuntimeTracePhase.Unknown, eventSource);
+                InvokeWithOwner(benchmarkOwner, callback, RuntimeTracePhase.Unknown, eventSource);
             }
 
             long baselineStart = Stopwatch.GetTimestamp();
@@ -543,15 +547,33 @@ namespace TajsCOI.Profiler.Core
                 // Warm metadata/ring paths before measuring the steady-state enabled wrapper.
                 for (int index = 0; index < WarmupIterations; index++)
                 {
-                    InvokeWithOwner(null, callback, RuntimeTracePhase.Unknown, eventSource);
+                    InvokeWithOwner(benchmarkOwner, callback, RuntimeTracePhase.Unknown, eventSource);
                 }
                 long enabledStart = Stopwatch.GetTimestamp();
                 for (int index = 0; index < iterations; index++)
                 {
-                    InvokeWithOwner(null, callback, RuntimeTracePhase.Unknown, eventSource);
+                    InvokeWithOwner(benchmarkOwner, callback, RuntimeTracePhase.Unknown, eventSource);
                 }
                 long enabledTicks = Stopwatch.GetTimestamp() - enabledStart;
-                return new DeepCallbackOverheadBenchmark(iterations, baselineTicks, disabledTicks, enabledTicks);
+
+                // This isolates the expensive enabled core: phase-independent metadata lookup,
+                // timestamping, sequence/thread bookkeeping, callback execution, and bounded
+                // span recording. The full enabled-wrapper case above additionally measures the
+                // phase scope and instrumentation-overhead accounting.
+                long metadataAndSpanStart = Stopwatch.GetTimestamp();
+                for (int index = 0; index < iterations; index++)
+                {
+                    CallbackToken token = Begin(benchmarkOwner, callback, RuntimeTracePhase.SimUpdate);
+                    callback();
+                    End(token);
+                }
+                long metadataAndSpanTicks = Stopwatch.GetTimestamp() - metadataAndSpanStart;
+                return new DeepCallbackOverheadBenchmark(
+                    iterations,
+                    baselineTicks,
+                    disabledTicks,
+                    enabledTicks,
+                    metadataAndSpanTicks);
             }
             finally
             {

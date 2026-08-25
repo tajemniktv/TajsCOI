@@ -35,7 +35,9 @@ namespace TajsCOI.Tests
         public void SharedTelemetryPublishesAtomicDeltasAndSparseEvents()
         {
             RuntimeTelemetryCounter counter = RuntimeTelemetry.RegisterCounter(
-                "tests.telemetry." + Guid.NewGuid().ToString("N"));
+                "tests.telemetry." + Guid.NewGuid().ToString("N"),
+                RuntimeTelemetryUnit.Count,
+                "TajsCOI.Tests.Telemetry");
             RuntimeTelemetryEvent telemetryEvent = RuntimeTelemetry.RegisterEvent(
                 "tests.event." + Guid.NewGuid().ToString("N"));
             RuntimeTelemetry.Reset(counter);
@@ -46,6 +48,7 @@ namespace TajsCOI.Tests
 
             Assert.Equal(100, snapshot.Get(counter));
             Assert.Equal(0, RuntimeTelemetry.Capture().Get(counter));
+            Assert.Equal("TajsCOI.Tests.Telemetry", RuntimeTelemetry.CounterOwner(counter.Index));
 
             RuntimeTelemetry.Publish(telemetryEvent, 1234, RuntimeTracePhase.SimUpdate);
             RuntimeTelemetryEventSnapshot[] events = RuntimeTelemetry.SnapshotEvents();
@@ -116,6 +119,7 @@ namespace TajsCOI.Tests
 
                 string json = File.ReadAllText(path);
                 Assert.Contains(counterName, json);
+                Assert.Contains("TajsProfiler", json);
                 Assert.Contains(eventName, json);
                 Assert.Contains("coi.telemetry", json);
                 Assert.Contains("mainThreadMs", json);
@@ -305,6 +309,7 @@ namespace TajsCOI.Tests
             Assert.True(benchmark.BaselineTicks > 0);
             Assert.True(benchmark.DisabledTicks > 0);
             Assert.True(benchmark.EnabledTicks > 0);
+            Assert.True(benchmark.MetadataAndSpanTicks > 0);
             Assert.False(DeepCallbackRecorder.IsActive);
         }
 

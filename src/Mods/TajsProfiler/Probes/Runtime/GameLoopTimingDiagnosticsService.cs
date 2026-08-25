@@ -3,9 +3,11 @@
 // All Rights Reserved.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -592,11 +594,63 @@ namespace TajsCOI.Profiler.Probes.Runtime
             for (int counterIndex = 0; counterIndex < counterCount; counterIndex++)
             {
                 builder.Append("\n  ")
+                    .Append("owner=")
+                    .Append(RuntimeTelemetry.CounterOwner(counterIndex))
+                    .Append(' ')
                     .Append(RuntimeTelemetry.CounterName(counterIndex))
                     .Append('=')
                     .Append(FormatTelemetryValue(counterIndex, totals[counterIndex]));
             }
+
+            var ownerCosts = new Dictionary<string, long>(StringComparer.Ordinal);
+            for (int counterIndex = 0; counterIndex < counterCount; counterIndex++)
+            {
+                if (RuntimeTelemetry.CounterUnit(counterIndex) != RuntimeTelemetryUnit.StopwatchTicks ||
+                    totals[counterIndex] <= 0)
+                {
+                    continue;
+                }
+
+                string owner = RuntimeTelemetry.CounterOwner(counterIndex);
+                ownerCosts.TryGetValue(owner, out long current);
+                ownerCosts[owner] = RuntimeTraceMath.SaturatingAdd(current, totals[counterIndex]);
+            }
+
+            builder.Append("\nTop subsystem contributors (timed counters):");
+            if (ownerCosts.Count == 0)
+            {
+                builder.Append("\n  none");
+            }
+            else
+            {
+                foreach (KeyValuePair<string, long> ownerCost in ownerCosts
+                    .OrderByDescending(x => x.Value)
+                    .ThenBy(x => x.Key, StringComparer.Ordinal)
+                    .Take(8))
+                {
+                    builder.Append("\n  ")
+                        .Append(ownerCost.Key)
+                        .Append(" total=")
+                        .Append(RuntimeTraceText.Milliseconds(ownerCost.Value));
+                }
+            }
             return builder.ToString();
+        }
+
+        [ConsoleCommand(
+            documentation: "Clears shared subsystem counter deltas and the frame timeline used by the subsystem report.",
+            customCommandName: "tajs_profiler_subsystems_clear")]
+        public string SubsystemsClear()
+        {
+            int sampleCount = m_history.Count;
+            int counterCount = RuntimeTelemetry.ResetAllCounters();
+            m_history.Clear();
+            m_spikes.Clear();
+            m_frameBaseline.Clear();
+            m_rollingMedianFrameTicks = 0;
+            m_baselineSampleCounter = 0;
+            return "Runtime profiler subsystem telemetry cleared (" + sampleCount +
+                " frame sample(s), " + counterCount + " counter(s)); next frame starts the interval.";
         }
 
         [ConsoleCommand(
@@ -726,6 +780,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 " (" + RuntimeTraceText.Milliseconds(benchmark.DisabledTicks / benchmark.Iterations) + "/callback)" +
                 ", deep-enabled=" + RuntimeTraceText.Milliseconds(benchmark.EnabledTicks) +
                 " (" + RuntimeTraceText.Milliseconds(benchmark.EnabledTicks / benchmark.Iterations) + "/callback)" +
+                ", deep-enabled-metadata+span=" + RuntimeTraceText.Milliseconds(benchmark.MetadataAndSpanTicks) +
+                " (" + RuntimeTraceText.Milliseconds(benchmark.MetadataAndSpanTicks / benchmark.Iterations) + "/callback)" +
                 ", deep-overhead=" + RuntimeTraceText.Milliseconds(benchmark.EnabledOverheadTicks) +
                 " (" + RuntimeTraceText.Milliseconds(benchmark.EnabledOverheadTicks / benchmark.Iterations) + "/callback).";
         }

@@ -8,7 +8,10 @@ Features are disabled by default and configured independently through the TajsCo
 Available opt-in features:
 - Granular rendering load shedding: independently disables named smoke, dust, weather, cloud,
   fog, or shadow rendering controls and restores the captured Unity state when disabled. All
-  controls are live and disabled by default.
+  controls are live and disabled by default. Particle classification currently uses
+  version-sensitive object names because COI exposes no stable rendering-category contract to
+  this mod. Enabling or changing a particle control, and loading a scene while active, may hitch
+  once while Unity enumerates particle systems; it never scans from a per-frame callback.
 - Large save/load read buffer: changes BlobReader's 4 KiB buffer to a configurable 16-256 KiB
   buffer (64 KiB default). It preserves checksum preflight and all vanilla load semantics.
 - Streaming save compression: writes gzip directly into CoI's seekable temporary file, patches

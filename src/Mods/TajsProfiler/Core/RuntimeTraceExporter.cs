@@ -470,6 +470,11 @@ namespace TajsCOI.Profiler.Core
                     RuntimeTelemetry.CounterName(index),
                     RuntimeTelemetry.CounterUnit(index),
                     frame.Telemetry.Get(index));
+                AppendTelemetryOwner(
+                    builder,
+                    ref firstArg,
+                    RuntimeTelemetry.CounterName(index),
+                    RuntimeTelemetry.CounterOwner(index));
             }
             builder.Append("}}");
         }
@@ -532,6 +537,22 @@ namespace TajsCOI.Profiler.Core
             }
 
             AppendCounter(builder, ref first, name, value);
+        }
+
+        private static void AppendTelemetryOwner(
+            StringBuilder builder,
+            ref bool first,
+            string name,
+            string owner)
+        {
+            if (!first)
+            {
+                builder.Append(',');
+            }
+            first = false;
+            AppendJsonString(builder, name + ".owner");
+            builder.Append(':');
+            AppendJsonString(builder, owner);
         }
 
         private static void AppendInstant(ref bool first, StringBuilder builder, string name, long timestamp, long baseTimestamp, int threadId)

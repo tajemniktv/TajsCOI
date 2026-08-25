@@ -25,26 +25,26 @@ namespace TajsCOI.Performance
             SettingDescriptor.Boolean(
                 ModId, ModDisplayName, RenderingLoadSheddingSettings.EnableConfigKey,
                 "Granular rendering load shedding",
-                "Enables live, reversible smoke, dust, weather, cloud, fog, and shadow controls for A/B comparisons with the profiler.",
+                "Enables live, reversible smoke, dust, weather, cloud, fog, and shadow controls for A/B comparisons with the profiler. A particle scan may hitch once when toggled or when an active scene loads.",
                 false, "Rendering", applyMode: SettingApplyMode.Immediate, flags: CandidateFlags),
             SettingDescriptor.Boolean(
                 ModId, ModDisplayName, RenderingLoadSheddingSettings.DisableSmokeConfigKey,
-                "Disable building smoke", "Disables particle systems identified as building smoke; restored when disabled.",
+                "Disable building smoke", "Disables particle systems identified by version-sensitive names as building smoke; restored when disabled. Toggling may hitch once during the scene scan.",
                 false, "Rendering", applyMode: SettingApplyMode.Immediate, flags: CandidateFlags,
                 componentRequirement: RenderingLoadSheddingSettings.EnableConfigKey),
             SettingDescriptor.Boolean(
                 ModId, ModDisplayName, RenderingLoadSheddingSettings.DisableDustConfigKey,
-                "Disable vehicle dust", "Disables particle systems identified as vehicle dust; restored when disabled.",
+                "Disable vehicle dust", "Disables particle systems identified by version-sensitive names as vehicle dust; restored when disabled. Toggling may hitch once during the scene scan.",
                 false, "Rendering", applyMode: SettingApplyMode.Immediate, flags: CandidateFlags,
                 componentRequirement: RenderingLoadSheddingSettings.EnableConfigKey),
             SettingDescriptor.Boolean(
                 ModId, ModDisplayName, RenderingLoadSheddingSettings.DisableWeatherConfigKey,
-                "Disable weather particles", "Disables rain/snow particle systems and restores them when disabled.",
+                "Disable weather particles", "Disables rain/snow particle systems identified by version-sensitive names and restores them when disabled. Toggling may hitch once during the scene scan.",
                 false, "Rendering", applyMode: SettingApplyMode.Immediate, flags: CandidateFlags,
                 componentRequirement: RenderingLoadSheddingSettings.EnableConfigKey),
             SettingDescriptor.Boolean(
                 ModId, ModDisplayName, RenderingLoadSheddingSettings.DisableCloudsConfigKey,
-                "Disable cloud particles", "Disables cloud particle systems independently of rain and snow.",
+                "Disable cloud particles", "Disables cloud particle systems identified by version-sensitive names independently of rain and snow. Toggling may hitch once during the scene scan.",
                 false, "Rendering", applyMode: SettingApplyMode.Immediate, flags: CandidateFlags,
                 componentRequirement: RenderingLoadSheddingSettings.EnableConfigKey),
             SettingDescriptor.Boolean(

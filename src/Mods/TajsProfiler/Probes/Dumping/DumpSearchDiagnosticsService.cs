@@ -67,25 +67,31 @@ namespace TajsCOI.Profiler.Probes.Dumping
         private static readonly List<ProfileSnapshot> s_profileHistory = new(MaxProfileHistory);
 
         internal static readonly RuntimeTelemetryCounter DumpingJobsCreatedCounter =
-            RuntimeTelemetry.RegisterCounter("dumping.jobs-created");
+            RuntimeTelemetry.RegisterCounter("dumping.jobs-created", owner: "TajsProfiler.Dumping");
         internal static readonly RuntimeTelemetryCounter DumpingCallsCounter =
-            RuntimeTelemetry.RegisterCounter("dumping.calls");
+            RuntimeTelemetry.RegisterCounter("dumping.calls", owner: "TajsProfiler.Dumping");
         internal static readonly RuntimeTelemetryCounter DumpingTrueResultsCounter =
-            RuntimeTelemetry.RegisterCounter("dumping.true-results");
+            RuntimeTelemetry.RegisterCounter("dumping.true-results", owner: "TajsProfiler.Dumping");
         internal static readonly RuntimeTelemetryCounter DumpingFalseResultsCounter =
-            RuntimeTelemetry.RegisterCounter("dumping.false-results");
+            RuntimeTelemetry.RegisterCounter("dumping.false-results", owner: "TajsProfiler.Dumping");
         internal static readonly RuntimeTelemetryCounter DumpingTimeCounter =
-            RuntimeTelemetry.RegisterCounter("dumping.time", RuntimeTelemetryUnit.StopwatchTicks);
+            RuntimeTelemetry.RegisterCounter(
+                "dumping.time",
+                RuntimeTelemetryUnit.StopwatchTicks,
+                "TajsProfiler.Dumping");
         internal static readonly RuntimeTelemetryCounter PathfindingEnqueuesCounter =
-            RuntimeTelemetry.RegisterCounter("pathfinding.enqueues");
+            RuntimeTelemetry.RegisterCounter("pathfinding.enqueues", owner: "TajsProfiler.Pathfinding");
         internal static readonly RuntimeTelemetryCounter PathfindingTimeCounter =
-            RuntimeTelemetry.RegisterCounter("pathfinding.time", RuntimeTelemetryUnit.StopwatchTicks);
+            RuntimeTelemetry.RegisterCounter(
+                "pathfinding.time",
+                RuntimeTelemetryUnit.StopwatchTicks,
+                "TajsProfiler.Pathfinding");
         internal static readonly RuntimeTelemetryCounter DumpingFailuresCounter =
-            RuntimeTelemetry.RegisterCounter("dumping.failures");
+            RuntimeTelemetry.RegisterCounter("dumping.failures", owner: "TajsProfiler.Dumping");
         internal static readonly RuntimeTelemetryCounter TerrainEligibleCacheCallsCounter =
-            RuntimeTelemetry.RegisterCounter("terrain.eligible-cache-calls");
+            RuntimeTelemetry.RegisterCounter("terrain.eligible-cache-calls", owner: "TajsProfiler.Terrain");
         internal static readonly RuntimeTelemetryCounter TerrainNearbyChecksCounter =
-            RuntimeTelemetry.RegisterCounter("terrain.nearby-checks");
+            RuntimeTelemetry.RegisterCounter("terrain.nearby-checks", owner: "TajsProfiler.Terrain");
         private static readonly RuntimeTelemetryEvent s_profileStartedEvent =
             RuntimeTelemetry.RegisterEvent("dumping.profile-enabled");
         private static readonly RuntimeTelemetryEvent s_profileStoppedEvent =

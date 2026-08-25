@@ -18,6 +18,7 @@ Current probes:
 Console commands:
 - tajs_profiler_dumping
 - tajs_profiler_subsystems [seconds]
+- tajs_profiler_subsystems_clear
 
 Legacy detailed dumping compatibility views:
 - tajs_dump_search_stats
@@ -66,8 +67,11 @@ GPU-bound classification requires a trusted player-build GPU frame-time counter.
 
 Runtime captures are held in a bounded in-memory history. They do not modify saves or gameplay.
 The runtime flight recorder keeps a separate bounded frame history and calculates percentiles only
-when a command is requested. `tajs_profiler_overhead_bench` reports both the validated timing
-reader and bounded flight-write cost; the counter benchmark remains separate. If the game's private timing surface changes, the probe reports the
+when a command is requested. `tajs_profiler_subsystems` prints explicit counter owners and a
+duration-based top-contributor roll-up; `tajs_profiler_subsystems_clear` starts a clean counter
+interval. `tajs_profiler_deep_overhead_bench` also reports the enabled metadata/owner lookup plus
+span-recording core separately from the complete wrapper. `tajs_profiler_overhead_bench` reports
+both the validated timing reader and bounded flight-write cost; the counter benchmark remains separate. If the game's private timing surface changes, the probe reports the
 unsupported detail and leaves the rest of Taj's Profiler active. Deep callback timing is off until
 explicitly armed; trace files are written below the user's application-data `TajsCOI/Profiler`
 directory and can be opened in Chrome's trace viewer. Runtime `gpu-frame` timing is separate from
