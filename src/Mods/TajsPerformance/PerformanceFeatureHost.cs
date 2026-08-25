@@ -15,6 +15,7 @@ using TajsCOI.Performance.Features.StreamingSaveCompression;
 using TajsCOI.Performance.Features.LowProductTextures;
 using TajsCOI.Performance.Features.LazyResourceVisualization;
 using TajsCOI.Performance.Features.ProductBufferShrink;
+using TajsCOI.Performance.Features.RenderingLoadShedding;
 
 namespace TajsCOI.Performance
 {
@@ -41,8 +42,32 @@ namespace TajsCOI.Performance
         public PerformanceFeatureHost(ITajsRuntime runtime, ITajsSettings settings)
         {
             PerformanceSettingsCatalog.RegisterAll(settings);
+            RenderingLoadSheddingFeature.RefreshFromSettings(settings);
+            settings.Changed += (_, change) =>
+            {
+                RenderingLoadSheddingFeature.RefreshFromSettings(settings);
+                RenderingLoadSheddingFeature.OnSettingChanged(change, settings);
+            };
             IPerformanceFeature[] features = s_featureFactories.Select(factory => factory()).ToArray();
             IReadOnlyDictionary<string, bool> processEnabled = GetProcessConfiguration(settings, features);
+
+            try
+            {
+                var rendering = new RenderingLoadSheddingFeature();
+                rendering.Install(runtime, runtime.GetLogger(PerformanceSettingsCatalog.ModId, rendering.Id));
+            }
+            catch (Exception exception)
+            {
+                runtime.GetLogger(PerformanceSettingsCatalog.ModId, "RenderingLoadShedding")
+                    .Exception(exception, "Live rendering controls failed open during installation.");
+                runtime.ReportCompatibility(new CompatibilityReport(
+                    PerformanceSettingsCatalog.ModId,
+                    "RenderingLoadShedding",
+                    CompatibilityState.Disabled,
+                    "Unity QualitySettings and optional scene particle controls",
+                    exception.GetType().Name,
+                    "Vanilla rendering remains active."));
+            }
 
             foreach (IPerformanceFeature feature in features)
             {

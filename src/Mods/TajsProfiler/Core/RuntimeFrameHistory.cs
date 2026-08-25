@@ -665,6 +665,36 @@ namespace TajsCOI.Profiler.Core
             }
         }
 
+        /// <summary>
+        ///     Measures only the bounded value-copy/ring-write portion of always-on capture. This
+        ///     is command/CI instrumentation and is never called by the frame sampling path.
+        /// </summary>
+        internal static long MeasureRecordOverhead(int iterations)
+        {
+            if (iterations <= 0)
+            {
+                return 0;
+            }
+
+            var history = new RuntimeFrameHistory(Math.Min(4096, Math.Max(2, iterations)));
+            GameLoopTimingSnapshot timings = new GameLoopTimingSnapshot();
+            GameRunnerTimingSnapshot runner = new GameRunnerTimingSnapshot(updateTicks: 1);
+            long timestamp = Stopwatch.GetTimestamp();
+            long start = Stopwatch.GetTimestamp();
+            for (int index = 0; index < iterations; index++)
+            {
+                history.RecordSample(
+                    timestamp++,
+                    timings,
+                    runner,
+                    simSpeedMult: 1,
+                    simStepsPerUpdate: 1,
+                    budgetedSimSteps: 1,
+                    simPaused: false);
+            }
+            return Math.Max(0, Stopwatch.GetTimestamp() - start);
+        }
+
         private RuntimeFrameSample[] Snapshot()
         {
             lock (m_gate)

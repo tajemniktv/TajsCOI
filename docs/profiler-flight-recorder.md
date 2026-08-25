@@ -44,9 +44,26 @@ waiting-for-simulation requires the overtime signal and a material wait interval
 likely-GPU-bound are reported only when their corresponding telemetry is trusted; otherwise the
 sample is classified by the relative broad main/render and simulation measurements.
 The `gpu-frame` status is deliberately separate from memory: this build has no trusted per-frame
-GPU timing source, while `graphics-driver-memory` uses Unity's
-`GetAllocatedMemoryForGraphicsDriver` counter. That counter is graphics-driver allocation, not a
-dedicated-VRAM measurement, and may be unavailable or backend-dependent in a player build.
+GPU timing source unless the player exposes Unity's `ProfilerRecorder` `Render/GPU Frame Time`
+counter. `graphics-driver-memory` uses Unity's `GetAllocatedMemoryForGraphicsDriver` counter.
+That counter is graphics-driver allocation, not a dedicated-VRAM measurement; zero is treated as
+unavailable because unsupported graphics backends commonly return zero. Optional player counters
+for main/render-thread time, draw calls, batches, triangles, vertices, and `GC.Alloc` are accepted
+only when `ProfilerRecorder` reports the expected unit. `tajs_profiler_status` and the startup
+compatibility report list the source and support state of each counter.
+
+| Counter family | Source and unit | Sampling model | Zero/support rule |
+| --- | --- | --- | --- |
+| Managed heap | `GC.GetTotalMemory(false)`, bytes | rate-limited memory read; no forced collection | positive values only |
+| Unity/Mono memory | Unity `Profiler` long getters, bytes | rate-limited reflection-resolved delegates | missing getter or zero is unavailable |
+| GC collections | `GC.CollectionCount(0..2)`, cumulative counts/deltas | cheap primitive read on every frame sample | counter reset is treated as a zero delta |
+| Render/GPU context | Unity `ProfilerRecorder`, time in nanoseconds or counts/bytes as reported | primitive `LastValue` reads each frame | recorder must be valid and expose the expected unit |
+
+The current verified 0.8.7b reference exposes the `ProfilerRecorder` type, but a shipping player or
+graphics backend may expose none of the named counters. That runtime result is recorded as
+unsupported; Editor-only availability is not used as evidence. The graphics-driver value is
+sampled at the configured interval, while ProfilerRecorder values are captured at each flight
+recorder sample. The counter-overhead command measures this path separately.
 Paused samples remain available in raw history but are excluded from gameplay summaries, rolling
 spike baselines, and spike ranking. The runtime summary reports how many paused samples were
 excluded. GC deltas are per-sample observations taken between counter reads; the runtime summary
@@ -72,6 +89,15 @@ The runtime summary includes the last deep-capture callback count and measured i
 overhead per captured frame. `tajs_profiler_deep_overhead_bench` compares a direct callback,
 the deep-disabled wrapper, and the deep-enabled wrapper; it uses an isolated temporary span ring
 and does not replace an existing capture.
+`tajs_profiler_overhead_bench` separately measures the validated GameLoopTimings reader and the
+bounded primitive flight-recorder write, while `tajs_profiler_counter_overhead_bench` measures
+the optional counter sampler.
+
+Managed/Unity memory queries are rate-limited by the immediate `counter_sampling_ms` setting
+(50-2000 ms, default 250 ms). ProfilerRecorder values are cheap primitive reads and are sampled
+with the frame record. `tajs_profiler_counter_overhead_bench` measures the sampler loop and
+explicitly reports that it performs no forced GC. Counter handles are disposed when the gameplay
+service terminates, so optional Unity diagnostics do not outlive the resolver scene.
 
 Subsystem probes publish through a bounded Core-owned telemetry store. Counter registration happens
 once during probe setup; hot-path publication is an atomic numeric add/increment with no strings,
@@ -94,6 +120,10 @@ markers, sparse probe events, memory/GC counters, and interval-named subsystem c
 counters are emitted in milliseconds. Unsupported values are emitted as `"unavailable"`, never as
 synthetic zeroes. GPU classification remains unavailable unless a trusted player-build telemetry
 surface is added.
+The explicit trace window is independent from deep mode: `trace_start`/`trace_stop` bound the
+frames, callback spans, markers, and telemetry included by the following export. A CSV export is
+also available for broad frame comparisons; unsupported numeric counters are blank rather than
+being misrepresented as zero.
 
 ## Commands
 
@@ -111,7 +141,11 @@ tajs_profiler_deep_stop
 tajs_profiler_deep_report [count]
 tajs_profiler_deep_worst [count]
 tajs_profiler_deep_overhead_bench [iterations]
+tajs_profiler_counter_overhead_bench [iterations]
+tajs_profiler_trace_start [seconds]
+tajs_profiler_trace_stop
 tajs_profiler_trace_export [name]
+tajs_profiler_runtime_export_csv [name]
 tajs_profiler_mark <label>
 tajs_profiler_overhead_bench [iterations]
 tajs_profiler_spike_policy [frameMs] [waitMs] [simMs] [phaseMs] [relative] [cooldown] [maxCaptures] [preSeconds] [postSeconds]

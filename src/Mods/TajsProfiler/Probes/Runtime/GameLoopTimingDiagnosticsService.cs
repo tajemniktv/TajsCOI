@@ -57,6 +57,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private int m_baselineSampleCounter;
         private long m_traceWindowStart;
         private long m_traceWindowEnd;
+        private bool m_traceCaptureActive;
         private ITajsLogger? m_log;
         private int m_callbackFailureLogged;
 
@@ -76,6 +77,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             m_log = runtime.GetLogger("TajsProfiler", "GameLoopTimings");
             ProfilerSettingsCatalog.RegisterAll(settings);
             m_spikePolicy = ProfilerSettingsCatalog.ReadPolicy(settings);
+            m_counters.UpdateIntervalSeconds(ProfilerSettingsCatalog.ReadCounterSamplingSeconds(settings));
             settings.Changed += OnSettingChanged;
 
             GameLoopTimingsAccess.TryCreate(out m_timings, out m_timingReason);
@@ -108,6 +110,16 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 m_deepPatchSummary.IsAvailable
                     ? "Opt-in deep callback spans are available; they remain inactive until explicitly armed."
                     : "Deep callback spans are unavailable; broad timing and counter capture remain independent."));
+
+            runtime.ReportCompatibility(new CompatibilityReport(
+                "TajsProfiler",
+                "RuntimeCounters",
+                m_counters.SupportedUnityCounters != 0 || m_counters.SupportedProfilerCounters != 0
+                    ? CompatibilityState.Compatible
+                    : CompatibilityState.Degraded,
+                "0.8.7b Unity Profiler accessors and optional ProfilerRecorder counters",
+                m_counters.SupportSummary,
+                "Unsupported or zero-valued counters are reported as unavailable; GPU classification requires a trusted time counter."));
         }
 
         private void ReportTimingCompatibility(bool discoveryPending)
@@ -194,9 +206,13 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 .Append('/').Append(m_deepPatchSummary.ExpectedMethods)
                 .Append(", phase-conflicts=").Append(RuntimeTracePhaseContext.PhaseConflictCount)
                 .Append(", timing-ring-drops=").Append(m_timings?.DroppedEntries ?? 0)
-                .Append(", counters=").Append(m_counters.SupportedUnityCounters == 0 ? "managed-only" : "available")
+                .Append(", counters=").Append(
+                    m_counters.SupportedUnityCounters == 0 && m_counters.SupportedProfilerCounters == 0
+                        ? "managed-only"
+                        : "available")
                 .Append(", gpu-frame=").Append(m_counters.GpuTelemetryStatus)
-                .Append("; gpu-memory=graphics-driver allocation (not dedicated VRAM)");
+                .Append("; gpu-memory=graphics-driver allocation (not dedicated VRAM)")
+                .Append("; counter-support=").Append(m_counters.SupportSummary);
 
             if (m_timings is null)
             {
@@ -216,6 +232,20 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     .Append(", sim=").Append(FormatMilliseconds(sample.SimTicks))
                     .Append(", graphics-driver-memory=")
                     .Append(RuntimeTraceText.OptionalBytes(sample.Counters.UnityGraphicsBytes))
+                    .Append(", main-thread-counter=")
+                    .Append(FormatMilliseconds(sample.Counters.MainThreadTicks))
+                    .Append(", render-thread-counter=")
+                    .Append(FormatMilliseconds(sample.Counters.RenderThreadTicks))
+                    .Append(", draw-calls=")
+                    .Append(FormatCount(sample.Counters.DrawCalls))
+                    .Append(", batches=")
+                    .Append(FormatCount(sample.Counters.Batches))
+                    .Append(", triangles=")
+                    .Append(FormatCount(sample.Counters.Triangles))
+                    .Append(", vertices=")
+                    .Append(FormatCount(sample.Counters.Vertices))
+                    .Append(", gc-alloc=")
+                    .Append(RuntimeTraceText.OptionalBytes(sample.Counters.GcAllocatedBytes))
                     .Append(", gc-latest-delta=").Append(sample.Counters.TotalGcDelta)
                     .Append(", subsystems=")
                     .Append(FormatTelemetry(sample.Telemetry));
@@ -272,6 +302,20 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 .Append(RuntimeTraceText.OptionalBytes(summary.Latest.Counters.UnityUnusedReservedBytes))
                 .Append(", graphics-driver-memory=")
                 .Append(RuntimeTraceText.OptionalBytes(summary.Latest.Counters.UnityGraphicsBytes))
+                .Append(", main-thread-counter=")
+                .Append(FormatMilliseconds(summary.Latest.Counters.MainThreadTicks))
+                .Append(", render-thread-counter=")
+                .Append(FormatMilliseconds(summary.Latest.Counters.RenderThreadTicks))
+                .Append(", draw-calls=")
+                .Append(FormatCount(summary.Latest.Counters.DrawCalls))
+                .Append(", batches=")
+                .Append(FormatCount(summary.Latest.Counters.Batches))
+                .Append(", triangles=")
+                .Append(FormatCount(summary.Latest.Counters.Triangles))
+                .Append(", vertices=")
+                .Append(FormatCount(summary.Latest.Counters.Vertices))
+                .Append(", gc-alloc=")
+                .Append(RuntimeTraceText.OptionalBytes(summary.Latest.Counters.GcAllocatedBytes))
                 .Append(", gc-latest-delta=")
                 .Append(summary.Latest.Counters.TotalGcDelta)
                 .Append(", gc-interval=")
@@ -327,6 +371,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     .Append(", trigger=#").Append(sample.Sequence)
                     .Append(" ").Append(FormatClassification(sample.Classification))
                     .Append(" frame=").Append(FormatMilliseconds(sample.FrameTicks))
+                    .Append(", gc-delta=").Append(sample.Counters.TotalGcDelta)
+                    .Append(", gc-alloc=").Append(RuntimeTraceText.OptionalBytes(sample.Counters.GcAllocatedBytes))
+                    .Append(", graphics-driver-memory=")
+                    .Append(RuntimeTraceText.OptionalBytes(sample.Counters.UnityGraphicsBytes))
                     .Append(", subsystems=").Append(FormatTelemetry(sample.Telemetry));
             }
             if (spikes.Length > 0)
@@ -345,6 +393,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     .Append(", paused=").Append(sample.SimPaused)
                     .Append(", steps=").Append(sample.SimStepsPerUpdate).Append('/').Append(sample.BudgetedSimSteps)
                     .Append(", overtime=").Append(sample.Runner.WasOvertime)
+                    .Append(", gc-delta=").Append(sample.Counters.TotalGcDelta)
                     .Append(", subsystems=").Append(FormatTelemetry(sample.Telemetry));
             }
             return builder.ToString();
@@ -387,6 +436,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             m_rollingMedianFrameTicks = 0;
             m_traceWindowStart = 0;
             m_traceWindowEnd = 0;
+            m_traceCaptureActive = false;
             return $"Runtime profiler history cleared ({count} frame sample(s)).";
         }
 
@@ -410,10 +460,50 @@ namespace TajsCOI.Profiler.Probes.Runtime
             {
                 return "Runtime profiler deep capture: no active capture.";
             }
-            m_traceWindowStart = window.StartTimestamp;
-            m_traceWindowEnd = window.EndTimestamp;
+            if (!m_traceCaptureActive)
+            {
+                m_traceWindowStart = window.StartTimestamp;
+                m_traceWindowEnd = window.EndTimestamp;
+            }
             return "Runtime profiler deep capture stopped: window=" +
                 FormatSeconds(window.EndTimestamp - window.StartTimestamp) + ".";
+        }
+
+        [ConsoleCommand(
+            documentation: "Starts a bounded broad runtime trace window; deep callback spans are included when deep mode is active.",
+            customCommandName: "tajs_profiler_trace_start")]
+        public string TraceStart(float seconds = 10.0f)
+        {
+            if (!IsValidSeconds(seconds))
+            {
+                return "Runtime profiler rejected: trace seconds must be finite and between 1 and 300.";
+            }
+
+            long start = Stopwatch.GetTimestamp();
+            long duration = (long)Math.Round(seconds * Stopwatch.Frequency, MidpointRounding.AwayFromZero);
+            m_traceWindowStart = start;
+            m_traceWindowEnd = start + Math.Max(1, duration);
+            m_traceCaptureActive = true;
+            DeepCallbackRecorder.AddMarker(start, "runtime trace started");
+            return "Runtime profiler trace started: window=" + FormatSeconds(duration) + ".";
+        }
+
+        [ConsoleCommand(
+            documentation: "Stops the active broad runtime trace window without changing deep callback tracing.",
+            customCommandName: "tajs_profiler_trace_stop")]
+        public string TraceStop()
+        {
+            if (!m_traceCaptureActive)
+            {
+                return "Runtime profiler trace: no active trace window.";
+            }
+
+            long now = Stopwatch.GetTimestamp();
+            m_traceWindowEnd = Math.Max(m_traceWindowStart, now);
+            m_traceCaptureActive = false;
+            DeepCallbackRecorder.AddMarker(now, "runtime trace stopped");
+            return "Runtime profiler trace stopped: window=" +
+                FormatSeconds(m_traceWindowEnd - m_traceWindowStart) + ".";
         }
 
         [ConsoleCommand(
@@ -548,32 +638,30 @@ namespace TajsCOI.Profiler.Probes.Runtime
             customCommandName: "tajs_profiler_trace_export")]
         public string TraceExport(string name = "runtime")
         {
-            string exportDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "Captain of Industry",
-                "TajsCOI",
-                "Profiler");
-            string safeName = SanitizeFileName(name);
-            string path = Path.Combine(
-                exportDirectory,
-                safeName + "_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture) + ".json");
-            RuntimeFrameSample[] frames = m_traceWindowStart > 0
-                ? m_history.SnapshotBetween(
-                    m_traceWindowStart,
-                    m_traceWindowEnd > 0 && m_traceWindowEnd <= Stopwatch.GetTimestamp()
-                        ? m_traceWindowEnd
-                        : Stopwatch.GetTimestamp())
-                : m_history.SnapshotRecent(600);
+            string path = CreateExportPath(name, ".json");
+            RuntimeFrameSample[] frames = SnapshotTraceFrames();
+            RuntimeTraceSpan[] spans = FilterSpans(DeepCallbackRecorder.SnapshotSpans());
+            RuntimeTraceMarker[] markers = FilterMarkers(DeepCallbackRecorder.SnapshotMarkers());
             RuntimeTraceExportResult result = RuntimeTraceExporter.Export(
                 path,
                 frames,
-                DeepCallbackRecorder.SnapshotSpans(),
+                spans,
                 DeepCallbackRecorder.SnapshotMetadata(),
-                DeepCallbackRecorder.SnapshotMarkers(),
+                markers,
                 RuntimeTelemetry.SnapshotEvents(
                     frames.Length == 0 ? 0 : frames[0].CapturedTimestamp,
                     frames.Length == 0 ? 0 : frames[frames.Length - 1].CapturedTimestamp));
             return "Runtime profiler trace exported: " + result.EventCount + " event(s) to " + result.Path;
+        }
+
+        [ConsoleCommand(
+            documentation: "Exports the bounded broad runtime flight-recorder samples as CSV.",
+            customCommandName: "tajs_profiler_runtime_export_csv")]
+        public string RuntimeExportCsv(string name = "runtime")
+        {
+            string path = CreateExportPath(name, ".csv");
+            RuntimeTraceExportResult result = RuntimeTraceExporter.ExportCsv(path, SnapshotTraceFrames());
+            return "Runtime profiler CSV exported: " + result.EventCount + " frame sample(s) to " + result.Path;
         }
 
         [ConsoleCommand(
@@ -590,7 +678,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         }
 
         [ConsoleCommand(
-            documentation: "Measures the validated GameLoopTimings reader over a bounded command-only loop.",
+            documentation: "Measures the validated GameLoopTimings reader and bounded flight-recorder write over command-only loops.",
             customCommandName: "tajs_profiler_overhead_bench")]
         public string OverheadBench(int iterations = 10000)
         {
@@ -603,9 +691,12 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 return "Runtime profiler overhead: GameLoopTimings reader unavailable.";
             }
             long elapsed = DeepCallbackRecorder.MeasureReader(() => m_timings.ReadLatest(), iterations);
+            long historyElapsed = RuntimeFrameHistory.MeasureRecordOverhead(iterations);
             return "Runtime profiler reader overhead: iterations=" + iterations +
                 ", total=" + RuntimeTraceText.Milliseconds(elapsed) +
-                ", avg=" + RuntimeTraceText.Milliseconds(elapsed / iterations) + ".";
+                ", avg=" + RuntimeTraceText.Milliseconds(elapsed / iterations) +
+                "; flight-write-total=" + RuntimeTraceText.Milliseconds(historyElapsed) +
+                ", flight-write-avg=" + RuntimeTraceText.Milliseconds(historyElapsed / iterations) + ".";
         }
 
         [ConsoleCommand(
@@ -637,6 +728,24 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 " (" + RuntimeTraceText.Milliseconds(benchmark.EnabledTicks / benchmark.Iterations) + "/callback)" +
                 ", deep-overhead=" + RuntimeTraceText.Milliseconds(benchmark.EnabledOverheadTicks) +
                 " (" + RuntimeTraceText.Milliseconds(benchmark.EnabledOverheadTicks / benchmark.Iterations) + "/callback).";
+        }
+
+        [ConsoleCommand(
+            documentation: "Measures the always-on managed/Unity counter sampler without forcing a collection.",
+            customCommandName: "tajs_profiler_counter_overhead_bench")]
+        public string CounterOverheadBench(int iterations = 10000)
+        {
+            if (iterations < 100 || iterations > 1000000)
+            {
+                return "Runtime profiler rejected: iterations must be between 100 and 1000000.";
+            }
+
+            long elapsed = m_counters.MeasureOverhead(iterations);
+            return "Runtime profiler counter overhead benchmark: iterations=" + iterations +
+                ", sampling-interval=" + m_counters.IntervalMilliseconds.ToString("F1", CultureInfo.InvariantCulture) + " ms" +
+                ", total=" + RuntimeTraceText.Milliseconds(elapsed) +
+                ", avg=" + RuntimeTraceText.Milliseconds(elapsed / iterations) +
+                ", forced-gc=none.";
         }
 
         [ConsoleCommand(
@@ -752,7 +861,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                         Math.Max(1.0, m_spikePolicy.PostWindowSeconds),
                         true,
                         capturedTimestamp);
-                    if (automatic.WasActive)
+                    if (automatic.WasActive && !m_traceCaptureActive)
                     {
                         m_traceWindowStart = automatic.StartTimestamp;
                         m_traceWindowEnd = automatic.EndTimestamp;
@@ -761,8 +870,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 if (completed.HasValue)
                 {
                     RuntimeSpikeRecord capture = completed.Value;
-                    m_traceWindowStart = capture.StartTimestamp;
-                    m_traceWindowEnd = capture.EndTimestamp;
+                    if (!m_traceCaptureActive)
+                    {
+                        m_traceWindowStart = capture.StartTimestamp;
+                        m_traceWindowEnd = capture.EndTimestamp;
+                    }
                     DeepCallbackRecorder.AddMarker(
                         capturedTimestamp,
                         "spike #" + capture.Sequence.ToString(CultureInfo.InvariantCulture) + ": " + capture.Reason);
@@ -780,12 +892,14 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private void OnTerminate()
         {
             m_settings.Changed -= OnSettingChanged;
+            m_counters.Dispose();
             DeepCaptureWindow window = DeepCallbackRecorder.Stop();
-            if (window.WasActive)
+            if (window.WasActive && !m_traceCaptureActive)
             {
                 m_traceWindowStart = window.StartTimestamp;
                 m_traceWindowEnd = window.EndTimestamp;
             }
+            m_traceCaptureActive = false;
             // The history is resolver-scoped and intentionally retained until the service is
             // released so the final gameplay interval can still be inspected by a console caller.
         }
@@ -797,6 +911,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 try
                 {
                     m_spikePolicy = ProfilerSettingsCatalog.ReadPolicy(m_settings);
+                    m_counters.UpdateIntervalSeconds(ProfilerSettingsCatalog.ReadCounterSamplingSeconds(m_settings));
                 }
                 catch (Exception exception)
                 {
@@ -823,11 +938,88 @@ namespace TajsCOI.Profiler.Probes.Runtime
             {
                 return "Runtime profiler deep capture unavailable: callback patch surface is inactive.";
             }
-            m_traceWindowStart = window.StartTimestamp;
-            m_traceWindowEnd = window.EndTimestamp;
+            if (!m_traceCaptureActive)
+            {
+                m_traceWindowStart = window.StartTimestamp;
+                m_traceWindowEnd = window.EndTimestamp;
+            }
             return "Runtime profiler deep capture started: window=" +
                 FormatSeconds(window.EndTimestamp - window.StartTimestamp) +
                 ", automatic=" + automatic + ".";
+        }
+
+        private RuntimeFrameSample[] SnapshotTraceFrames()
+        {
+            if (m_traceWindowStart <= 0)
+            {
+                return m_history.SnapshotRecent(600);
+            }
+
+            long now = Stopwatch.GetTimestamp();
+            long end = m_traceWindowEnd > 0 && m_traceWindowEnd <= now
+                ? m_traceWindowEnd
+                : now;
+            return m_history.SnapshotBetween(m_traceWindowStart, end);
+        }
+
+        private RuntimeTraceSpan[] FilterSpans(RuntimeTraceSpan[] spans)
+        {
+            if (m_traceWindowStart <= 0)
+            {
+                return spans;
+            }
+
+            long now = Stopwatch.GetTimestamp();
+            long end = m_traceWindowEnd > 0 && m_traceWindowEnd <= now
+                ? m_traceWindowEnd
+                : now;
+            var filtered = new System.Collections.Generic.List<RuntimeTraceSpan>(spans.Length);
+            for (int index = 0; index < spans.Length; index++)
+            {
+                RuntimeTraceSpan span = spans[index];
+                long spanEnd = span.EndTimestamp;
+                if (span.StartTimestamp <= end && spanEnd >= m_traceWindowStart)
+                {
+                    filtered.Add(span);
+                }
+            }
+            return filtered.ToArray();
+        }
+
+        private RuntimeTraceMarker[] FilterMarkers(RuntimeTraceMarker[] markers)
+        {
+            if (m_traceWindowStart <= 0)
+            {
+                return markers;
+            }
+
+            long now = Stopwatch.GetTimestamp();
+            long end = m_traceWindowEnd > 0 && m_traceWindowEnd <= now
+                ? m_traceWindowEnd
+                : now;
+            var filtered = new System.Collections.Generic.List<RuntimeTraceMarker>(markers.Length);
+            for (int index = 0; index < markers.Length; index++)
+            {
+                RuntimeTraceMarker marker = markers[index];
+                if (marker.Timestamp >= m_traceWindowStart && marker.Timestamp <= end)
+                {
+                    filtered.Add(marker);
+                }
+            }
+            return filtered.ToArray();
+        }
+
+        private static string CreateExportPath(string name, string extension)
+        {
+            string exportDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Captain of Industry",
+                "TajsCOI",
+                "Profiler");
+            string safeName = SanitizeFileName(name);
+            return Path.Combine(
+                exportDirectory,
+                safeName + "_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture) + extension);
         }
 
         private static bool IsOptionalPositive(float value) =>
@@ -889,6 +1081,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 : snapshot.CallbackCount == 0
                     ? RuntimeTraceText.Milliseconds(0) + "/frame"
                     : "unavailable (deep frame count unavailable)";
+
+        private static string FormatCount(long value) =>
+            value < 0 ? "unavailable" : value.ToString(CultureInfo.InvariantCulture);
 
         private static string FormatClassificationCounts(RuntimeFrameSummary summary) =>
             "main/render=" + summary.MainRenderBoundCount.ToString(CultureInfo.InvariantCulture) +

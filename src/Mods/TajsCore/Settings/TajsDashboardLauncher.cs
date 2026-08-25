@@ -5,6 +5,7 @@
 using Mafi;
 using Mafi.Core.Console;
 using Mafi.Unity;
+using Mafi.Unity.UiToolkit.Library;
 
 namespace TajsCOI.Core.Settings
 {
@@ -23,7 +24,9 @@ namespace TajsCOI.Core.Settings
         {
             if (m_window.HasValue)
             {
-                m_window.Value.CloseNoFade();
+                TajsDashboardWindow window = m_window.Value;
+                window.OnCloseStart -= OnWindowCloseStart;
+                window.CloseNoFade();
                 m_window = Option<TajsDashboardWindow>.None;
             }
         }
@@ -40,8 +43,24 @@ namespace TajsCOI.Core.Settings
                 return "TajsCOI dashboard: hidden";
             }
 
-            m_window = m_resolver.Instantiate<TajsDashboardWindow>();
+            TajsDashboardWindow window = m_resolver.Instantiate<TajsDashboardWindow>();
+            window.OnCloseStart += OnWindowCloseStart;
+            m_window = window;
             return "TajsCOI dashboard: shown";
+        }
+
+        private void OnWindowCloseStart(Window window)
+        {
+            if (!m_window.HasValue || !ReferenceEquals(m_window.Value, window))
+            {
+                return;
+            }
+
+            // Close-on-click-outside can close the window without going through the command
+            // launcher. Remove the resolver-owned reference at the close boundary and detach
+            // this handler so a stale UI object cannot retain the launcher/resolver graph.
+            window.OnCloseStart -= OnWindowCloseStart;
+            m_window = Option<TajsDashboardWindow>.None;
         }
     }
 }

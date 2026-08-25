@@ -21,8 +21,8 @@ namespace TajsCOI.Tests
         [Fact]
         public void ProfilerSettingsCatalogExposesImmediateBoundedCaptureControls()
         {
-            Assert.Equal(10, ProfilerSettingsCatalog.All.Count);
-            Assert.Equal(10, ProfilerSettingsCatalog.All.Select(x => x.Key).Distinct(StringComparer.Ordinal).Count());
+            Assert.Equal(11, ProfilerSettingsCatalog.All.Count);
+            Assert.Equal(11, ProfilerSettingsCatalog.All.Select(x => x.Key).Distinct(StringComparer.Ordinal).Count());
             Assert.All(ProfilerSettingsCatalog.All, descriptor =>
             {
                 Assert.Equal(ProfilerSettingsCatalog.ModId, descriptor.ModId);
@@ -79,6 +79,32 @@ namespace TajsCOI.Tests
                     1,
                     1,
                     false,
+                    counters: new RuntimeCounterSnapshot(
+                        true,
+                        1000,
+                        1,
+                        -1,
+                        -1,
+                        -1,
+                        -1,
+                        -1,
+                        -1,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        -1,
+                        false,
+                        0,
+                        mainThreadTicks: 2,
+                        renderThreadTicks: 3,
+                        drawCalls: 4,
+                        batches: 5,
+                        triangles: 6,
+                        vertices: 7,
+                        gcAllocatedBytes: 8),
                     telemetry: telemetry);
                 RuntimeTraceExporter.Export(
                     path,
@@ -92,6 +118,46 @@ namespace TajsCOI.Tests
                 Assert.Contains(counterName, json);
                 Assert.Contains(eventName, json);
                 Assert.Contains("coi.telemetry", json);
+                Assert.Contains("mainThreadMs", json);
+                Assert.Contains("drawCalls", json);
+                Assert.Contains("gcAllocatedBytes", json);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+        }
+
+        [Fact]
+        public void CsvExportIncludesBroadTimingColumnsAndLeavesUnavailableCountersBlank()
+        {
+            RuntimeFrameSample frame = new RuntimeFrameSample(
+                1,
+                1000,
+                new GameLoopTimingSnapshot(renderTicks: 20),
+                new GameRunnerTimingSnapshot(updateTicks: 30),
+                1,
+                1,
+                1,
+                false);
+            string path = Path.Combine(Path.GetTempPath(), "tajs-runtime-" + Guid.NewGuid().ToString("N") + ".csv");
+            try
+            {
+                RuntimeTraceExportResult result = RuntimeTraceExporter.ExportCsv(path, new[] { frame });
+
+                Assert.Equal(1, result.EventCount);
+                string[] lines = File.ReadAllText(path).TrimEnd('\r', '\n').Split('\n');
+                Assert.Equal(2, lines.Length);
+                string[] header = lines[0].Split(',');
+                string[] row = lines[1].Split(',');
+                Assert.Equal(header.Length, row.Length);
+                Assert.Contains("phase_RENDER_ms", header);
+                Assert.Contains("classification", header);
+                Assert.Contains("MainRenderBound", row);
+                Assert.Equal(string.Empty, row[Array.IndexOf(header, "managedHeapBytes")]);
             }
             finally
             {

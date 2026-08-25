@@ -4,6 +4,7 @@
 
 using System.Collections.Generic;
 using TajsCOI.Common.Settings;
+using TajsCOI.Performance.Features.RenderingLoadShedding;
 using TajsCOI.Performance.Features.LowProductTextures;
 using TajsCOI.Performance.Features.LazyResourceVisualization;
 using TajsCOI.Performance.Features.ManualAssetTrim;
@@ -21,6 +22,46 @@ namespace TajsCOI.Performance
 
         internal static readonly IReadOnlyList<SettingDescriptor> All = new[]
         {
+            SettingDescriptor.Boolean(
+                ModId, ModDisplayName, RenderingLoadSheddingSettings.EnableConfigKey,
+                "Granular rendering load shedding",
+                "Enables live, reversible smoke, dust, weather, cloud, fog, and shadow controls for A/B comparisons with the profiler.",
+                false, "Rendering", applyMode: SettingApplyMode.Immediate, flags: CandidateFlags),
+            SettingDescriptor.Boolean(
+                ModId, ModDisplayName, RenderingLoadSheddingSettings.DisableSmokeConfigKey,
+                "Disable building smoke", "Disables particle systems identified as building smoke; restored when disabled.",
+                false, "Rendering", applyMode: SettingApplyMode.Immediate, flags: CandidateFlags,
+                componentRequirement: RenderingLoadSheddingSettings.EnableConfigKey),
+            SettingDescriptor.Boolean(
+                ModId, ModDisplayName, RenderingLoadSheddingSettings.DisableDustConfigKey,
+                "Disable vehicle dust", "Disables particle systems identified as vehicle dust; restored when disabled.",
+                false, "Rendering", applyMode: SettingApplyMode.Immediate, flags: CandidateFlags,
+                componentRequirement: RenderingLoadSheddingSettings.EnableConfigKey),
+            SettingDescriptor.Boolean(
+                ModId, ModDisplayName, RenderingLoadSheddingSettings.DisableWeatherConfigKey,
+                "Disable weather particles", "Disables rain/snow particle systems and restores them when disabled.",
+                false, "Rendering", applyMode: SettingApplyMode.Immediate, flags: CandidateFlags,
+                componentRequirement: RenderingLoadSheddingSettings.EnableConfigKey),
+            SettingDescriptor.Boolean(
+                ModId, ModDisplayName, RenderingLoadSheddingSettings.DisableCloudsConfigKey,
+                "Disable cloud particles", "Disables cloud particle systems independently of rain and snow.",
+                false, "Rendering", applyMode: SettingApplyMode.Immediate, flags: CandidateFlags,
+                componentRequirement: RenderingLoadSheddingSettings.EnableConfigKey),
+            SettingDescriptor.Boolean(
+                ModId, ModDisplayName, RenderingLoadSheddingSettings.DisableFogConfigKey,
+                "Disable fog", "Disables global fog while enabled and restores the previous fog state.",
+                false, "Rendering", applyMode: SettingApplyMode.Immediate, flags: CandidateFlags,
+                componentRequirement: RenderingLoadSheddingSettings.EnableConfigKey),
+            SettingDescriptor.Boolean(
+                ModId, ModDisplayName, RenderingLoadSheddingSettings.DisableShadowsConfigKey,
+                "Disable shadows", "Disables realtime shadows while enabled and restores the previous quality setting.",
+                false, "Rendering", applyMode: SettingApplyMode.Immediate, flags: CandidateFlags,
+                componentRequirement: RenderingLoadSheddingSettings.EnableConfigKey),
+            SettingDescriptor.Integer(
+                ModId, ModDisplayName, RenderingLoadSheddingSettings.ShadowDistanceConfigKey,
+                "Shadow distance", "Shadow distance in metres when shadow controls are active; zero keeps vanilla distance.",
+                0, 0, 2000, 10, "Rendering", applyMode: SettingApplyMode.Immediate, flags: CandidateFlags,
+                componentRequirement: RenderingLoadSheddingSettings.EnableConfigKey),
             SettingDescriptor.Boolean(
                 ModId, ModDisplayName, SaveLoadReadBufferSettings.EnableConfigKey,
                 "Large save/load buffer",

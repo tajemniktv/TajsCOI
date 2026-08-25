@@ -2,6 +2,7 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
+using System;
 using System.Collections.Generic;
 using TajsCOI.Common.Settings;
 using TajsCOI.Profiler.Core;
@@ -24,6 +25,7 @@ namespace TajsCOI.Profiler
         internal const string PreWindowSecondsKey = "spike_pre_s";
         internal const string PostWindowSecondsKey = "spike_post_s";
         internal const string AutomaticDeepKey = "auto_deep_capture";
+        internal const string CounterSamplingMillisecondsKey = "counter_sampling_ms";
 
         internal static readonly IReadOnlyList<SettingDescriptor> All = new[]
         {
@@ -57,6 +59,9 @@ namespace TajsCOI.Profiler
             SettingDescriptor.Boolean(ModId, ModDisplayName, AutomaticDeepKey,
                 "Automatic deep capture", "Arms callback spans when an automatic broad spike trigger fires.",
                 false, "Profiler", flags: Flags),
+            SettingDescriptor.Float(ModId, ModDisplayName, CounterSamplingMillisecondsKey,
+                "Runtime counter interval", "Minimum interval between Unity/managed memory counter reads.",
+                250, 50, 2000, 50, "Profiler", flags: Flags),
         };
 
         internal static void RegisterAll(ITajsSettings settings)
@@ -81,5 +86,8 @@ namespace TajsCOI.Profiler
                 settings.Get<double>(ModId, PostWindowSecondsKey),
                 settings.Get<bool>(ModId, AutomaticDeepKey));
         }
+
+        internal static double ReadCounterSamplingSeconds(ITajsSettings settings) =>
+            Math.Max(0.05, settings.Get<double>(ModId, CounterSamplingMillisecondsKey) / 1000.0);
     }
 }

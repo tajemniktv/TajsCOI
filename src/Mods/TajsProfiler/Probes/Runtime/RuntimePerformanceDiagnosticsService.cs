@@ -1500,7 +1500,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             $"Mono={FormatOptionalBytes(checkpoint.MonoUsedBytes)}/{FormatOptionalBytes(checkpoint.MonoHeapBytes)}, " +
             $"Unity={FormatOptionalBytes(checkpoint.UnityAllocatedBytes)}/{FormatOptionalBytes(checkpoint.UnityReservedBytes)}, " +
             $"unused-reserved={FormatOptionalBytes(checkpoint.UnityUnusedReservedBytes)}, " +
-            $"graphics={FormatOptionalBytes(checkpoint.UnityGraphicsBytes)}, " +
+            $"graphics={FormatUnityGraphicsBytes(checkpoint.UnityGraphicsBytes, default)}, " +
             $"GC0/1/2={checkpoint.Gen0Collections}/{checkpoint.Gen1Collections}/{checkpoint.Gen2Collections}]";
 
         private static string BuildHarmonyAudit()
@@ -1558,9 +1558,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         internal static string FormatUnityGraphicsBytes(long unityGraphicsBytes, ProductRendererMetric products)
         {
-            if (unityGraphicsBytes < 0)
+            if (unityGraphicsBytes <= 0)
             {
-                return "unavailable";
+                return products.Available && products.GpuBytes > 0
+                    ? "unavailable (driver counter; ProductsRenderer estimate=" + FormatBytes(products.GpuBytes) + ")"
+                    : "unavailable";
             }
             if (IsUnityGraphicsInconsistent(unityGraphicsBytes, products))
             {
@@ -1572,20 +1574,24 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         private static string FormatUnityGraphicsDelta(RuntimeProfileSnapshot right, RuntimeProfileSnapshot left)
         {
-            if (IsUnityGraphicsInconsistent(right.UnityGraphicsBytes, right.Products) ||
+            if (right.UnityGraphicsBytes <= 0 || left.UnityGraphicsBytes <= 0 ||
+                IsUnityGraphicsInconsistent(right.UnityGraphicsBytes, right.Products) ||
                 IsUnityGraphicsInconsistent(left.UnityGraphicsBytes, left.Products))
             {
                 string productsDelta = right.Products.Available && left.Products.Available
                     ? FormatBytes(right.Products.GpuBytes - left.Products.GpuBytes)
                     : "unavailable";
-                return FormatOptionalBytes(right.UnityGraphicsBytes, left.UnityGraphicsBytes) +
+                string driverDelta = right.UnityGraphicsBytes <= 0 || left.UnityGraphicsBytes <= 0
+                    ? "unavailable"
+                    : FormatOptionalBytes(right.UnityGraphicsBytes, left.UnityGraphicsBytes);
+                return driverDelta +
                     " (driver counter; ProductsRenderer estimate delta=" + productsDelta + ")";
             }
             return FormatOptionalBytes(right.UnityGraphicsBytes, left.UnityGraphicsBytes);
         }
 
         private static bool IsUnityGraphicsInconsistent(long unityGraphicsBytes, ProductRendererMetric products) =>
-            unityGraphicsBytes == 0 && products.Available && products.GpuBytes > 0;
+            unityGraphicsBytes <= 0 && products.Available && products.GpuBytes > 0;
 
         private static RuntimeProfileSnapshot? FindLocked(string label) =>
             s_history.FirstOrDefault(x => string.Equals(x.Label, label, StringComparison.Ordinal));

@@ -159,7 +159,14 @@ namespace TajsCOI.Profiler.Core
             long unityGraphicsDeltaBytes,
             long gpuFrameTicks,
             bool gpuFrameTrusted,
-            int supportedUnityCounters)
+            int supportedUnityCounters,
+            long mainThreadTicks = -1,
+            long renderThreadTicks = -1,
+            long drawCalls = -1,
+            long batches = -1,
+            long triangles = -1,
+            long vertices = -1,
+            long gcAllocatedBytes = -1)
         {
             Available = available;
             CapturedTimestamp = capturedTimestamp;
@@ -179,6 +186,13 @@ namespace TajsCOI.Profiler.Core
             GpuFrameTicks = gpuFrameTicks;
             GpuFrameTrusted = gpuFrameTrusted;
             SupportedUnityCounters = supportedUnityCounters;
+            MainThreadTicks = mainThreadTicks;
+            RenderThreadTicks = renderThreadTicks;
+            DrawCalls = drawCalls;
+            Batches = batches;
+            Triangles = triangles;
+            Vertices = vertices;
+            GcAllocatedBytes = gcAllocatedBytes;
         }
 
         internal bool Available { get; }
@@ -199,6 +213,13 @@ namespace TajsCOI.Profiler.Core
         internal long GpuFrameTicks { get; }
         internal bool GpuFrameTrusted { get; }
         internal int SupportedUnityCounters { get; }
+        internal long MainThreadTicks { get; }
+        internal long RenderThreadTicks { get; }
+        internal long DrawCalls { get; }
+        internal long Batches { get; }
+        internal long Triangles { get; }
+        internal long Vertices { get; }
+        internal long GcAllocatedBytes { get; }
         internal int TotalGcDelta => Math.Max(0, Gen0Delta) + Math.Max(0, Gen1Delta) + Math.Max(0, Gen2Delta);
         internal bool HasGpuTelemetry => GpuFrameTrusted && GpuFrameTicks >= 0;
 

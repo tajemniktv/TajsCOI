@@ -156,8 +156,79 @@ namespace TajsCOI.Tests
             Assert.Equal(600 * 100.0 / 2_048, metric.Utilization, 8);
             Assert.Equal(1_120_256, metric.GpuBytes);
             string graphics = RuntimePerformanceDiagnosticsService.FormatUnityGraphicsBytes(0, metric);
-            Assert.Contains("0 B (driver counter", graphics);
+            Assert.StartsWith("unavailable (driver counter", graphics);
             Assert.Contains("ProductsRenderer estimate=1.07 MiB", graphics);
+        }
+
+        [Fact]
+        public void RuntimeCounterSnapshotKeepsProfilerRecorderContextDistinctFromGraphicsMemory()
+        {
+            var snapshot = new RuntimeCounterSnapshot(
+                true,
+                1,
+                100,
+                200,
+                300,
+                50,
+                -1,
+                120,
+                140,
+                0,
+                0,
+                0,
+                10,
+                20,
+                0,
+                500,
+                true,
+                0,
+                mainThreadTicks: 600,
+                renderThreadTicks: 700,
+                drawCalls: 80,
+                batches: 90,
+                triangles: 1000,
+                vertices: 2000,
+                gcAllocatedBytes: 4096);
+
+            Assert.Equal(-1, snapshot.UnityGraphicsBytes);
+            Assert.True(snapshot.HasGpuTelemetry);
+            Assert.Equal(600, snapshot.MainThreadTicks);
+            Assert.Equal(700, snapshot.RenderThreadTicks);
+            Assert.Equal(80, snapshot.DrawCalls);
+            Assert.Equal(4096, snapshot.GcAllocatedBytes);
+        }
+
+        [Fact]
+        public void RuntimeCounterSamplerReportsCounterSourcesAndDoesNotInventGpuTiming()
+        {
+            using var sampler = new RuntimeCounterSampler(intervalSeconds: 0.05);
+
+            RuntimeCounterSnapshot snapshot = sampler.Read(System.Diagnostics.Stopwatch.GetTimestamp(), force: true);
+
+            Assert.Contains("unity:", sampler.SupportSummary);
+            Assert.Contains("profiler:", sampler.SupportSummary);
+            if (sampler.GpuTelemetryStatus.IndexOf("unavailable", StringComparison.Ordinal) >= 0)
+            {
+                Assert.False(snapshot.HasGpuTelemetry);
+                Assert.Equal(-1, snapshot.GpuFrameTicks);
+            }
+            else
+            {
+                Assert.True(snapshot.GpuFrameTicks >= -1);
+            }
+        }
+
+        [Fact]
+        public void RuntimeCounterSamplerUpdatesBoundedSamplingIntervalWithoutAHotPathLock()
+        {
+            using var sampler = new RuntimeCounterSampler(intervalSeconds: 0.05);
+            Assert.Equal(50.0, sampler.IntervalMilliseconds, 1);
+
+            sampler.UpdateIntervalSeconds(10.0);
+            Assert.Equal(2_000.0, sampler.IntervalMilliseconds, 1);
+
+            sampler.UpdateIntervalSeconds(0.25);
+            Assert.Equal(250.0, sampler.IntervalMilliseconds, 1);
         }
 
         [Fact]

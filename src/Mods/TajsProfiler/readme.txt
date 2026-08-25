@@ -11,7 +11,8 @@ Current probes:
   GameLoopTimings ring and broad GameRunner timings.
 - Configurable absolute/relative spike triggers with bounded pre/post captures.
 - Opt-in deep callback tracing, callback ranking, markers, and Chrome trace JSON export.
-- Managed/Unity/GC counters where supported, with shared dumping/pathfinding/terrain timeline correlation.
+- Managed/Unity/GC counters where supported, optional player ProfilerRecorder render counters,
+  explicit unsupported graphics-memory handling, and shared dumping/pathfinding/terrain timeline correlation.
 - One TajsProfiler subsystem report and trace model for all registered probe counters/events.
 
 Console commands:
@@ -48,15 +49,25 @@ Legacy detailed dumping compatibility views:
 - tajs_profiler_deep_report [count]
 - tajs_profiler_deep_worst [count]
 - tajs_profiler_deep_overhead_bench [iterations]
+- tajs_profiler_counter_overhead_bench [iterations]
+- tajs_profiler_trace_start [seconds]
+- tajs_profiler_trace_stop
 - tajs_profiler_trace_export [name]
+- tajs_profiler_runtime_export_csv [name]
 - tajs_profiler_mark <label>
 - tajs_profiler_overhead_bench [iterations]
 - tajs_profiler_spike_policy [frameMs] [waitMs] [simMs] [phaseMs] [relative] [cooldown] [maxCaptures] [preSeconds] [postSeconds]
 - tajs_profiler_auto_deep [true|false]
 
+The immediate `counter_sampling_ms` setting bounds managed/Unity memory query frequency (50-2000
+ms, default 250 ms). `tajs_profiler_status` reports the exact resolved counter sources. Graphics
+driver allocation is not dedicated VRAM; a zero/unsupported value is reported as unavailable.
+GPU-bound classification requires a trusted player-build GPU frame-time counter.
+
 Runtime captures are held in a bounded in-memory history. They do not modify saves or gameplay.
 The runtime flight recorder keeps a separate bounded frame history and calculates percentiles only
-when a command is requested. If the game's private timing surface changes, the probe reports the
+when a command is requested. `tajs_profiler_overhead_bench` reports both the validated timing
+reader and bounded flight-write cost; the counter benchmark remains separate. If the game's private timing surface changes, the probe reports the
 unsupported detail and leaves the rest of Taj's Profiler active. Deep callback timing is off until
 explicitly armed; trace files are written below the user's application-data `TajsCOI/Profiler`
 directory and can be opened in Chrome's trace viewer. Runtime `gpu-frame` timing is separate from

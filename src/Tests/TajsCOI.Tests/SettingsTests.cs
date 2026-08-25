@@ -19,8 +19,8 @@ namespace TajsCOI.Tests
         [Fact]
         public void PerformanceCatalogDeclaresEveryExpectedSetting()
         {
-            Assert.Equal(10, PerformanceSettingsCatalog.All.Count);
-            Assert.Equal(10, PerformanceSettingsCatalog.All.Select(x => x.Key).Distinct(StringComparer.Ordinal).Count());
+            Assert.Equal(18, PerformanceSettingsCatalog.All.Count);
+            Assert.Equal(18, PerformanceSettingsCatalog.All.Select(x => x.Key).Distinct(StringComparer.Ordinal).Count());
             Assert.All(PerformanceSettingsCatalog.All, descriptor =>
             {
                 Assert.Equal(PerformanceSettingsCatalog.ModId, descriptor.ModId);
@@ -31,8 +31,18 @@ namespace TajsCOI.Tests
             SettingDescriptor immediate = Assert.Single(
                 PerformanceSettingsCatalog.All, x => x.Key == "enable_manual_asset_trim");
             Assert.Equal(SettingApplyMode.Immediate, immediate.ApplyMode);
+            string[] liveRenderingKeys =
+            {
+                "render_load_shedding", "render_disable_smoke", "render_disable_dust",
+                "render_disable_weather", "render_disable_clouds", "render_disable_fog",
+                "render_disable_shadows", "render_shadow_distance",
+            };
             Assert.All(
-                PerformanceSettingsCatalog.All.Where(x => x.Key != "enable_manual_asset_trim"),
+                PerformanceSettingsCatalog.All.Where(x => liveRenderingKeys.Contains(x.Key, StringComparer.Ordinal)),
+                descriptor => Assert.Equal(SettingApplyMode.Immediate, descriptor.ApplyMode));
+            Assert.All(
+                PerformanceSettingsCatalog.All.Where(x => x.Key != "enable_manual_asset_trim" &&
+                    !liveRenderingKeys.Contains(x.Key, StringComparer.Ordinal)),
                 descriptor => Assert.Equal(SettingApplyMode.RestartGame, descriptor.ApplyMode));
         }
 

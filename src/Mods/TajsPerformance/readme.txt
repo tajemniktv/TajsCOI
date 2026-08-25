@@ -6,6 +6,9 @@ Features are disabled by default and configured independently through the TajsCo
 (`tajs_dashboard`) or the `tajs_settings_set` console command.
 
 Available opt-in features:
+- Granular rendering load shedding: independently disables named smoke, dust, weather, cloud,
+  fog, or shadow rendering controls and restores the captured Unity state when disabled. All
+  controls are live and disabled by default.
 - Large save/load read buffer: changes BlobReader's 4 KiB buffer to a configurable 16-256 KiB
   buffer (64 KiB default). It preserves checksum preflight and all vanilla load semantics.
 - Streaming save compression: writes gzip directly into CoI's seekable temporary file, patches

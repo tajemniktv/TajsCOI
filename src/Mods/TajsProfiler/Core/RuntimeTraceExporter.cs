@@ -164,6 +164,178 @@ namespace TajsCOI.Profiler.Core
             return new RuntimeTraceExportResult(path, eventCount);
         }
 
+        /// <summary>
+        ///     Writes the broad flight-recorder samples as a spreadsheet-friendly CSV. This is
+        ///     deliberately a command/export path; no text formatting is performed while samples
+        ///     are captured.
+        /// </summary>
+        internal static RuntimeTraceExportResult ExportCsv(
+            string path,
+            IReadOnlyList<RuntimeFrameSample> frames)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                throw new ArgumentException("A CSV path is required.", nameof(path));
+            }
+
+            string? directory = System.IO.Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var builder = new StringBuilder(8192);
+            AppendCsvHeader(builder);
+            for (int frameIndex = 0; frameIndex < frames.Count; frameIndex++)
+            {
+                AppendCsvFrame(builder, frames[frameIndex]);
+            }
+
+            File.WriteAllText(path, builder.ToString(), new UTF8Encoding(false));
+            return new RuntimeTraceExportResult(path, frames.Count);
+        }
+
+        private static void AppendCsvHeader(StringBuilder builder)
+        {
+            builder.Append("sequence,timestamp,paused,speed,simSteps,budgetedSimSteps,overtime,")
+                .Append("frameMs,renderMs,waitForSimMs,simMs,classification,")
+                .Append("managedHeapBytes,managedHeapDeltaBytes,unityAllocatedBytes,unityReservedBytes,")
+                .Append("unityUnusedReservedBytes,unityGraphicsBytes,gpuFrameMs,mainThreadMs,renderThreadMs,")
+                .Append("drawCalls,batches,triangles,vertices,gcAllocatedBytes,gen0Delta,gen1Delta,gen2Delta");
+            for (int index = 0; index < s_timingEvents.Length; index++)
+            {
+                builder.Append(',').Append("phase_").Append(TimingName(s_timingEvents[index])).Append("_ms");
+            }
+            builder.Append('\n');
+        }
+
+        private static void AppendCsvFrame(StringBuilder builder, RuntimeFrameSample frame)
+        {
+            AppendCsvLong(builder, frame.Sequence);
+            AppendCsvLong(builder, frame.CapturedTimestamp);
+            AppendCsvBool(builder, frame.SimPaused);
+            AppendCsvInt(builder, frame.SimSpeedMult);
+            AppendCsvInt(builder, frame.SimStepsPerUpdate);
+            AppendCsvInt(builder, frame.BudgetedSimSteps);
+            AppendCsvBool(builder, frame.Runner.WasOvertime);
+            AppendCsvTicks(builder, frame.FrameTicks);
+            AppendCsvTicks(builder, frame.RenderTicks);
+            AppendCsvTicks(builder, frame.Timings.WaitForSimTicks);
+            AppendCsvTicks(builder, frame.SimTicks);
+            AppendCsvString(builder, frame.SimPaused ? "paused" : frame.Classification.ToString());
+            RuntimeCounterSnapshot counters = frame.Counters;
+            AppendCsvOptionalLong(builder, counters.Available ? counters.ManagedHeapBytes : -1);
+            AppendCsvOptionalLong(builder, counters.Available ? counters.ManagedHeapDeltaBytes : -1);
+            AppendCsvOptionalLong(builder, counters.Available ? counters.UnityAllocatedBytes : -1);
+            AppendCsvOptionalLong(builder, counters.Available ? counters.UnityReservedBytes : -1);
+            AppendCsvOptionalLong(builder, counters.Available ? counters.UnityUnusedReservedBytes : -1);
+            AppendCsvOptionalLong(builder, counters.Available ? counters.UnityGraphicsBytes : -1);
+            AppendCsvOptionalTicks(builder, counters.HasGpuTelemetry ? counters.GpuFrameTicks : -1);
+            AppendCsvOptionalTicks(builder, counters.Available ? counters.MainThreadTicks : -1);
+            AppendCsvOptionalTicks(builder, counters.Available ? counters.RenderThreadTicks : -1);
+            AppendCsvOptionalLong(builder, counters.Available ? counters.DrawCalls : -1);
+            AppendCsvOptionalLong(builder, counters.Available ? counters.Batches : -1);
+            AppendCsvOptionalLong(builder, counters.Available ? counters.Triangles : -1);
+            AppendCsvOptionalLong(builder, counters.Available ? counters.Vertices : -1);
+            AppendCsvOptionalLong(builder, counters.Available ? counters.GcAllocatedBytes : -1);
+            AppendCsvOptionalInt(builder, counters.Available ? counters.Gen0Delta : -1);
+            AppendCsvOptionalInt(builder, counters.Available ? counters.Gen1Delta : -1);
+            AppendCsvOptionalInt(builder, counters.Available ? counters.Gen2Delta : -1);
+            for (int index = 0; index < s_timingEvents.Length; index++)
+            {
+                AppendCsvTicks(builder, frame.TimingRanges.Get(s_timingEvents[index]).DurationTicks);
+            }
+            builder.Append('\n');
+        }
+
+        private static void AppendCsvLong(StringBuilder builder, long value)
+        {
+            AppendCsvSeparator(builder);
+            builder.Append(value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private static void AppendCsvInt(StringBuilder builder, int value)
+        {
+            AppendCsvSeparator(builder);
+            builder.Append(value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private static void AppendCsvOptionalInt(StringBuilder builder, int value)
+        {
+            if (value < 0)
+            {
+                AppendCsvString(builder, null);
+                return;
+            }
+            AppendCsvInt(builder, value);
+        }
+
+        private static void AppendCsvOptionalLong(StringBuilder builder, long value)
+        {
+            if (value < 0)
+            {
+                AppendCsvString(builder, null);
+                return;
+            }
+            AppendCsvLong(builder, value);
+        }
+
+        private static void AppendCsvTicks(StringBuilder builder, long ticks) =>
+            AppendCsvOptionalTicks(builder, ticks);
+
+        private static void AppendCsvOptionalTicks(StringBuilder builder, long ticks)
+        {
+            if (ticks < 0)
+            {
+                AppendCsvString(builder, null);
+                return;
+            }
+            AppendCsvSeparator(builder);
+            builder.Append((ticks * 1000.0 / Stopwatch.Frequency).ToString("F4", CultureInfo.InvariantCulture));
+        }
+
+        private static void AppendCsvBool(StringBuilder builder, bool value) =>
+            AppendCsvString(builder, value ? "true" : "false");
+
+        private static void AppendCsvString(StringBuilder builder, string? value)
+        {
+            AppendCsvSeparator(builder);
+            string text = value ?? string.Empty;
+            if (text.Length == 0)
+            {
+                return;
+            }
+            bool quoted = text.IndexOfAny(new[] { ',', '"', '\r', '\n' }) >= 0;
+            if (quoted)
+            {
+                builder.Append('"');
+            }
+            for (int index = 0; index < text.Length; index++)
+            {
+                char character = text[index];
+                if (character == '"')
+                {
+                    builder.Append("\"\"");
+                }
+                else
+                {
+                    builder.Append(character);
+                }
+            }
+            if (quoted)
+            {
+                builder.Append('"');
+            }
+        }
+
+        private static void AppendCsvSeparator(StringBuilder builder)
+        {
+            if (builder.Length > 0 && builder[builder.Length - 1] != '\n')
+            {
+                builder.Append(',');
+            }
+        }
+
         private static long FindBaseTimestamp(
             IReadOnlyList<RuntimeFrameSample> frames,
             IReadOnlyList<RuntimeTraceSpan> spans,
@@ -280,6 +452,13 @@ namespace TajsCOI.Profiler.Core
             AppendCounter(builder, ref firstArg, "unityReservedBytes", frame.Counters.Available ? frame.Counters.UnityReservedBytes : -1);
             AppendCounter(builder, ref firstArg, "unityUnusedReservedBytes", frame.Counters.Available ? frame.Counters.UnityUnusedReservedBytes : -1);
             AppendCounter(builder, ref firstArg, "unityGraphicsBytes", frame.Counters.Available ? frame.Counters.UnityGraphicsBytes : -1);
+            AppendTimingCounter(builder, ref firstArg, "mainThreadMs", frame.Counters.MainThreadTicks);
+            AppendTimingCounter(builder, ref firstArg, "renderThreadMs", frame.Counters.RenderThreadTicks);
+            AppendCounter(builder, ref firstArg, "drawCalls", frame.Counters.DrawCalls);
+            AppendCounter(builder, ref firstArg, "batches", frame.Counters.Batches);
+            AppendCounter(builder, ref firstArg, "triangles", frame.Counters.Triangles);
+            AppendCounter(builder, ref firstArg, "vertices", frame.Counters.Vertices);
+            AppendCounter(builder, ref firstArg, "gcAllocatedBytes", frame.Counters.GcAllocatedBytes);
             AppendCounter(builder, ref firstArg, "gen0Delta", frame.Counters.Gen0Delta);
             AppendCounter(builder, ref firstArg, "gen1Delta", frame.Counters.Gen1Delta);
             AppendCounter(builder, ref firstArg, "gen2Delta", frame.Counters.Gen2Delta);
@@ -310,6 +489,25 @@ namespace TajsCOI.Profiler.Core
             else
             {
                 builder.Append(value);
+            }
+        }
+
+        private static void AppendTimingCounter(StringBuilder builder, ref bool first, string name, long ticks)
+        {
+            if (!first)
+            {
+                builder.Append(',');
+            }
+            first = false;
+            AppendJsonString(builder, name);
+            builder.Append(':');
+            if (ticks < 0)
+            {
+                AppendJsonString(builder, "unavailable");
+            }
+            else
+            {
+                AppendNumber(builder, ticks * 1000.0 / Stopwatch.Frequency);
             }
         }
 
