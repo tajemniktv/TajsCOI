@@ -17,6 +17,7 @@ namespace TajsCOI.Tweaks
         internal const string DisplayName = "Taj's Tweaks";
 
         internal const string LinePlacement = "line_placement";
+        internal const string LinePlacementShortcut = "line_placement_shortcut";
         internal const string LinePlacementLength = "line_placement_length";
         internal const string PinnedSort = "pinned_sort";
         internal const string PinnedSortMode = "pinned_sort_mode";
@@ -102,6 +103,7 @@ namespace TajsCOI.Tweaks
         internal static IReadOnlyList<SettingDescriptor> All { get; } = new SettingDescriptor[]
         {
             SettingDescriptor.Boolean(ModId, DisplayName, LinePlacement, "Line placement mode", "Uses the game's existing line-drag placement path for single buildings when enabled.", false, "Building", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced),
+            SettingDescriptor.String(ModId, DisplayName, LinePlacementShortcut, "Line placement shortcut", "Unity KeyCode name held while the first preview is anchored; the default is LeftAlt.", "LeftAlt", "Building", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced, componentRequirement: LinePlacement),
             SettingDescriptor.Integer(ModId, DisplayName, LinePlacementLength, "Maximum line length", "Safety cap for repeated previews; invalid previews remain visible and are never submitted.", 60, 1, 512, 1, "Building", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced, componentRequirement: LinePlacement),
 
             SettingDescriptor.Boolean(ModId, DisplayName, PinnedSort, "Sort pinned products", "Sorts pinned product rows by quantity or fill percentage with a small hysteresis margin.", false, "HUD", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced),

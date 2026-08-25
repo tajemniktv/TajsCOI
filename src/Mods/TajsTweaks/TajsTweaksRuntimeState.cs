@@ -17,6 +17,7 @@ namespace TajsCOI.Tweaks
         private static string s_mutedNotificationData = string.Empty;
 
         internal static bool LinePlacement;
+        internal static string LinePlacementShortcut = "LeftAlt";
         internal static int LinePlacementLength;
         internal static bool PinnedSort;
         internal static string PinnedSortMode = "quantity";
@@ -74,6 +75,7 @@ namespace TajsCOI.Tweaks
         internal static void Load(ITajsSettings settings)
         {
             LinePlacement = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.LinePlacement);
+            LinePlacementShortcut = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.LinePlacementShortcut);
             LinePlacementLength = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.LinePlacementLength);
             PinnedSort = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedSort);
             PinnedSortMode = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedSortMode);
@@ -262,6 +264,7 @@ namespace TajsCOI.Tweaks
         {
             switch (key)
             {
+                case TajsTweaksSettingsCatalog.LinePlacementShortcut: LinePlacementShortcut = value; break;
                 case TajsTweaksSettingsCatalog.PinnedSortDirection: PinnedSortDirection = value; break;
                 case TajsTweaksSettingsCatalog.PinnedSortMode: PinnedSortMode = value; break;
                 case TajsTweaksSettingsCatalog.DefaultsUnit: DefaultsUnit = value; break;

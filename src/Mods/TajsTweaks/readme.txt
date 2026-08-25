@@ -10,15 +10,24 @@ Current feature:
 - Optional line-placement limits, pinned-product sorting/filtering/columns/colors, storage
   defaults, bounded resource/tower labels, camera/HUD controls, designation limits, notification
   filters, storage capacity/throughput overrides, mine-truck staging, and stranded-truck recovery.
-- Optional world operations, ship preload/auto-delivery, and bounded fleet status/order/scrap/
-  replacement commands. All world, vehicle, and depot mutations use normal game commands/jobs.
+- Optional world operations, ship preload/auto-delivery, and native management windows for
+  repairs, mines/rigs, settlements, ship cargo, and fleet status/order/scrap/replacement.
+  All world, vehicle, and depot mutations use normal game commands/jobs.
+- Line placement uses the native placement controller. Hold the configured `LeftAlt` shortcut
+  while anchoring a single building to start a straight row; the row cap is configurable and
+  invalid previews remain native-invalid. The controller cleans up on cancel/deactivate.
+- Resource depth labels are grouped by contiguous native resource chunks. The first toggle can
+  sample a large map once; later terrain changes debounce through native dirty chunks and reuse
+  unaffected cluster labels. Toggling the option may hitch once on a large save.
 
 Console commands:
 - set_game_speed_unlocked <speed>
 - get_game_speed_unlocked
 - tajs_world_operations_status
+- tajs_world_operations
 - tajs_world_operations_apply <repair|cancel-repair|upgrade> <entity-id> CONFIRM
 - tajs_fleet_status
+- tajs_fleet_manager
 - tajs_fleet_order <prototype-id> <count> CONFIRM
 - tajs_fleet_scrap_type <prototype-id> <count> CONFIRM [assigned-only|unassigned-first|any]
 - tajs_fleet_replace_type <source-id> <target-id> <count> CONFIRM [assigned-only|unassigned-first|any]

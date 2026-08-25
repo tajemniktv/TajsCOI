@@ -30,6 +30,7 @@ using Mafi.Core.Vehicles.Jobs;
 using Mafi.Core.Vehicles.Trucks;
 using Mafi.Unity;
 using Mafi.Unity.Camera;
+using Mafi.Unity.InputControl;
 using Mafi.Unity.Ui.Controllers.LayoutEntityPlacing;
 using Mafi.Unity.Ui.Hud;
 using UnityEngine;
@@ -39,13 +40,79 @@ namespace TajsCOI.Tweaks
 {
     internal static class TweaksLinePlacementFeature
     {
+        private static FieldInfo? s_parentField;
+        private static FieldInfo? s_shortcutsField;
+        private static MethodInfo? s_axisMethod;
+
         internal static void Install(Harmony harmony)
         {
             Type helper = typeof(StaticEntityMassPlacer).GetNestedType("DragPlacementHelper", BindingFlags.NonPublic)
                 ?? throw new MissingMemberException(typeof(StaticEntityMassPlacer).FullName, "DragPlacementHelper");
+            s_parentField = AccessTools.Field(helper, "m_parent");
+            s_shortcutsField = AccessTools.Field(typeof(StaticEntityMassPlacer), "m_shortcutsManager");
+            if (s_parentField is null || s_shortcutsField is null)
+            {
+                throw new MissingMemberException(helper.FullName, "placement shortcut fields");
+            }
+            MethodInfo allowed = AccessTools.Method(helper, "isDragStartAllowed")
+                ?? throw new MissingMethodException(helper.FullName, "isDragStartAllowed");
             MethodInfo target = AccessTools.Method(helper, "computeAxisAlignedPositions")
                 ?? throw new MissingMethodException(helper.FullName, "computeAxisAlignedPositions");
+            s_axisMethod = target;
+            harmony.Patch(allowed, prefix: new HarmonyMethod(typeof(TweaksLinePlacementFeature), nameof(AllowConfiguredShortcut)));
             harmony.Patch(target, postfix: new HarmonyMethod(typeof(TweaksLinePlacementFeature), nameof(TrimLinePositions)));
+            PatchAlternatePlacementPath(harmony, helper, "computeFreeAnglePositions");
+            PatchAlternatePlacementPath(harmony, helper, "computeGridPositions");
+        }
+
+        private static void PatchAlternatePlacementPath(Harmony harmony, Type helper, string name)
+        {
+            MethodInfo alternate = AccessTools.Method(helper, name)
+                ?? throw new MissingMethodException(helper.FullName, name);
+            harmony.Patch(alternate,
+                prefix: new HarmonyMethod(typeof(TweaksLinePlacementFeature), nameof(ForceAxisAlignedPath)),
+                postfix: new HarmonyMethod(typeof(TweaksLinePlacementFeature), nameof(TrimLinePositions)));
+        }
+
+        private static bool ForceAxisAlignedPath(object __instance, Tile3i start, Tile3i cursor, Lyst<Tile3i> results)
+        {
+            if (!TajsTweaksRuntimeState.LinePlacement)
+            {
+                return true;
+            }
+
+            s_axisMethod?.Invoke(__instance, new object[] { start, cursor, results });
+            return false;
+        }
+
+        private static bool AllowConfiguredShortcut(object __instance, ref bool __result)
+        {
+            if (!TajsTweaksRuntimeState.LinePlacement)
+            {
+                return true;
+            }
+
+            // The native helper remains responsible for the drag state machine, validation,
+            // preview pooling and the final batch command. This gate only makes the opt-in
+            // mode require its configured key; ordinary clicks continue through vanilla input.
+            __result = false;
+            if (TryParseShortcut(TajsTweaksRuntimeState.LinePlacementShortcut, out KeyCode shortcut) &&
+                s_parentField?.GetValue(__instance) is StaticEntityMassPlacer parent &&
+                s_shortcutsField?.GetValue(parent) is ShortcutsManager shortcuts)
+            {
+                __result = shortcuts.IsOn(KeyBindings.FromKey(KbCategory.DragPlacement, ShortcutMode.Game, shortcut));
+            }
+            return false;
+        }
+
+        private static bool TryParseShortcut(string? value, out KeyCode shortcut)
+        {
+            if (Enum.TryParse(value ?? string.Empty, ignoreCase: true, out shortcut) && shortcut != KeyCode.None)
+            {
+                return true;
+            }
+            shortcut = KeyCode.None;
+            return false;
         }
 
         private static void TrimLinePositions(object __instance, Lyst<Tile3i> results)
@@ -1010,20 +1077,9 @@ namespace TajsCOI.Tweaks
                 s_lineSetColor = Type.GetType("Mafi.Unity.LineMb, Mafi.Unity", false)?.GetMethod("SetColor", new[] { typeof(Color) });
             }
 
-            Type? bars = Type.GetType("Mafi.Unity.InputControl.ResVis.ResVisBarsMb, Mafi.Unity", false);
-            MethodInfo? append = bars is null ? null : AccessTools.Method(bars, "AppendBar", new[]
-            {
-                typeof(Tile2i), typeof(ThicknessTilesF), typeof(HeightTilesF),
-            });
-            if (append is not null)
-            {
-                harmony.Patch(append, postfix: new HarmonyMethod(typeof(TweaksResourceOverlayFeature), nameof(AppendBarPostfix)));
-            }
-            MethodInfo? apply = bars is null ? null : AccessTools.Method(bars, "ApplyChanges");
-            if (apply is not null)
-            {
-                harmony.Patch(apply, prefix: new HarmonyMethod(typeof(TweaksResourceOverlayFeature), nameof(ClearLabelsPrefix)));
-            }
+            // Deposit labels are owned by TweaksResourceDepositFeature. Keeping them outside
+            // ResVisBarsMb avoids one label per sampled bar and lets the cluster cache reuse
+            // unaffected regions when the native renderer applies dirty chunks.
         }
 
         private static void ClearLabelsPrefix(Component __instance)

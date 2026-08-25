@@ -16,6 +16,7 @@ using Mafi.Core.Vehicles.Commands;
 using Mafi.Core.Vehicles.Trucks;
 using Mafi.Core.World;
 using Mafi.Core.World.Entities;
+using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
@@ -36,6 +37,8 @@ namespace TajsCOI.Tweaks
         private readonly ITajsSettings m_settings;
         private readonly ITajsLogger m_log;
         private readonly Harmony m_harmony;
+        private Option<TajsWorldOperationsWindow> m_worldOperationsWindow;
+        private Option<TajsFleetManagementWindow> m_fleetManagementWindow;
         private int m_renderTick;
 
         public TajsTweaksFeatureHost(DependencyResolver resolver, IGameLoopEvents gameLoop, ITajsRuntime runtime, ITajsSettings settings)
@@ -54,7 +57,8 @@ namespace TajsCOI.Tweaks
             TryInstall(runtime, "PinnedProducts", TweaksPinnedProductsFeature.Install);
             TryInstall(runtime, "BuildDefaults", TweaksBuildDefaultsFeature.Install);
             TryInstall(runtime, "ResourceOverlays", TweaksResourceOverlayFeature.Install);
-            TryInstall(runtime, "ShipCargoPreload", harmony => TweaksShipPreloadFeature.Install(harmony, resolver));
+            TryInstall(runtime, "ResourceDepositClusters", TweaksResourceDepositFeature.Install);
+            TryInstall(runtime, "ShipCargoPreload", harmony => TweaksShipPreloadFeature.Install(harmony, resolver, settings));
             TryInstall(runtime, "AutoWorldDelivery", harmony => TweaksAutoShipDeliveryFeature.Install(harmony, resolver));
             TryInstall(runtime, "CameraAndHud", TweaksCameraFeature.Install);
             TryInstall(runtime, "DesignationControls", TweaksDesignationFeature.Install);
@@ -160,6 +164,7 @@ namespace TajsCOI.Tweaks
             {
                 TweaksPinnedProductsFeature.Tick();
                 TweaksShipPreloadFeature.Tick();
+                TweaksResourceDepositFeature.Tick(m_resolver);
                 TweaksHudLayoutFeature.Apply(m_resolver, m_settings);
             }
         }
@@ -168,6 +173,113 @@ namespace TajsCOI.Tweaks
         {
             m_settings.Changed -= OnSettingChanged;
             TweaksAutoShipDeliveryFeature.Reset();
+            TweaksResourceDepositFeature.Dispose();
+            CloseWorldOperationsWindow();
+            CloseFleetManagementWindow();
+        }
+
+        [ConsoleCommand(
+            documentation: "Opens the native world operations window for repairs, upgrades, settlements, and ship preload.",
+            customCommandName: "tajs_world_operations")]
+        public string ToggleWorldOperationsWindow()
+        {
+            if (!TajsTweaksRuntimeState.WorldOperations)
+            {
+                return "World operations manager is disabled.";
+            }
+
+            if (m_worldOperationsWindow.HasValue && m_worldOperationsWindow.Value.IsOpen)
+            {
+                CloseWorldOperationsWindow();
+                return "World operations window: hidden";
+            }
+
+            try
+            {
+                TajsWorldOperationsWindow window = m_resolver.Instantiate<TajsWorldOperationsWindow>();
+                window.OnCloseStart += OnWorldOperationsWindowClose;
+                m_worldOperationsWindow = window;
+                return "World operations window: shown";
+            }
+            catch (Exception exception)
+            {
+                m_log.Exception(exception, "World operations window failed open.");
+                return "World operations window is unavailable in this scene.";
+            }
+        }
+
+        [ConsoleCommand(
+            documentation: "Opens the native fleet management window with grouped status and confirmed bulk actions.",
+            customCommandName: "tajs_fleet_manager")]
+        public string ToggleFleetManagementWindow()
+        {
+            if (!TajsTweaksRuntimeState.FleetManager)
+            {
+                return "Fleet manager is disabled.";
+            }
+
+            if (m_fleetManagementWindow.HasValue && m_fleetManagementWindow.Value.IsOpen)
+            {
+                CloseFleetManagementWindow();
+                return "Fleet management window: hidden";
+            }
+
+            try
+            {
+                TajsFleetManagementWindow window = m_resolver.Instantiate<TajsFleetManagementWindow>();
+                window.OnCloseStart += OnFleetManagementWindowClose;
+                m_fleetManagementWindow = window;
+                return "Fleet management window: shown";
+            }
+            catch (Exception exception)
+            {
+                m_log.Exception(exception, "Fleet management window failed open.");
+                return "Fleet management window is unavailable in this scene.";
+            }
+        }
+
+        private void OnWorldOperationsWindowClose(Window window)
+        {
+            if (m_worldOperationsWindow.HasValue && ReferenceEquals(m_worldOperationsWindow.Value, window))
+            {
+                window.OnCloseStart -= OnWorldOperationsWindowClose;
+                m_worldOperationsWindow = Option<TajsWorldOperationsWindow>.None;
+            }
+        }
+
+        private void OnFleetManagementWindowClose(Window window)
+        {
+            if (m_fleetManagementWindow.HasValue && ReferenceEquals(m_fleetManagementWindow.Value, window))
+            {
+                window.OnCloseStart -= OnFleetManagementWindowClose;
+                m_fleetManagementWindow = Option<TajsFleetManagementWindow>.None;
+            }
+        }
+
+        private void CloseWorldOperationsWindow()
+        {
+            if (!m_worldOperationsWindow.HasValue)
+            {
+                return;
+            }
+
+            TajsWorldOperationsWindow window = m_worldOperationsWindow.Value;
+            window.OnCloseStart -= OnWorldOperationsWindowClose;
+            window.CloseNoFade();
+            m_worldOperationsWindow = Option<TajsWorldOperationsWindow>.None;
+        }
+
+        private void CloseFleetManagementWindow()
+        {
+            if (!m_fleetManagementWindow.HasValue)
+            {
+                return;
+            }
+
+            TajsFleetManagementWindow window = m_fleetManagementWindow.Value;
+            window.OnCloseStart -= OnFleetManagementWindowClose;
+            window.CloseNoFade();
+            m_fleetManagementWindow = Option<TajsFleetManagementWindow>.None;
         }
 
         [ConsoleCommand(
