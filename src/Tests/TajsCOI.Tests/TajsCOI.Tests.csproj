@@ -18,11 +18,11 @@
 
   <Target Name="ValidateCoiTestReferences" BeforeTargets="ResolveReferences">
     <Error Condition="'$(COIRoot)' == ''"
-           Text="COI_ROOT must point to the Captain of Industry 0.8.7a reference root when building TajsCOI.Tests."/>
+           Text="COI_ROOT must point to the Captain of Industry 0.8.7b reference root when building TajsCOI.Tests."/>
     <Error Condition="!Exists('$(COIManagedDir)\Mafi.dll') Or
                       !Exists('$(COIManagedDir)\Mafi.Core.dll') Or
                       !Exists('$(COIManagedDir)\Mafi.Base.dll')"
-           Text="Captain of Industry 0.8.7a test references were not found at '$(COIManagedDir)'."/>
+           Text="Captain of Industry 0.8.7b test references were not found at '$(COIManagedDir)'."/>
   </Target>
 
   <ItemGroup>

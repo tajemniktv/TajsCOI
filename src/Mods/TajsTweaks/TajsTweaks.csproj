@@ -8,7 +8,7 @@
     <ModDescription>Quality-of-life and simulation tweaks for Captain of Industry.</ModDescription>
     <ModAuthor>TajemnikTV</ModAuthor>
     <MinGameVersion>0.8.7</MinGameVersion>
-    <MaxVerifiedGameVersion>0.8.7a</MaxVerifiedGameVersion>
+    <MaxVerifiedGameVersion>0.8.7b</MaxVerifiedGameVersion>
     <PrimaryModClassName>TajsTweaksMod</PrimaryModClassName>
 
     <AssemblyName>$(ModId)</AssemblyName>

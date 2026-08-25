@@ -3,7 +3,7 @@
 Taj's COI is a collection of Captain of Industry mods by TajemnikTV. The suite adds quality-of-life
 changes, optional performance experiments, and tools for understanding what the game is doing.
 
-The current compatibility target is Captain of Industry 0.8.7a.
+The current compatibility target is Captain of Industry 0.8.7b.
 
 ## Mods
 

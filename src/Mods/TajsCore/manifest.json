@@ -7,7 +7,7 @@
 "primary_dlls":["0Harmony.dll","TajsCOI.Common.dll","TajsCore.dll"],
 "primary_mod_class_name":"TajsCoreMod",
 "min_game_version":"0.8.7",
-"max_verified_game_version":"0.8.7a",
+"max_verified_game_version":"0.8.7b",
 "non_locking_dll_load":true,
 "can_add_to_saved_game":true,
 "can_remove_from_saved_game":true
