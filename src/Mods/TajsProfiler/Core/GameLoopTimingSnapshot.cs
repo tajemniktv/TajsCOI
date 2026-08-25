@@ -234,7 +234,7 @@ namespace TajsCOI.Profiler.Core
                 // writeIndex points at the entry currently being filled. The previous logical
                 // slot is the first safe candidate, but the range validator below rejects the
                 // empty slot when the reader starts before the first producer write.
-                m_nextLogicalIndex = writeIndex > 0 ? writeIndex - 1 : writeIndex;
+                m_nextLogicalIndex = writeIndex != 0 ? unchecked(writeIndex - 1) : writeIndex;
             }
 
             uint unsignedDelta = unchecked((uint)(writeIndex - m_nextLogicalIndex));

@@ -5,6 +5,8 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using TajsCOI.Profiler.Core;
 using Xunit;
 
@@ -176,6 +178,71 @@ namespace TajsCOI.Tests
             Assert.Equal(6, fasterProducer.StartLogicalIndex);
             Assert.Equal(2, fasterProducer.DroppedEntries);
             Assert.Equal(0, cursor.Advance(10).Count);
+        }
+
+        [Fact]
+        public void RingCursorStartsAtThePreviousSafeEntryWhenReaderIsCreatedLate()
+        {
+            var cursor = new GameLoopTimingRingCursor(2048);
+
+            GameLoopTimingRingReadWindow window = cursor.Advance(37);
+
+            Assert.Equal(1, window.Count);
+            Assert.Equal(36, window.StartLogicalIndex);
+            Assert.Equal(0, window.DroppedEntries);
+        }
+
+        [Fact]
+        public void RingCursorClampsProducerBurstsBeyondRetentionCapacity()
+        {
+            var cursor = new GameLoopTimingRingCursor(2048);
+            cursor.Advance(1);
+
+            GameLoopTimingRingReadWindow window = cursor.Advance(10000);
+
+            Assert.Equal(2048, window.Count);
+            Assert.Equal(7951, window.DroppedEntries);
+            Assert.Equal(7952, window.StartLogicalIndex);
+        }
+
+        [Fact]
+        public void RingCursorHandlesLogicalWriteIndexIntegerWraparound()
+        {
+            var cursor = new GameLoopTimingRingCursor(4);
+            cursor.Advance(int.MaxValue - 1);
+
+            GameLoopTimingRingReadWindow beforeWrap = cursor.Advance(int.MaxValue);
+            GameLoopTimingRingReadWindow afterWrap = cursor.Advance(int.MinValue);
+
+            Assert.Equal(1, beforeWrap.Count);
+            Assert.Equal(int.MaxValue - 1, beforeWrap.StartLogicalIndex);
+            Assert.Equal(1, afterWrap.Count);
+            Assert.Equal(int.MaxValue, afterWrap.StartLogicalIndex);
+            Assert.Equal(0, afterWrap.DroppedEntries);
+        }
+
+        [Fact]
+        public async Task RingCursorCanPollAWriteIndexWhileProducerAdvances()
+        {
+            int writeIndex = 0;
+            var cursor = new GameLoopTimingRingCursor(4);
+            Task producer = Task.Run(() =>
+            {
+                for (int index = 1; index <= 10000; index++)
+                {
+                    Volatile.Write(ref writeIndex, index);
+                }
+            });
+
+            while (!producer.IsCompleted)
+            {
+                cursor.Advance(Volatile.Read(ref writeIndex));
+            }
+            await producer;
+            GameLoopTimingRingReadWindow final = cursor.Advance(Volatile.Read(ref writeIndex));
+
+            Assert.InRange(final.Count, 0, 4);
+            Assert.True(final.DroppedEntries >= 0);
         }
 
         [Fact]
