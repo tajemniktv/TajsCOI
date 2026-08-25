@@ -155,9 +155,9 @@ namespace TajsCOI.Tests
             Assert.Equal(1_048, metric.UnusedCapacitySlots);
             Assert.Equal(600 * 100.0 / 2_048, metric.Utilization, 8);
             Assert.Equal(1_120_256, metric.GpuBytes);
-            Assert.Equal(
-                "unavailable/inconsistent",
-                RuntimePerformanceDiagnosticsService.FormatUnityGraphicsBytes(0, metric));
+            string graphics = RuntimePerformanceDiagnosticsService.FormatUnityGraphicsBytes(0, metric);
+            Assert.Contains("0 B (driver counter", graphics);
+            Assert.Contains("ProductsRenderer estimate=1.07 MiB", graphics);
         }
 
         [Fact]

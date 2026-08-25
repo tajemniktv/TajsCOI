@@ -62,6 +62,107 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void SummaryExcludesPausedSamplesFromGameplayStatistics()
+        {
+            var history = new RuntimeFrameHistory(8);
+            history.Record(
+                1,
+                new GameLoopTimingSnapshot(),
+                new GameRunnerTimingSnapshot(updateTicks: 10),
+                1,
+                1,
+                1,
+                false);
+            history.Record(
+                2,
+                new GameLoopTimingSnapshot(),
+                new GameRunnerTimingSnapshot(updateTicks: 1434),
+                1,
+                1,
+                1,
+                true);
+            history.Record(
+                3,
+                new GameLoopTimingSnapshot(),
+                new GameRunnerTimingSnapshot(updateTicks: 20),
+                1,
+                1,
+                1,
+                false);
+
+            RuntimeFrameSummary summary = history.SummarizeRecent(100);
+
+            Assert.Equal(2, summary.Count);
+            Assert.Equal(30, summary.Frame.TotalTicks);
+            Assert.Equal(20, summary.Frame.MaxTicks);
+            Assert.Equal(1, summary.PausedSampleCount);
+            Assert.Equal(3, summary.Latest.Sequence);
+        }
+
+        [Fact]
+        public void SpikeRankingExcludesPausedSamples()
+        {
+            var history = new RuntimeFrameHistory(8);
+            history.Record(1, new GameLoopTimingSnapshot(), new GameRunnerTimingSnapshot(updateTicks: 10), 1, 1, 1, false);
+            history.Record(2, new GameLoopTimingSnapshot(), new GameRunnerTimingSnapshot(updateTicks: 1434), 1, 1, 1, true);
+
+            RuntimeFrameSample[] spikes = history.FindSpikes(100, 1);
+
+            RuntimeFrameSample spike = Assert.Single(spikes);
+            Assert.Equal(1, spike.Sequence);
+            Assert.False(spike.SimPaused);
+        }
+
+        [Fact]
+        public void SummaryRetainsGcCollectionsAcrossTheIntervalWhenLatestSampleIsZero()
+        {
+            var history = new RuntimeFrameHistory(8);
+            history.RecordSample(
+                1,
+                new GameLoopTimingSnapshot(),
+                new GameRunnerTimingSnapshot(updateTicks: System.Diagnostics.Stopwatch.Frequency / 10),
+                1,
+                1,
+                1,
+                false,
+                counters: new RuntimeCounterSnapshot(
+                    true,
+                    1,
+                    100,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    -1,
+                    false,
+                    0));
+            history.RecordSample(
+                2,
+                new GameLoopTimingSnapshot(),
+                new GameRunnerTimingSnapshot(updateTicks: 10),
+                1,
+                1,
+                1,
+                false,
+                counters: RuntimeCounterSnapshot.Unavailable(2));
+
+            RuntimeFrameSummary summary = history.SummarizeRecent(100);
+
+            Assert.Equal(0, summary.Latest.Counters.TotalGcDelta);
+            Assert.Equal(1, summary.GcDeltaTotal);
+            Assert.Equal(1, summary.GcPeakDelta);
+            Assert.Equal(1, summary.GcRelatedCount);
+        }
+
+        [Fact]
         public void ClassificationDistinguishesWaitingSimulationAndMainRender()
         {
             RuntimeFrameSample waiting = new RuntimeFrameSample(

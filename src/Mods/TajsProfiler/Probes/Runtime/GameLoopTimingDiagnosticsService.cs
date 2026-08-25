@@ -194,7 +194,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 .Append('/').Append(m_deepPatchSummary.ExpectedMethods)
                 .Append(", timing-ring-drops=").Append(m_timings?.DroppedEntries ?? 0)
                 .Append(", counters=").Append(m_counters.SupportedUnityCounters == 0 ? "managed-only" : "available")
-                .Append(", gpu=").Append(m_counters.GpuTelemetryStatus);
+                .Append(", gpu-frame=").Append(m_counters.GpuTelemetryStatus)
+                .Append("; gpu-memory=graphics-driver allocation (not dedicated VRAM)");
 
             if (m_timings is null)
             {
@@ -212,7 +213,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     .Append(", frame=").Append(FormatMilliseconds(sample.FrameTicks))
                     .Append(", wait-for-sim=").Append(FormatMilliseconds(sample.Timings.WaitForSimTicks))
                     .Append(", sim=").Append(FormatMilliseconds(sample.SimTicks))
-                    .Append(", gc-delta=").Append(sample.Counters.TotalGcDelta)
+                    .Append(", graphics-driver-memory=")
+                    .Append(RuntimeTraceText.OptionalBytes(sample.Counters.UnityGraphicsBytes))
+                    .Append(", gc-latest-delta=").Append(sample.Counters.TotalGcDelta)
                     .Append(", dumping-calls=").Append(sample.SubsystemCounters.DumpingCalls);
             }
             else
@@ -243,6 +246,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 .Append(seconds.ToString("F1", CultureInfo.InvariantCulture))
                 .Append(" s, samples=")
                 .Append(summary.Count)
+                .Append(", paused-excluded=")
+                .Append(summary.PausedSampleCount)
                 .Append(")")
                 .Append("\nframe/update       ").Append(FormatMetric(summary.Frame))
                 .Append("\nrender             ").Append(FormatMetric(summary.Render))
@@ -252,11 +257,25 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 .Append(FormatClassificationCounts(summary))
                 .Append("\nresources          managed-heap=")
                 .Append(RuntimeTraceText.OptionalBytes(summary.Latest.Counters.ManagedHeapBytes))
+                .Append(", mono-used=")
+                .Append(RuntimeTraceText.OptionalBytes(summary.Latest.Counters.MonoUsedBytes))
+                .Append(", mono-heap=")
+                .Append(RuntimeTraceText.OptionalBytes(summary.Latest.Counters.MonoHeapBytes))
                 .Append(", unity-allocated=")
                 .Append(RuntimeTraceText.OptionalBytes(summary.Latest.Counters.UnityAllocatedBytes))
-                .Append(", gc-delta=")
+                .Append(", unity-reserved=")
+                .Append(RuntimeTraceText.OptionalBytes(summary.Latest.Counters.UnityReservedBytes))
+                .Append(", unity-unused-reserved=")
+                .Append(RuntimeTraceText.OptionalBytes(summary.Latest.Counters.UnityUnusedReservedBytes))
+                .Append(", graphics-driver-memory=")
+                .Append(RuntimeTraceText.OptionalBytes(summary.Latest.Counters.UnityGraphicsBytes))
+                .Append(", gc-latest-delta=")
                 .Append(summary.Latest.Counters.TotalGcDelta)
-                .Append(", gpu=")
+                .Append(", gc-interval=")
+                .Append(summary.GcDeltaTotal)
+                .Append(", gc-peak=")
+                .Append(summary.GcPeakDelta)
+                .Append(", gpu-frame=")
                 .Append(summary.Latest.Counters.HasGpuTelemetry ? RuntimeTraceText.Milliseconds(summary.Latest.Counters.GpuFrameTicks) : "unavailable")
                 .Append("\nsubsystems          dumping-calls=")
                 .Append(summary.Latest.SubsystemCounters.DumpingCalls)
@@ -391,7 +410,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         }
 
         [ConsoleCommand(
-            documentation: "Shows top deep callback spans ranked by total, p95, p99 and maximum duration.",
+            documentation: "Shows top deep callbacks ranked by total time with phase, share, percentiles and spike context.",
             customCommandName: "tajs_profiler_deep_report")]
         public string DeepReport(int count = 10)
         {
@@ -412,11 +431,49 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     .Append(" phase=").Append(RuntimeTracePhase.Name(metric.PhaseId))
                     .Append(" calls=").Append(metric.CallCount)
                     .Append(", total=").Append(RuntimeTraceText.Milliseconds(metric.TotalTicks))
+                    .Append(", share=").Append(metric.SharePercent.ToString("F2", CultureInfo.InvariantCulture)).Append('%')
                     .Append(", avg=").Append(RuntimeTraceText.Milliseconds(metric.AverageTicks))
                     .Append(", p95=").Append(RuntimeTraceText.Milliseconds(metric.P95Ticks))
                     .Append(", p99=").Append(RuntimeTraceText.Milliseconds(metric.P99Ticks))
                     .Append(", max=").Append(RuntimeTraceText.Milliseconds(metric.MaxTicks))
-                    .Append(", slow=").Append(metric.SlowCallCount);
+                    .Append(", slow=").Append(metric.SlowCallCount)
+                    .Append(", worst-ts=").Append(metric.WorstStartTimestamp > 0
+                        ? metric.WorstStartTimestamp.ToString(CultureInfo.InvariantCulture)
+                        : "unavailable");
+            }
+            return builder.ToString();
+        }
+
+        [ConsoleCommand(
+            documentation: "Shows the largest individual deep callback executions, ranked by single-invocation duration.",
+            customCommandName: "tajs_profiler_deep_worst")]
+        public string DeepWorst(int count = 10)
+        {
+            if (count < 1 || count > 64)
+            {
+                return "Runtime profiler rejected: callback count must be between 1 and 64.";
+            }
+
+            CallbackInvocationSnapshot[] invocations = DeepCallbackRecorder.SnapshotWorstCallbackInvocations(count);
+            if (invocations.Length == 0)
+            {
+                return "Runtime profiler worst callbacks: no callback spans captured.";
+            }
+
+            var builder = new StringBuilder(2048)
+                .Append("Runtime profiler worst callback invocations (top ")
+                .Append(invocations.Length)
+                .Append("):");
+            for (int index = 0; index < invocations.Length; index++)
+            {
+                CallbackInvocationSnapshot invocation = invocations[index];
+                builder.Append("\n  ").Append(index + 1).Append(". ")
+                    .Append(invocation.Metadata.DisplayName)
+                    .Append(" phase=").Append(RuntimeTracePhase.Name(invocation.PhaseId))
+                    .Append(", duration=").Append(RuntimeTraceText.Milliseconds(invocation.DurationTicks))
+                    .Append(", timestamp=").Append(invocation.StartTimestamp)
+                    .Append(", thread=").Append(invocation.ThreadId)
+                    .Append(", sequence=").Append(invocation.Sequence);
             }
             return builder.ToString();
         }
@@ -575,10 +632,13 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     ranges,
                     m_counters.Read(capturedTimestamp, DeepCallbackRecorder.IsActive),
                     DumpSearchDiagnosticsService.ReadTimelineCounters());
-                m_frameBaseline.Add(sample.FrameTicks);
-                if ((++m_baselineSampleCounter & 15) == 0)
+                if (!sample.SimPaused)
                 {
-                    m_rollingMedianFrameTicks = m_frameBaseline.Get(0.5);
+                    m_frameBaseline.Add(sample.FrameTicks);
+                    if ((++m_baselineSampleCounter & 15) == 0)
+                    {
+                        m_rollingMedianFrameTicks = m_frameBaseline.Get(0.5);
+                    }
                 }
                 RuntimeSpikeRecord? completed = m_spikes.Observe(sample, m_rollingMedianFrameTicks, m_spikePolicy);
                 if (m_spikes.CaptureStarted && m_spikes.ActiveAutomaticDeepCapture &&

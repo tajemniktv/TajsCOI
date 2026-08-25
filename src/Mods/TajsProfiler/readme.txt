@@ -41,6 +41,7 @@ Console commands:
 - tajs_profiler_deep_start [seconds]
 - tajs_profiler_deep_stop
 - tajs_profiler_deep_report [count]
+- tajs_profiler_deep_worst [count]
 - tajs_profiler_trace_export [name]
 - tajs_profiler_mark <label>
 - tajs_profiler_overhead_bench [iterations]
@@ -52,5 +53,7 @@ The runtime flight recorder keeps a separate bounded frame history and calculate
 when a command is requested. If the game's private timing surface changes, the probe reports the
 unsupported detail and leaves the rest of Taj's Profiler active. Deep callback timing is off until
 explicitly armed; trace files are written below the user's application-data `TajsCOI/Profiler`
-directory and can be opened in Chrome's trace viewer. The TajsCOI dashboard exposes the same
-profiler controls and persisted threshold/window settings.
+directory and can be opened in Chrome's trace viewer. Runtime `gpu-frame` timing is separate from
+the reported `graphics-driver-memory` allocation counter and is unavailable without a trusted
+player-build GPU timing surface. The TajsCOI dashboard exposes the same profiler controls and
+persisted threshold/window settings.

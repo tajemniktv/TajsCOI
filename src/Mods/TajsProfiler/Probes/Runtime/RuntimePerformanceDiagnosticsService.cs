@@ -292,7 +292,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     .Append(", Unity allocated=").Append(FormatOptionalBytes(second.UnityAllocatedBytes, first.UnityAllocatedBytes))
                     .Append(", Unity reserved=").Append(FormatOptionalBytes(second.UnityReservedBytes, first.UnityReservedBytes))
                     .Append(", Unity unused reserved=").Append(FormatOptionalBytes(second.UnityUnusedReservedBytes, first.UnityUnusedReservedBytes))
-                    .Append(", graphics=").Append(FormatUnityGraphicsDelta(second, first));
+                    .Append(", graphics-driver=").Append(FormatUnityGraphicsDelta(second, first));
 
                 foreach (string stage in s_stageOrder)
                 {
@@ -1244,7 +1244,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 .Append(", Unity allocated=").Append(FormatOptionalBytes(snapshot.UnityAllocatedBytes))
                 .Append(", Unity reserved=").Append(FormatOptionalBytes(snapshot.UnityReservedBytes))
                 .Append(", Unity unused reserved=").Append(FormatOptionalBytes(snapshot.UnityUnusedReservedBytes))
-                .Append(", graphics=").Append(FormatUnityGraphicsBytes(snapshot.UnityGraphicsBytes, products));
+                .Append(", graphics-driver=").Append(FormatUnityGraphicsBytes(snapshot.UnityGraphicsBytes, products));
 
             foreach (string stage in s_stageOrder)
             {
@@ -1564,7 +1564,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
             }
             if (IsUnityGraphicsInconsistent(unityGraphicsBytes, products))
             {
-                return "unavailable/inconsistent";
+                return FormatBytes(unityGraphicsBytes) +
+                    " (driver counter; ProductsRenderer estimate=" + FormatBytes(products.GpuBytes) + ")";
             }
             return FormatBytes(unityGraphicsBytes);
         }
@@ -1574,7 +1575,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
             if (IsUnityGraphicsInconsistent(right.UnityGraphicsBytes, right.Products) ||
                 IsUnityGraphicsInconsistent(left.UnityGraphicsBytes, left.Products))
             {
-                return "unavailable/inconsistent";
+                string productsDelta = right.Products.Available && left.Products.Available
+                    ? FormatBytes(right.Products.GpuBytes - left.Products.GpuBytes)
+                    : "unavailable";
+                return FormatOptionalBytes(right.UnityGraphicsBytes, left.UnityGraphicsBytes) +
+                    " (driver counter; ProductsRenderer estimate delta=" + productsDelta + ")";
             }
             return FormatOptionalBytes(right.UnityGraphicsBytes, left.UnityGraphicsBytes);
         }

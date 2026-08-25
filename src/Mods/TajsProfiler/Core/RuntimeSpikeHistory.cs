@@ -219,6 +219,13 @@ namespace TajsCOI.Profiler.Core
             RuntimeSpikePolicy policy,
             out string reason)
         {
+            // A paused frame can include a long scheduler/UI wait that is not gameplay work.
+            // Retain it in raw history, but never let it trigger or rank a normal runtime spike.
+            if (sample.SimPaused)
+            {
+                reason = string.Empty;
+                return false;
+            }
             if (sample.FrameTicks >= policy.FrameThresholdTicks && policy.FrameThresholdTicks > 0)
             {
                 reason = "frame/update threshold";

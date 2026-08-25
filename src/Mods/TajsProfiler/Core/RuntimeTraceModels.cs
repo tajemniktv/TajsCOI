@@ -307,7 +307,9 @@ namespace TajsCOI.Profiler.Core
             long p95Ticks,
             long p99Ticks,
             long maxTicks,
-            long slowCallCount)
+            long slowCallCount,
+            double sharePercent,
+            long worstStartTimestamp)
         {
             Metadata = metadata;
             PhaseId = phaseId;
@@ -317,6 +319,8 @@ namespace TajsCOI.Profiler.Core
             P99Ticks = p99Ticks;
             MaxTicks = maxTicks;
             SlowCallCount = slowCallCount;
+            SharePercent = sharePercent;
+            WorstStartTimestamp = worstStartTimestamp;
         }
 
         internal CallbackMetadataSnapshot Metadata { get; }
@@ -327,7 +331,38 @@ namespace TajsCOI.Profiler.Core
         internal long P99Ticks { get; }
         internal long MaxTicks { get; }
         internal long SlowCallCount { get; }
+        internal double SharePercent { get; }
+        internal long WorstStartTimestamp { get; }
         internal long AverageTicks => CallCount == 0 ? 0 : TotalTicks / CallCount;
+    }
+
+    internal readonly struct CallbackInvocationSnapshot
+    {
+        internal CallbackInvocationSnapshot(
+            CallbackMetadataSnapshot metadata,
+            int phaseId,
+            long durationTicks,
+            long startTimestamp,
+            long endTimestamp,
+            int threadId,
+            long sequence)
+        {
+            Metadata = metadata;
+            PhaseId = phaseId;
+            DurationTicks = durationTicks;
+            StartTimestamp = startTimestamp;
+            EndTimestamp = endTimestamp;
+            ThreadId = threadId;
+            Sequence = sequence;
+        }
+
+        internal CallbackMetadataSnapshot Metadata { get; }
+        internal int PhaseId { get; }
+        internal long DurationTicks { get; }
+        internal long StartTimestamp { get; }
+        internal long EndTimestamp { get; }
+        internal int ThreadId { get; }
+        internal long Sequence { get; }
     }
 
     internal sealed class RuntimeRollingPercentile

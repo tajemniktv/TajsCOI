@@ -252,8 +252,11 @@ namespace TajsCOI.Profiler.Core
             builder.Append(",\"pid\":1,\"tid\":1,\"args\":{");
             bool firstArg = true;
             AppendCounter(builder, ref firstArg, "managedHeapBytes", frame.Counters.Available ? frame.Counters.ManagedHeapBytes : -1);
+            AppendCounter(builder, ref firstArg, "monoUsedBytes", frame.Counters.Available ? frame.Counters.MonoUsedBytes : -1);
+            AppendCounter(builder, ref firstArg, "monoHeapBytes", frame.Counters.Available ? frame.Counters.MonoHeapBytes : -1);
             AppendCounter(builder, ref firstArg, "unityAllocatedBytes", frame.Counters.Available ? frame.Counters.UnityAllocatedBytes : -1);
             AppendCounter(builder, ref firstArg, "unityReservedBytes", frame.Counters.Available ? frame.Counters.UnityReservedBytes : -1);
+            AppendCounter(builder, ref firstArg, "unityUnusedReservedBytes", frame.Counters.Available ? frame.Counters.UnityUnusedReservedBytes : -1);
             AppendCounter(builder, ref firstArg, "unityGraphicsBytes", frame.Counters.Available ? frame.Counters.UnityGraphicsBytes : -1);
             AppendCounter(builder, ref firstArg, "gen0Delta", frame.Counters.Gen0Delta);
             AppendCounter(builder, ref firstArg, "gen1Delta", frame.Counters.Gen1Delta);

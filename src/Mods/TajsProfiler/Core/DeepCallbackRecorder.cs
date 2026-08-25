@@ -73,6 +73,79 @@ namespace TajsCOI.Profiler.Core
         internal static bool IsSimulation(int phaseId) => phaseId >= SimSync;
     }
 
+    /// <summary>
+    ///     Tracks the phase belonging to the exact event instance being dispatched. COI reuses
+    ///     the same concrete Event type for several loop phases, so a type-level phase map is not
+    ///     sufficient. The current phase is thread-local and scopes nest safely when a callback
+    ///     dispatch invokes another dispatch on the same thread.
+    /// </summary>
+    internal static class RuntimeTracePhaseContext
+    {
+        private sealed class EventPhase
+        {
+            internal EventPhase(int phaseId)
+            {
+                PhaseId = phaseId;
+            }
+
+            internal int PhaseId;
+        }
+
+        private static readonly ConditionalWeakTable<object, EventPhase> s_eventPhases = new();
+
+        [ThreadStatic]
+        private static int s_currentPhase;
+
+        internal static int CurrentPhase => s_currentPhase;
+
+        internal static void RegisterEvent(object eventSource, int phaseId)
+        {
+            EventPhase phase = s_eventPhases.GetValue(eventSource, _ => new EventPhase(phaseId));
+            if (phase.PhaseId != phaseId)
+            {
+                // The same event instance should not represent multiple dispatch phases. Keep
+                // the mapping degraded rather than silently attributing callbacks incorrectly.
+                Volatile.Write(ref phase.PhaseId, RuntimeTracePhase.Unknown);
+            }
+        }
+
+        internal static int Resolve(object? eventSource, int fallbackPhase)
+        {
+            if (eventSource is not null && s_eventPhases.TryGetValue(eventSource, out EventPhase? mapped))
+            {
+                int mappedPhase = Volatile.Read(ref mapped.PhaseId);
+                if (mappedPhase != RuntimeTracePhase.Unknown)
+                {
+                    return mappedPhase;
+                }
+            }
+
+            return fallbackPhase != RuntimeTracePhase.Unknown ? fallbackPhase : s_currentPhase;
+        }
+
+        internal static PhaseScope Enter(object? eventSource, int fallbackPhase)
+        {
+            int previous = s_currentPhase;
+            s_currentPhase = Resolve(eventSource, fallbackPhase);
+            return new PhaseScope(previous);
+        }
+
+        internal readonly struct PhaseScope : IDisposable
+        {
+            private readonly int m_previousPhase;
+
+            internal PhaseScope(int previousPhase)
+            {
+                m_previousPhase = previousPhase;
+            }
+
+            public void Dispose()
+            {
+                s_currentPhase = m_previousPhase;
+            }
+        }
+    }
+
     internal readonly struct DeepTracingPatchSummary
     {
         internal DeepTracingPatchSummary(int expectedMethods, int patchedMethods, int replacedInvocations, int failures)
@@ -152,8 +225,6 @@ namespace TajsCOI.Profiler.Core
         private static readonly object s_metadataGate = new object();
         private static readonly object s_markerGate = new object();
         private static readonly ConcurrentDictionary<int, TraceSpanRing> s_rings = new();
-        private static readonly ConcurrentDictionary<Type, int> s_eventPhases = new();
-        private static readonly ConcurrentDictionary<MethodBase, int> s_methodPhases = new();
         private static readonly Dictionary<CallbackMetadataKey, CallbackMetadataSnapshot> s_metadataByKey = new();
         private static readonly List<CallbackMetadataSnapshot> s_metadata = new();
         private static readonly List<RuntimeTraceMarker> s_markers = new(MarkerCapacity);
@@ -166,10 +237,10 @@ namespace TajsCOI.Profiler.Core
         private static int s_metadataCount;
         private static readonly MethodInfo s_invokeAction = typeof(DeepCallbackRecorder).GetMethod(
             nameof(InvokeWithOwner), BindingFlags.Static | BindingFlags.NonPublic, null,
-            new[] { typeof(object), typeof(Action), typeof(int) }, null)!;
+            new[] { typeof(object), typeof(Action), typeof(int), typeof(object) }, null)!;
         private static readonly MethodInfo s_invokeActionWithoutOwner = typeof(DeepCallbackRecorder).GetMethod(
             nameof(InvokeWithoutOwner), BindingFlags.Static | BindingFlags.NonPublic, null,
-            new[] { typeof(Action), typeof(int) }, null)!;
+            new[] { typeof(Action), typeof(int), typeof(object) }, null)!;
         private static readonly MethodInfo s_invokeAction1 = GetGenericWrapper(nameof(InvokeWithOwner), 1);
         private static readonly MethodInfo s_invokeAction1WithoutOwner = GetGenericWrapper(nameof(InvokeWithoutOwner), 1);
         private static readonly MethodInfo s_invokeAction2 = GetGenericWrapper(nameof(InvokeWithOwner), 2);
@@ -238,14 +309,10 @@ namespace TajsCOI.Profiler.Core
                     MethodInfo[] methods = eventType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
                         .Where(x => x.Name == "Invoke" || x.Name == "InvokeTraced")
                         .ToArray();
-                    int eventPhase = s_eventPhases.TryGetValue(eventType, out int mappedPhase)
-                        ? mappedPhase
-                        : RuntimeTracePhase.Unknown;
                     foreach (MethodInfo method in methods)
                     {
                         try
                         {
-                            s_methodPhases[method] = eventPhase;
                             harmony.Patch(
                                 method,
                                 transpiler: new HarmonyMethod(typeof(DeepCallbackRecorder), nameof(TranspileCallbackInvocations)));
@@ -375,32 +442,73 @@ namespace TajsCOI.Profiler.Core
 
         internal static CallbackMetricSnapshot[] SnapshotCallbackMetrics(int count)
         {
-            RuntimeTraceSpan[] spans = SnapshotSpans();
+            return AggregateCallbackMetrics(SnapshotSpans(), SnapshotMetadata(), count);
+        }
+
+        internal static CallbackMetricSnapshot[] AggregateCallbackMetrics(
+            IReadOnlyList<RuntimeTraceSpan> spans,
+            IReadOnlyList<CallbackMetadataSnapshot> metadata,
+            int count)
+        {
             var metrics = new Dictionary<CallbackMetricKey, CallbackMetricBuilder>();
-            foreach (RuntimeTraceSpan span in spans)
+            long capturedCallbackTicks = 0;
+            for (int index = 0; index < spans.Count; index++)
             {
-                if (span.DurationTicks <= 0)
+                RuntimeTraceSpan span = spans[index];
+                long duration = span.DurationTicks;
+                if (duration <= 0)
                 {
                     continue;
                 }
+                capturedCallbackTicks = RuntimeTraceMath.SaturatingAdd(capturedCallbackTicks, duration);
                 var key = new CallbackMetricKey(span.CallbackId, span.PhaseId);
                 if (!metrics.TryGetValue(key, out CallbackMetricBuilder? builder))
                 {
                     builder = new CallbackMetricBuilder();
                     metrics.Add(key, builder);
                 }
-                builder.Add(span.DurationTicks);
+                builder.Add(duration, span.StartTimestamp);
             }
 
-            CallbackMetadataSnapshot[] metadata = SnapshotMetadata();
             var byId = metadata.ToDictionary(x => x.Id);
             return metrics
                 .Where(x => byId.ContainsKey(x.Key.CallbackId))
-                .Select(x => x.Value.ToSnapshot(byId[x.Key.CallbackId], x.Key.PhaseId))
+                .Select(x => x.Value.ToSnapshot(byId[x.Key.CallbackId], x.Key.PhaseId, capturedCallbackTicks))
                 .OrderByDescending(x => x.TotalTicks)
                 .ThenByDescending(x => x.MaxTicks)
                 .Take(Math.Max(1, Math.Min(64, count)))
                 .ToArray();
+        }
+
+        internal static CallbackInvocationSnapshot[] SnapshotWorstCallbackInvocations(int count)
+        {
+            return RankWorstCallbackInvocations(SnapshotSpans(), SnapshotMetadata(), count);
+        }
+
+        internal static CallbackInvocationSnapshot[] RankWorstCallbackInvocations(
+            IReadOnlyList<RuntimeTraceSpan> spans,
+            IReadOnlyList<CallbackMetadataSnapshot> metadata,
+            int count)
+        {
+            var byId = metadata.ToDictionary(x => x.Id);
+            var result = new List<CallbackInvocationSnapshot>();
+            foreach (RuntimeTraceSpan span in spans
+                .Where(x => x.DurationTicks > 0 && byId.ContainsKey(x.CallbackId))
+                .OrderByDescending(x => x.DurationTicks)
+                .ThenBy(x => x.StartTimestamp)
+                .ThenBy(x => x.Sequence)
+                .Take(Math.Max(1, Math.Min(64, count))))
+            {
+                result.Add(new CallbackInvocationSnapshot(
+                    byId[span.CallbackId],
+                    span.PhaseId,
+                    span.DurationTicks,
+                    span.StartTimestamp,
+                    span.EndTimestamp,
+                    span.ThreadId,
+                    span.Sequence));
+            }
+            return result.ToArray();
         }
 
         internal static long MeasureReader(Func<GameLoopTimingSnapshot> reader, int iterations)
@@ -423,10 +531,7 @@ namespace TajsCOI.Profiler.Core
             {
                 Type type = value.GetType();
                 eventTypes.Add(type);
-                s_eventPhases.AddOrUpdate(
-                    type,
-                    phaseId,
-                    (_, existing) => existing == phaseId ? phaseId : RuntimeTracePhase.Unknown);
+                RuntimeTracePhaseContext.RegisterEvent(value, phaseId);
             }
         }
 
@@ -434,16 +539,10 @@ namespace TajsCOI.Profiler.Core
             IEnumerable<CodeInstruction> instructions,
             MethodBase __originalMethod)
         {
-            // Harmony supplies the dispatcher method being transpiled. Baking that validated
-            // dispatch phase into each wrapper avoids consulting the global SimLoop state from
-            // another thread; callbacks therefore keep their owning main/simulation phase even
-            // while the other loop is advancing concurrently.
-            int phaseId = s_methodPhases.TryGetValue(__originalMethod, out int mappedPhase)
-                ? mappedPhase
-                : __originalMethod.DeclaringType is not null &&
-                  s_eventPhases.TryGetValue(__originalMethod.DeclaringType, out mappedPhase)
-                    ? mappedPhase
-                    : RuntimeTracePhase.Unknown;
+            // The same concrete Event type is used by multiple loop phases. Pass the actual
+            // dispatcher instance through the generated call so the wrapper can resolve its
+            // phase without consulting global simulation state.
+            const int phaseId = RuntimeTracePhase.Unknown;
             List<CodeInstruction> source = instructions.ToList();
             var result = new List<CodeInstruction>(source.Count + 8);
             for (int index = 0; index < source.Count; index++)
@@ -473,6 +572,8 @@ namespace TajsCOI.Profiler.Core
                             result.Add(new CodeInstruction(callbackLoad));
                         }
                         result.Add(new CodeInstruction(OpCodes.Ldc_I4, phaseId));
+                        result.Add(new CodeInstruction(
+                            __originalMethod.IsStatic ? OpCodes.Ldnull : OpCodes.Ldarg_0));
                         instruction = new CodeInstruction(OpCodes.Call, wrapper);
                         Interlocked.Increment(ref s_transpiledInvocationCount);
                     }
@@ -541,48 +642,80 @@ namespace TajsCOI.Profiler.Core
                              x.GetGenericArguments().Length == genericArgumentCount);
         }
 
-        private static void InvokeWithOwner(object owner, Action action, int phaseId)
+        private static void InvokeWithOwner(object owner, Action action, int phaseId, object eventSource)
         {
             if (!IsActive)
             {
                 action();
                 return;
             }
-            CallbackToken token = Begin(owner, action, phaseId);
-            try { action(); }
-            finally { End(token); }
+            RuntimeTracePhaseContext.PhaseScope phaseScope = RuntimeTracePhaseContext.Enter(eventSource, phaseId);
+            try
+            {
+                CallbackToken token = Begin(owner, action, RuntimeTracePhaseContext.CurrentPhase);
+                try { action(); }
+                finally { End(token); }
+            }
+            finally
+            {
+                phaseScope.Dispose();
+            }
         }
 
-        private static void InvokeWithoutOwner(Action action, int phaseId) => InvokeWithOwner(action.Target, action, phaseId);
+        private static void InvokeWithoutOwner(Action action, int phaseId, object eventSource) =>
+            InvokeWithOwner(action.Target, action, phaseId, eventSource);
 
-        private static void InvokeWithOwner<T>(object owner, Action<T> action, T arg, int phaseId)
+        private static void InvokeWithOwner<T>(object owner, Action<T> action, T arg, int phaseId, object eventSource)
         {
             if (!IsActive)
             {
                 action(arg);
                 return;
             }
-            CallbackToken token = Begin(owner, action, phaseId);
-            try { action(arg); }
-            finally { End(token); }
+            RuntimeTracePhaseContext.PhaseScope phaseScope = RuntimeTracePhaseContext.Enter(eventSource, phaseId);
+            try
+            {
+                CallbackToken token = Begin(owner, action, RuntimeTracePhaseContext.CurrentPhase);
+                try { action(arg); }
+                finally { End(token); }
+            }
+            finally
+            {
+                phaseScope.Dispose();
+            }
         }
 
-        private static void InvokeWithoutOwner<T>(Action<T> action, T arg, int phaseId) => InvokeWithOwner(action.Target, action, arg, phaseId);
+        private static void InvokeWithoutOwner<T>(Action<T> action, T arg, int phaseId, object eventSource) =>
+            InvokeWithOwner(action.Target, action, arg, phaseId, eventSource);
 
-        private static void InvokeWithOwner<T1, T2>(object owner, Action<T1, T2> action, T1 arg1, T2 arg2, int phaseId)
+        private static void InvokeWithOwner<T1, T2>(
+            object owner,
+            Action<T1, T2> action,
+            T1 arg1,
+            T2 arg2,
+            int phaseId,
+            object eventSource)
         {
             if (!IsActive)
             {
                 action(arg1, arg2);
                 return;
             }
-            CallbackToken token = Begin(owner, action, phaseId);
-            try { action(arg1, arg2); }
-            finally { End(token); }
+            RuntimeTracePhaseContext.PhaseScope phaseScope = RuntimeTracePhaseContext.Enter(eventSource, phaseId);
+            try
+            {
+                CallbackToken token = Begin(owner, action, RuntimeTracePhaseContext.CurrentPhase);
+                try { action(arg1, arg2); }
+                finally { End(token); }
+            }
+            finally
+            {
+                phaseScope.Dispose();
+            }
         }
 
-        private static void InvokeWithoutOwner<T1, T2>(Action<T1, T2> action, T1 arg1, T2 arg2, int phaseId) =>
-            InvokeWithOwner(action.Target, action, arg1, arg2, phaseId);
+        private static void InvokeWithoutOwner<T1, T2>(Action<T1, T2> action, T1 arg1, T2 arg2, int phaseId, object eventSource) =>
+            InvokeWithOwner(action.Target, action, arg1, arg2, phaseId, eventSource);
 
         private static CallbackToken Begin(object? owner, Delegate callback, int phaseId)
         {
@@ -771,11 +904,17 @@ namespace TajsCOI.Profiler.Core
             internal long TotalTicks { get; private set; }
             internal long MaxTicks { get; private set; }
             internal long SlowCallCount { get; private set; }
+            internal long WorstStartTimestamp { get; private set; }
 
-            internal void Add(long ticks)
+            internal void Add(long ticks, long startTimestamp)
             {
                 TotalTicks = RuntimeTraceMath.SaturatingAdd(TotalTicks, ticks);
-                MaxTicks = Math.Max(MaxTicks, ticks);
+                if (ticks > MaxTicks || (ticks == MaxTicks &&
+                    (WorstStartTimestamp <= 0 || startTimestamp < WorstStartTimestamp)))
+                {
+                    MaxTicks = ticks;
+                    WorstStartTimestamp = startTimestamp;
+                }
                 if (ticks >= SlowCallbackTicks)
                 {
                     SlowCallCount++;
@@ -783,7 +922,10 @@ namespace TajsCOI.Profiler.Core
                 m_durations.Add(ticks);
             }
 
-            internal CallbackMetricSnapshot ToSnapshot(CallbackMetadataSnapshot metadata, int phaseId)
+            internal CallbackMetricSnapshot ToSnapshot(
+                CallbackMetadataSnapshot metadata,
+                int phaseId,
+                long capturedCallbackTicks)
             {
                 m_durations.Sort();
                 return new CallbackMetricSnapshot(
@@ -794,7 +936,11 @@ namespace TajsCOI.Profiler.Core
                     Percentile(m_durations, 0.95),
                     Percentile(m_durations, 0.99),
                     MaxTicks,
-                    SlowCallCount);
+                    SlowCallCount,
+                    capturedCallbackTicks <= 0
+                        ? 0
+                        : TotalTicks * 100.0 / capturedCallbackTicks,
+                    WorstStartTimestamp);
             }
 
             private static long Percentile(IReadOnlyList<long> values, double percentile)

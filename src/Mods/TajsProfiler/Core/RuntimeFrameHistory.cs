@@ -462,7 +462,10 @@ namespace TajsCOI.Profiler.Core
             int waitingForSimulationCount,
             int gcRelatedCount,
             int likelyGpuBoundCount,
-            int mixedCount)
+            int mixedCount,
+            int pausedSampleCount,
+            long gcDeltaTotal,
+            int gcPeakDelta)
         {
             Latest = latest;
             Frame = frame;
@@ -477,6 +480,9 @@ namespace TajsCOI.Profiler.Core
             GcRelatedCount = gcRelatedCount;
             LikelyGpuBoundCount = likelyGpuBoundCount;
             MixedCount = mixedCount;
+            PausedSampleCount = pausedSampleCount;
+            GcDeltaTotal = gcDeltaTotal;
+            GcPeakDelta = gcPeakDelta;
         }
 
         internal RuntimeFrameSample Latest { get; }
@@ -492,6 +498,9 @@ namespace TajsCOI.Profiler.Core
         internal int GcRelatedCount { get; }
         internal int LikelyGpuBoundCount { get; }
         internal int MixedCount { get; }
+        internal int PausedSampleCount { get; }
+        internal long GcDeltaTotal { get; }
+        internal int GcPeakDelta { get; }
         internal int Count => Frame.Count;
     }
 
@@ -597,7 +606,11 @@ namespace TajsCOI.Profiler.Core
             RuntimeFrameSample[] interval = samples
                 .Where(x => x.CapturedTimestamp >= cutoff)
                 .ToArray();
-            return Summarize(interval);
+            int pausedSampleCount = interval.Count(x => x.SimPaused);
+            RuntimeFrameSample[] gameplay = interval
+                .Where(x => !x.SimPaused)
+                .ToArray();
+            return Summarize(gameplay, pausedSampleCount);
         }
 
         internal RuntimeFrameSample[] SnapshotRecent(int count)
@@ -636,7 +649,7 @@ namespace TajsCOI.Profiler.Core
             long cutoff = samples[samples.Length - 1].CapturedTimestamp -
                           (long)Math.Max(0, seconds * Stopwatch.Frequency);
             return samples
-                .Where(x => x.CapturedTimestamp >= cutoff)
+                .Where(x => x.CapturedTimestamp >= cutoff && !x.SimPaused)
                 .OrderByDescending(x => x.FrameTicks)
                 .ThenByDescending(x => x.Timings.WaitForSimTicks)
                 .Take(count)
@@ -666,7 +679,9 @@ namespace TajsCOI.Profiler.Core
             }
         }
 
-        private static RuntimeFrameSummary Summarize(IReadOnlyList<RuntimeFrameSample> samples)
+        private static RuntimeFrameSummary Summarize(
+            IReadOnlyList<RuntimeFrameSample> samples,
+            int pausedSampleCount)
         {
             if (samples.Count == 0)
             {
@@ -685,6 +700,8 @@ namespace TajsCOI.Profiler.Core
             int gcRelated = 0;
             int likelyGpuBound = 0;
             int mixed = 0;
+            long gcDeltaTotal = 0;
+            int gcPeakDelta = 0;
             for (int index = 0; index < samples.Count; index++)
             {
                 RuntimeFrameSample sample = samples[index];
@@ -692,6 +709,9 @@ namespace TajsCOI.Profiler.Core
                 render[index] = Math.Max(0, sample.RenderTicks);
                 waitForSim[index] = Math.Max(0, sample.Timings.WaitForSimTicks);
                 sim[index] = Math.Max(0, sample.SimTicks);
+                int gcDelta = sample.Counters.TotalGcDelta;
+                gcDeltaTotal = RuntimeTraceMath.SaturatingAdd(gcDeltaTotal, gcDelta);
+                gcPeakDelta = Math.Max(gcPeakDelta, gcDelta);
                 switch (sample.Classification)
                 {
                     case RuntimeFrameClassification.Unknown: unknown++; break;
@@ -718,7 +738,10 @@ namespace TajsCOI.Profiler.Core
                 waitingForSimulation,
                 gcRelated,
                 likelyGpuBound,
-                mixed);
+                mixed,
+                pausedSampleCount,
+                gcDeltaTotal,
+                gcPeakDelta);
         }
 
         private static RuntimeMetricSummary SummarizeMetric(long[] values)

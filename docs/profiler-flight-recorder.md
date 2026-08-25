@@ -31,12 +31,27 @@ formatting, LINQ, sorting, or per-frame managed allocation is used by the sampli
 If the private shape changes, this component reports a degraded compatibility result while the
 other TajsProfiler probes remain available.
 
+Deep callback phase attribution is tied to the exact `Event`/`EventNonSaveable` instance rather
+than its concrete type. COI reuses event types across main-thread and simulation-thread phases,
+so this instance mapping is combined with a thread-local, nestable phase scope. Overlapping main
+and simulation dispatches therefore retain their own `SYNC`, `RENDER`, `SIM_UPDATE`,
+`SIM_READ_STATE`, and related phase labels without consulting global simulation state.
+
 The resolver-scoped history retains 4,096 primitive frame samples. Console commands copy and sort
 the bounded history only when requested, producing p50/p95/p99/max summaries for frame/update,
 render, wait-for-simulation, and simulation work. Classifications are deliberately conservative:
 waiting-for-simulation requires the overtime signal and a material wait interval; GC-related and
 likely-GPU-bound are reported only when their corresponding telemetry is trusted; otherwise the
 sample is classified by the relative broad main/render and simulation measurements.
+The `gpu-frame` status is deliberately separate from memory: this build has no trusted per-frame
+GPU timing source, while `graphics-driver-memory` uses Unity's
+`GetAllocatedMemoryForGraphicsDriver` counter. That counter is graphics-driver allocation, not a
+dedicated-VRAM measurement, and may be unavailable or backend-dependent in a player build.
+Paused samples remain available in raw history but are excluded from gameplay summaries, rolling
+spike baselines, and spike ranking. The runtime summary reports how many paused samples were
+excluded. GC deltas are per-sample observations taken between counter reads; the runtime summary
+also reports the interval total and peak so a later zero latest delta does not hide a collection
+that caused an earlier classified frame.
 
 Automatic spike capture uses absolute frame, wait, simulation, and major-phase thresholds plus an
 optional relative multiplier. It stores a bounded pre/post window, applies cooldown and maximum
@@ -46,8 +61,11 @@ can opt automatic spikes into the bounded callback recorder.
 Deep tracing is inactive by default. When armed, the recorder patches the validated callback
 invocation forms on the existing `Event` and `EventNonSaveable` objects. It records numeric spans
 on per-thread bounded rings, interns owner/method/assembly strings through weak owner keys, keeps
-callback order and exception behavior, and ranks total, average, p95, p99, maximum, and slow-call
-metrics. Unsupported callback forms fail independently and are shown in compatibility status.
+callback order and exception behavior, and ranks total, share of captured callback time, average,
+p95, p99, maximum, slow-call count, and the timestamp of the worst invocation. The separate
+`tajs_profiler_deep_worst` view ranks individual callback executions by duration, which exposes
+rare hitch contributors that total-time ranking can hide. Unsupported callback forms fail
+independently and are shown in compatibility status.
 
 The exporter writes Chrome trace-event JSON with main/simulation phase spans, callback spans,
 markers, memory/GC counters, and interval dumping/pathfinding counters. Unsupported values are emitted as
@@ -66,6 +84,7 @@ tajs_profiler_arm [seconds]
 tajs_profiler_deep_start [seconds]
 tajs_profiler_deep_stop
 tajs_profiler_deep_report [count]
+tajs_profiler_deep_worst [count]
 tajs_profiler_trace_export [name]
 tajs_profiler_mark <label>
 tajs_profiler_overhead_bench [iterations]

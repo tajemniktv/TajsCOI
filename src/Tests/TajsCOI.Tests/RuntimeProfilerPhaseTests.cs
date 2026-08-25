@@ -3,9 +3,12 @@
 // All Rights Reserved.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Web.Script.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 using TajsCOI.Common.Settings;
 using TajsCOI.Profiler;
 using TajsCOI.Profiler.Core;
@@ -68,6 +71,121 @@ namespace TajsCOI.Tests
             RuntimeFrameSample overtime = Sample(3, 3, StopwatchTicks(5), overtime: true);
             Assert.True(RuntimeSpikeHistory.TryGetTrigger(overtime, 0, relativePolicy, out string overtimeReason));
             Assert.Equal("simulation overtime", overtimeReason);
+
+            RuntimeFrameSample paused = Sample(4, 4, StopwatchTicks(500), overtime: false, simPaused: true);
+            Assert.False(RuntimeSpikeHistory.TryGetTrigger(paused, 0, absolutePolicy, out string pausedReason));
+            Assert.Equal(string.Empty, pausedReason);
+        }
+
+        [Fact]
+        public async Task PhaseContextKeepsOverlappingDispatchesOnTheirOwningThreads()
+        {
+            object simulationEvent = new object();
+            object renderEvent = new object();
+            RuntimeTracePhaseContext.RegisterEvent(simulationEvent, RuntimeTracePhase.SimUpdate);
+            RuntimeTracePhaseContext.RegisterEvent(renderEvent, RuntimeTracePhase.Render);
+
+            using var start = new ManualResetEventSlim(false);
+            int simulationPhase = RuntimeTracePhase.Unknown;
+            int renderPhase = RuntimeTracePhase.Unknown;
+            int simulationRestored = RuntimeTracePhase.Unknown;
+            int renderRestored = RuntimeTracePhase.Unknown;
+
+            Task simulation = Task.Run(() =>
+            {
+                start.Wait();
+                RuntimeTracePhaseContext.PhaseScope scope =
+                    RuntimeTracePhaseContext.Enter(simulationEvent, RuntimeTracePhase.Unknown);
+                try
+                {
+                    Action callback = () =>
+                    {
+                        simulationPhase = RuntimeTracePhaseContext.CurrentPhase;
+                        Thread.Sleep(10);
+                    };
+                    callback();
+                }
+                finally
+                {
+                    scope.Dispose();
+                    simulationRestored = RuntimeTracePhaseContext.CurrentPhase;
+                }
+            });
+            Task render = Task.Run(() =>
+            {
+                start.Wait();
+                RuntimeTracePhaseContext.PhaseScope scope =
+                    RuntimeTracePhaseContext.Enter(renderEvent, RuntimeTracePhase.Unknown);
+                try
+                {
+                    Action callback = () =>
+                    {
+                        renderPhase = RuntimeTracePhaseContext.CurrentPhase;
+                        Thread.Sleep(10);
+                    };
+                    callback();
+                }
+                finally
+                {
+                    scope.Dispose();
+                    renderRestored = RuntimeTracePhaseContext.CurrentPhase;
+                }
+            });
+
+            start.Set();
+            await Task.WhenAll(simulation, render);
+
+            Assert.Equal(RuntimeTracePhase.SimUpdate, simulationPhase);
+            Assert.Equal(RuntimeTracePhase.Render, renderPhase);
+            Assert.Equal(RuntimeTracePhase.Unknown, simulationRestored);
+            Assert.Equal(RuntimeTracePhase.Unknown, renderRestored);
+        }
+
+        [Fact]
+        public void DeepCallbackStatisticsReportShareTailAndWorstInvocation()
+        {
+            var spans = new List<RuntimeTraceSpan>();
+            for (int index = 1; index <= 100; index++)
+            {
+                long start = 1000 + index * 10;
+                spans.Add(new RuntimeTraceSpan(
+                    start,
+                    start + index,
+                    1,
+                    RuntimeTracePhase.SimUpdate,
+                    11,
+                    index,
+                    0));
+            }
+
+            long slowTicks = System.Diagnostics.Stopwatch.Frequency * 2 / 1000;
+            spans.Add(new RuntimeTraceSpan(3000, 3000 + slowTicks, 2, RuntimeTracePhase.Render, 12, 101, 0));
+            CallbackMetadataSnapshot[] metadata =
+            {
+                new CallbackMetadataSnapshot(1, "SimulationOwner", "Update", "Tests"),
+                new CallbackMetadataSnapshot(2, "RenderOwner", "Render", "Tests"),
+            };
+
+            CallbackMetricSnapshot[] metrics = DeepCallbackRecorder.AggregateCallbackMetrics(spans, metadata, 64);
+            CallbackMetricSnapshot simulation = Assert.Single(metrics, x => x.Metadata.Id == 1);
+            CallbackMetricSnapshot render = Assert.Single(metrics, x => x.Metadata.Id == 2);
+
+            Assert.Equal(100, simulation.CallCount);
+            Assert.Equal(5050, simulation.TotalTicks);
+            Assert.Equal(95, simulation.P95Ticks);
+            Assert.Equal(99, simulation.P99Ticks);
+            Assert.Equal(100, simulation.MaxTicks);
+            Assert.Equal(2000, simulation.WorstStartTimestamp);
+            Assert.Equal(0, simulation.SlowCallCount);
+            Assert.Equal(5050 * 100.0 / (5050 + slowTicks), simulation.SharePercent, 6);
+            Assert.Equal(1, render.SlowCallCount);
+
+            CallbackInvocationSnapshot worst = Assert.Single(
+                DeepCallbackRecorder.RankWorstCallbackInvocations(spans, metadata, 1));
+            Assert.Equal(2, worst.Metadata.Id);
+            Assert.Equal(RuntimeTracePhase.Render, worst.PhaseId);
+            Assert.Equal(slowTicks, worst.DurationTicks);
+            Assert.Equal(3000, worst.StartTimestamp);
         }
 
         [Fact]
@@ -249,6 +367,9 @@ namespace TajsCOI.Tests
                 Assert.True(result.EventCount >= 5);
                 Assert.Contains("unavailable", json);
                 Assert.Contains("quote \\\" slash", json);
+                Assert.Contains("monoUsedBytes", json);
+                Assert.Contains("unityUnusedReservedBytes", json);
+                Assert.Contains("unityGraphicsBytes", json);
             }
             finally
             {
@@ -272,7 +393,12 @@ namespace TajsCOI.Tests
             Assert.Equal(110, stopped.EndTimestamp);
         }
 
-        private static RuntimeFrameSample Sample(long sequence, long timestamp, long frameTicks, bool overtime)
+        private static RuntimeFrameSample Sample(
+            long sequence,
+            long timestamp,
+            long frameTicks,
+            bool overtime,
+            bool simPaused = false)
         {
             return new RuntimeFrameSample(
                 sequence,
@@ -282,7 +408,7 @@ namespace TajsCOI.Tests
                 1,
                 1,
                 1,
-                false);
+                simPaused);
         }
 
         private static long StopwatchTicks(double milliseconds) =>
