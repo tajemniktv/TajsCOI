@@ -172,6 +172,80 @@ resharper_wrap_array_initializer_style = chop_if_long
 resharper_wrap_lines = true
 
 # ReSharper inspection severities
+
+# TajsCOI inspection policy
+# Keep correctness/lifecycle/performance findings loud; suppress churn-heavy refactor suggestions.
+# EditorConfig inspection severities override Rider/ReSharper severity settings.
+
+# Language-modernization/refactor churn: available manually, not reported as project problems.
+resharper_convert_to_primary_constructor_highlighting = none
+resharper_replace_with_primary_constructor_parameter_highlighting = none
+resharper_use_collection_expression_highlighting = none
+resharper_append_to_collection_expression_highlighting = none
+resharper_for_can_be_converted_to_foreach_highlighting = none
+resharper_foreach_can_be_converted_to_query_using_another_get_enumerator_highlighting = none
+resharper_loop_can_be_converted_to_query_highlighting = none
+resharper_convert_if_statement_to_switch_statement_highlighting = none
+resharper_convert_switch_statement_to_switch_expression_highlighting = none
+resharper_convert_conditional_ternary_expression_to_switch_expression_highlighting = none
+resharper_convert_if_statement_to_conditional_ternary_expression_highlighting = none
+resharper_convert_if_statement_to_return_statement_highlighting = none
+resharper_invert_if_highlighting = none
+resharper_inline_temporary_variable_highlighting = none
+resharper_inline_out_variable_declaration_highlighting = none
+resharper_use_verbatim_string_highlighting = none
+
+# "Could be..." maintainability suggestions: useful, but not defects.
+resharper_member_can_be_made_static_global_highlighting = hint
+resharper_member_can_be_made_static_local_highlighting = hint
+resharper_local_function_can_be_made_static_highlighting = none
+resharper_member_can_be_private_global_highlighting = suggestion
+resharper_member_can_be_private_local_highlighting = suggestion
+resharper_field_can_be_made_read_only_global_highlighting = suggestion
+resharper_field_can_be_made_read_only_local_highlighting = suggestion
+resharper_auto_property_can_be_made_get_only_global_highlighting = suggestion
+resharper_auto_property_can_be_made_get_only_local_highlighting = suggestion
+resharper_convert_to_auto_property_highlighting = none
+resharper_convert_to_auto_property_when_possible_highlighting = none
+resharper_convert_to_auto_property_with_private_setter_highlighting = none
+
+# Reflection/DI/Harmony entry points often appear unused to static analysis.
+# Keep local dead-code checks strict, but de-emphasize global reachability guesses.
+resharper_unused_type_global_highlighting = hint
+resharper_unused_member_global_highlighting = hint
+resharper_unused_member_in_super_global_highlighting = hint
+resharper_unused_member_hierarchy_global_highlighting = hint
+resharper_unused_auto_property_accessor_global_highlighting = hint
+
+# Local dead code still matters.
+resharper_unused_type_local_highlighting = warning
+resharper_unused_member_local_highlighting = warning
+resharper_unused_variable_highlighting = warning
+resharper_not_accessed_variable_highlighting = warning
+resharper_unused_local_function_highlighting = warning
+resharper_unused_auto_property_accessor_local_highlighting = warning
+
+# Correctness and suspicious semantics stay prominent.
+resharper_empty_general_catch_clause_highlighting = warning
+resharper_compare_of_floats_by_equality_operator_highlighting = warning
+resharper_condition_is_always_true_or_false_highlighting = warning
+resharper_condition_is_always_true_or_false_according_to_nullable_api_contract_highlighting = warning
+resharper_expression_is_always_null_highlighting = warning
+resharper_heuristic_unreachable_code_highlighting = warning
+resharper_possible_null_reference_exception_highlighting = warning
+resharper_possible_invalid_operation_exception_collection_was_modified_highlighting = warning
+resharper_lambda_should_not_capture_context_highlighting = warning
+resharper_lambda_expression_must_be_static_highlighting = suggestion
+
+# Allocation/performance-related compiler warnings remain visible.
+resharper_c_sharp_warnings_cs9208_highlighting = warning
+resharper_c_sharp_warnings_cs9209_highlighting = warning
+
+# This is a performance-sensitive Unity mod suite. Elevate Unity hot-path warnings.
+resharper_unity_performance_critical_code_camera_main_highlighting = warning
+resharper_unity_performance_critical_code_invocation_highlighting = warning
+resharper_unity_performance_critical_code_null_comparison_highlighting = suggestion
+
 resharper_cpp_ue4_coding_standard_naming_violation_warning_highlighting = none
 resharper_inconsistent_naming_highlighting = suggestion
 resharper_mvc_action_not_resolved_highlighting = warning
@@ -282,3 +356,15 @@ end_of_line = crlf
 indent_style = space
 indent_size = 4
 tab_width = 4
+
+# Test code: correctness warnings stay enabled, but cosmetic refactor suggestions are intentionally quiet.
+[src/Tests/**/*.cs]
+resharper_member_can_be_made_static_global_highlighting = none
+resharper_member_can_be_made_static_local_highlighting = none
+resharper_member_can_be_private_global_highlighting = none
+resharper_member_can_be_private_local_highlighting = none
+resharper_auto_property_can_be_made_get_only_global_highlighting = none
+resharper_auto_property_can_be_made_get_only_local_highlighting = none
+resharper_unused_method_return_value_global_highlighting = none
+resharper_unused_method_return_value_local_highlighting = none
+

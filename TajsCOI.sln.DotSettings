@@ -1,0 +1,22 @@
+<wpf:ResourceDictionary xml:space="preserve"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:s="clr-namespace:System;assembly=mscorlib"
+    xmlns:ss="urn:shemas-jetbrains-com:settings-storage-xaml"
+    xmlns:wpf="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+  <!-- TajsCOI solution-shared Rider/ReSharper settings.
+       Code style, naming and inspection severities intentionally live in .editorconfig,
+       which has higher priority and is portable across Rider/ReSharper. -->
+
+  <!-- Captain of Industry annotations -->
+  <s:String x:Key="/Default/CodeInspection/CodeAnnotations/DefaultNamespace/@EntryValue">Mafi</s:String>
+  <s:Boolean x:Key="/Default/CodeInspection/CodeAnnotations/NamespacesWithAnnotations/=Mafi/@EntryIndexedValue">True</s:Boolean>
+
+  <!-- Generated/engine-style files that should not participate in solution inspection. -->
+  <s:Boolean x:Key="/Default/CodeInspection/ExcludedFiles/FileMasksToSkip/=_002A_002EBuild_002Ecs/@EntryIndexedValue">True</s:Boolean>
+  <s:Boolean x:Key="/Default/CodeInspection/ExcludedFiles/FileMasksToSkip/=_002A_002ETarget_002Ecs/@EntryIndexedValue">True</s:Boolean>
+
+  <!-- Keep Rider's analysis thorough. We reduce noise through targeted severities, not by analyzing less. -->
+  <s:Boolean x:Key="/Default/CodeInspection/Highlighting/RunLongAnalysisInSwa/@EntryValue">True</s:Boolean>
+  <s:String x:Key="/Default/CodeInspection/Highlighting/SweaResourcesUtilization/@EntryValue">High</s:String>
+  <s:String x:Key="/Default/CodeInspection/Highlighting/SweaWarningsMode/@EntryValue">ShowAndRun</s:String>
+</wpf:ResourceDictionary>
