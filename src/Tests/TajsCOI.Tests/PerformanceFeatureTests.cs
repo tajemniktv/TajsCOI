@@ -17,6 +17,7 @@ using TajsCOI.Performance.Features.SaveLoadReadBuffer;
 using TajsCOI.Performance.Features.StreamingSaveCompression;
 using TajsCOI.Performance.Features.LowProductTextures;
 using TajsCOI.Performance.Features.ProductBufferShrink;
+using TajsCOI.Performance.Features.RenderingLoadShedding;
 using TajsCOI.Core.Runtime;
 using TajsCOI.Common.Compatibility;
 using Xunit;
@@ -36,6 +37,25 @@ namespace TajsCOI.Tests
             StreamingSaveCompressionSettings.Update(m_skipChecksum);
             LowProductTexturesSettings.Update(m_mipBias);
             ProductBufferShrinkSettings.Update(m_observationFrames);
+        }
+
+        [Fact]
+        public void RenderingParticleNamesNormalizeSeparatorsAndCamelCase()
+        {
+            Assert.Equal(
+                "heavy smoke cloud",
+                ParticleNameMatcher.Normalize("HeavySmoke-Cloud"));
+        }
+
+        [Fact]
+        public void RenderingParticleMatchingRequiresWholeTokens()
+        {
+            string normalized = ParticleNameMatcher.Normalize("industrial smoke cloud");
+
+            Assert.True(ParticleNameMatcher.MatchesAnyToken(normalized, new[] { "smoke" }));
+            Assert.True(ParticleNameMatcher.MatchesAnyToken(normalized, new[] { "cloud" }));
+            Assert.False(ParticleNameMatcher.MatchesAnyToken("industrial smokestack", new[] { "smoke" }));
+            Assert.False(ParticleNameMatcher.MatchesAnyToken("cloudy sky", new[] { "cloud" }));
         }
 
         [Fact]

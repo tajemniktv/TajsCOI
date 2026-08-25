@@ -53,7 +53,13 @@ namespace TajsCOI.Tweaks
         private readonly TextField m_source;
         private readonly TextField m_target;
         private readonly TextField m_count;
+        private IVisualElementScheduledItem? m_refreshSchedule;
+        private float m_lastActivityTime;
+        private float m_nextRefreshTime;
         private string m_confirmationKey = string.Empty;
+
+        private static readonly object s_memberAccessorGate = new();
+        private static readonly Dictionary<Type, Dictionary<string, MemberAccessor>> s_memberAccessors = new();
 
         internal TajsFleetManagementWindow(
             TajsTweaksFeatureHost host,
@@ -72,6 +78,9 @@ namespace TajsCOI.Tweaks
             m_source = new TextField().Placeholder("Source prototype ID".AsLoc()).MaxWidth(new Px(180f));
             m_target = new TextField().Placeholder("Replacement prototype ID".AsLoc()).MaxWidth(new Px(210f));
             m_count = new TextField().Text("1").MaxWidth(new Px(90f));
+            m_source.OnEditEnd(_ => MarkActivity());
+            m_target.OnEditEnd(_ => MarkActivity());
+            m_count.OnEditEnd(_ => MarkActivity());
             header.Add(m_source);
             header.Add(m_target);
             header.Add(m_count);
@@ -81,6 +90,7 @@ namespace TajsCOI.Tweaks
                 m_host.FleetScrapType(m_source.GetText(), m_count.GetText(), "CONFIRM"))));
             header.Add(MakeButton("Replace", () => ConfirmAndRun("replace", () =>
                 m_host.FleetReplaceType(m_source.GetText(), m_target.GetText(), m_count.GetText(), "CONFIRM"))));
+            header.Add(MakeButton("Refresh", ManualRefresh));
             panel.Add(header);
 
             m_status = new Label(string.Empty.AsLoc());
@@ -91,8 +101,10 @@ namespace TajsCOI.Tweaks
             panel.Add(scroll);
             Body.Add(panel);
 
-            RootElement.schedule.Execute(Refresh).Every(1000L);
-            Refresh();
+            MarkActivity();
+            m_refreshSchedule = RootElement.schedule.Execute(RefreshIfDue).Every(1000L);
+            RefreshNow();
+            OnCloseStart += _ => m_refreshSchedule?.Pause();
             MakeMovableAndEnablePositionSaving();
             CloseOnClickOutside();
             Open(m_uiRoot);
@@ -100,9 +112,48 @@ namespace TajsCOI.Tweaks
 
         private ButtonText MakeButton(string text, Action action)
         {
-            ButtonText button = new ButtonText(Mafi.Unity.UiToolkit.Library.Button.General, text.AsLoc(), action);
+            ButtonText button = new ButtonText(Mafi.Unity.UiToolkit.Library.Button.General, text.AsLoc(), () =>
+            {
+                MarkActivity();
+                action();
+            });
             button.Width(new Px(90f));
             return button;
+        }
+
+        private void MarkActivity()
+        {
+            m_lastActivityTime = Time.realtimeSinceStartup;
+        }
+
+        private void ManualRefresh()
+        {
+            MarkActivity();
+            RefreshNow();
+        }
+
+        private void RefreshIfDue()
+        {
+            if (!IsOpen)
+            {
+                return;
+            }
+
+            float now = Time.realtimeSinceStartup;
+            if (now < m_nextRefreshTime)
+            {
+                return;
+            }
+
+            Refresh();
+            bool active = now - m_lastActivityTime <= 10f;
+            m_nextRefreshTime = now + (active ? 1f : 5f);
+        }
+
+        private void RefreshNow()
+        {
+            Refresh();
+            m_nextRefreshTime = Time.realtimeSinceStartup + 1f;
         }
 
         private void ConfirmAndRun(string key, Func<string> action)
@@ -116,7 +167,7 @@ namespace TajsCOI.Tweaks
 
             m_confirmationKey = string.Empty;
             m_status.Value(action().AsLoc());
-            Refresh();
+            RefreshNow();
         }
 
         private void Refresh()
@@ -241,11 +292,44 @@ namespace TajsCOI.Tweaks
                 : m_host.FleetCancel(operation, ids, "CONFIRM");
         }
 
+        private sealed class MemberAccessor
+        {
+            private readonly PropertyInfo? m_property;
+            private readonly FieldInfo? m_field;
+
+            internal MemberAccessor(Type type, string name)
+            {
+                const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+                m_property = type.GetProperty(name, flags);
+                m_field = type.GetField(name, flags);
+            }
+
+            internal object? GetValue(object instance) =>
+                m_property?.GetValue(instance) ?? m_field?.GetValue(instance);
+        }
+
         private static object? ReadMember(object value, string name)
         {
             Type type = value.GetType();
-            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-            return type.GetProperty(name, flags)?.GetValue(value) ?? type.GetField(name, flags)?.GetValue(value);
+            MemberAccessor accessor;
+            lock (s_memberAccessorGate)
+            {
+                if (!s_memberAccessors.TryGetValue(type, out Dictionary<string, MemberAccessor>? members))
+                {
+                    members = new Dictionary<string, MemberAccessor>(StringComparer.Ordinal);
+                    s_memberAccessors[type] = members;
+                }
+
+                if (!members.TryGetValue(name, out accessor!))
+                {
+                    // Resolve each queue-entry shape once. The null result remains the
+                    // compatibility fallback when a supported COI version exposes neither a
+                    // Proto property nor a Proto field.
+                    accessor = new MemberAccessor(type, name);
+                    members[name] = accessor;
+                }
+            }
+            return accessor.GetValue(value);
         }
     }
 }

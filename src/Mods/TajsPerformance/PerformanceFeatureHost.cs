@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mafi;
+using Mafi.Core.GameLoop;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
@@ -39,9 +40,10 @@ namespace TajsCOI.Performance
         private static readonly object s_processConfigGate = new();
         private static IReadOnlyDictionary<string, bool>? s_processEnabled;
 
-        public PerformanceFeatureHost(ITajsRuntime runtime, ITajsSettings settings)
+        public PerformanceFeatureHost(IGameLoopEvents gameLoop, ITajsRuntime runtime, ITajsSettings settings)
         {
             PerformanceSettingsCatalog.RegisterAll(settings);
+            gameLoop.Terminate.AddNonSaveable(this, RenderingLoadSheddingFeature.Uninstall);
             RenderingLoadSheddingFeature.RefreshFromSettings(settings);
             settings.Changed += (_, change) =>
             {
