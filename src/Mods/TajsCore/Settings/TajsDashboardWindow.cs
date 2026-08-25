@@ -73,6 +73,7 @@ namespace TajsCOI.Core.Settings
             AddLoadedMods(mods);
             AddCategoryFilter(settings);
             AddActions();
+            AddProfilerActions();
             AddSettings(settings);
             AddCompatibility(reports);
         }
@@ -221,6 +222,55 @@ namespace TajsCOI.Core.Settings
                             .FontSize(12),
                         buttons,
                         feedback));
+        }
+
+        private void AddProfilerActions()
+        {
+            string[] commands =
+            {
+                "tajs_profiler_status",
+                "tajs_profiler_spikes 5",
+                "tajs_profiler_deep_report 10",
+                "tajs_profiler_deep_start 10",
+                "tajs_profiler_deep_stop",
+                "tajs_profiler_trace_export runtime",
+            };
+            if (!commands.Any(command =>
+                m_consoleCommands.Executor.Commands.ContainsKey(command.Split(' ')[0])))
+            {
+                return;
+            }
+
+            var feedback = new Label().FontSize(11).Hide();
+            var buttons = new Row(3.pt()).Wrap();
+            AddProfilerButton(buttons, "Profiler status", commands[0], feedback, Button.Area);
+            AddProfilerButton(buttons, "Browse spikes", commands[1], feedback, Button.Area);
+            AddProfilerButton(buttons, "Top callbacks", commands[2], feedback, Button.Area);
+            AddProfilerButton(buttons, "Deep start (10 s)", commands[3], feedback, Button.Warning);
+            AddProfilerButton(buttons, "Deep stop", commands[4], feedback, Button.Area);
+            AddProfilerButton(buttons, "Export trace", commands[5], feedback, Button.Area);
+
+            m_content.Add(SectionTitle("Profiler controls"));
+            m_content.Add(
+                new Panel(true)
+                    .ReducedPadding()
+                    .BodyGap(2.pt())
+                    .BodyAdd(
+                        new Label("Inspect broad spikes and opt-in callback traces without leaving the active save.".AsLoc())
+                            .FontSize(12),
+                        buttons,
+                        feedback));
+        }
+
+        private void AddProfilerButton(Row buttons, string text, string command, Label feedback, ButtonVariant style)
+        {
+            if (m_consoleCommands.Executor.Commands.ContainsKey(command.Split(' ')[0]))
+            {
+                buttons.Add(new ButtonText(
+                    style,
+                    text.AsLoc(),
+                    () => ExecuteConsoleCommand(command, feedback)).Compact());
+            }
         }
 
         private void ExecuteConsoleCommand(string command, Label feedback)

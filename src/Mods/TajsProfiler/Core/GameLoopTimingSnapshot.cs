@@ -80,6 +80,31 @@ namespace TajsCOI.Profiler.Core
             SimCmdExtraTicks = simCmdExtraTicks;
         }
 
+        internal GameLoopTimingSnapshot(GameLoopTimingRanges ranges)
+            : this(
+                ranges.Input.DurationTicks,
+                ranges.SyncStart.DurationTicks,
+                ranges.Sync.DurationTicks,
+                ranges.SyncEnd.DurationTicks,
+                ranges.RenderAfterSync.DurationTicks,
+                ranges.Render.DurationTicks,
+                ranges.RenderEnd.DurationTicks,
+                ranges.WaitForSim.DurationTicks,
+                ranges.InputEnd.DurationTicks,
+                ranges.SimCmd.DurationTicks,
+                ranges.SimStart.DurationTicks,
+                ranges.SimUpdate.DurationTicks,
+                ranges.SimEnd.DurationTicks,
+                ranges.SimEndForUi.DurationTicks,
+                ranges.SimAfterSync.DurationTicks,
+                ranges.SimParallelStart.DurationTicks,
+                ranges.SimParallelEnd.DurationTicks,
+                ranges.SimReadState.DurationTicks,
+                ranges.SimPausedUi.DurationTicks,
+                ranges.SimCmdExtra.DurationTicks)
+        {
+        }
+
         internal long InputTicks { get; }
         internal long SyncStartTicks { get; }
         internal long SyncTicks { get; }
@@ -316,36 +341,42 @@ namespace TajsCOI.Profiler.Core
 
         internal GameLoopTimingSnapshot ReadLatest()
         {
-            return new GameLoopTimingSnapshot(
-                ReadLatest(GameLoopTimingEvent.Input),
-                ReadLatest(GameLoopTimingEvent.SyncStart),
-                ReadLatest(GameLoopTimingEvent.Sync),
-                ReadLatest(GameLoopTimingEvent.SyncEnd),
-                ReadLatest(GameLoopTimingEvent.RenderAfterSync),
-                ReadLatest(GameLoopTimingEvent.Render),
-                ReadLatest(GameLoopTimingEvent.RenderEnd),
-                ReadLatest(GameLoopTimingEvent.WaitForSim),
-                ReadLatest(GameLoopTimingEvent.InputEnd),
-                ReadLatest(GameLoopTimingEvent.SimCmd),
-                ReadLatest(GameLoopTimingEvent.SimStart),
-                ReadLatest(GameLoopTimingEvent.SimUpdate),
-                ReadLatest(GameLoopTimingEvent.SimEnd),
-                ReadLatest(GameLoopTimingEvent.SimEndForUi),
-                ReadLatest(GameLoopTimingEvent.SimAfterSync),
-                ReadLatest(GameLoopTimingEvent.SimParallelStart),
-                ReadLatest(GameLoopTimingEvent.SimParallelEnd),
-                ReadLatest(GameLoopTimingEvent.SimReadState),
-                ReadLatest(GameLoopTimingEvent.SimPausedUi),
-                ReadLatest(GameLoopTimingEvent.SimCmdExtra));
+            return ReadLatest(out _);
         }
 
-        private long ReadLatest(GameLoopTimingEvent eventId)
+        internal GameLoopTimingSnapshot ReadLatest(out GameLoopTimingRanges ranges)
+        {
+            ranges = new GameLoopTimingRanges(
+                ReadLatestRange(GameLoopTimingEvent.Input),
+                ReadLatestRange(GameLoopTimingEvent.SyncStart),
+                ReadLatestRange(GameLoopTimingEvent.Sync),
+                ReadLatestRange(GameLoopTimingEvent.SyncEnd),
+                ReadLatestRange(GameLoopTimingEvent.RenderAfterSync),
+                ReadLatestRange(GameLoopTimingEvent.Render),
+                ReadLatestRange(GameLoopTimingEvent.RenderEnd),
+                ReadLatestRange(GameLoopTimingEvent.WaitForSim),
+                ReadLatestRange(GameLoopTimingEvent.InputEnd),
+                ReadLatestRange(GameLoopTimingEvent.SimCmd),
+                ReadLatestRange(GameLoopTimingEvent.SimStart),
+                ReadLatestRange(GameLoopTimingEvent.SimUpdate),
+                ReadLatestRange(GameLoopTimingEvent.SimEnd),
+                ReadLatestRange(GameLoopTimingEvent.SimEndForUi),
+                ReadLatestRange(GameLoopTimingEvent.SimAfterSync),
+                ReadLatestRange(GameLoopTimingEvent.SimParallelStart),
+                ReadLatestRange(GameLoopTimingEvent.SimParallelEnd),
+                ReadLatestRange(GameLoopTimingEvent.SimReadState),
+                ReadLatestRange(GameLoopTimingEvent.SimPausedUi),
+                ReadLatestRange(GameLoopTimingEvent.SimCmdExtra));
+            return new GameLoopTimingSnapshot(ranges);
+        }
+
+        private GameLoopTimingRange ReadLatestRange(GameLoopTimingEvent eventId)
         {
             int eventIndex = (int)eventId;
             int writeIndex = Volatile.Read(ref m_writeIndices[eventIndex]);
             if (writeIndex <= 0)
             {
-                return 0;
+                return default;
             }
 
             // End() increments the write index before filling the slot. Leave the newest slot
@@ -353,7 +384,7 @@ namespace TajsCOI.Profiler.Core
             int safeIndex = unchecked(writeIndex - 1);
             long start = m_readStart(eventIndex, safeIndex & m_bufferMask);
             long end = m_readEnd(eventIndex, safeIndex & m_bufferMask);
-            return start > 0 && end >= start ? end - start : 0;
+            return new GameLoopTimingRange(start, end);
         }
 
         private static Func<int, int, long> CreateEntryFieldReader(

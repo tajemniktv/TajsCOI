@@ -29,6 +29,7 @@ using Mafi.Core.Vehicles.Trucks.JobProviders;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
+using TajsCOI.Profiler.Core;
 using TajsCOI.Profiler.Probes.Runtime;
 
 #endregion
@@ -179,6 +180,17 @@ namespace TajsCOI.Profiler.Probes.Dumping
             RuntimePerformanceDiagnosticsService.RecordWeakLifecycleWatch("dump-service/service", this);
             EnsurePatchesApplied();
             ReportCompatibility(runtime);
+        }
+
+        internal static RuntimeSubsystemCounterSnapshot ReadTimelineCounters()
+        {
+            return new RuntimeSubsystemCounterSnapshot(
+                Read(ref s_totalCalls),
+                Read(ref s_totalTrueResults),
+                Read(ref s_totalFalseResults),
+                Read(ref s_totalElapsedTicks),
+                Read(ref s_totalPfEnqueues),
+                Read(ref s_lastPfSearchElapsedTicks));
         }
 
         [ConsoleCommand(

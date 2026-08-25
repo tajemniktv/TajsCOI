@@ -17,6 +17,8 @@ namespace TajsCOI.Profiler.Core
         MainRenderBound,
         SimulationBound,
         WaitingForSimulation,
+        GcRelated,
+        LikelyGpuBound,
         Mixed,
     }
 
@@ -216,26 +218,35 @@ namespace TajsCOI.Profiler.Core
             int simSpeedMult,
             int simStepsPerUpdate,
             int budgetedSimSteps,
-            bool simPaused)
+            bool simPaused,
+            GameLoopTimingRanges ranges = default,
+            RuntimeCounterSnapshot counters = default,
+            RuntimeSubsystemCounterSnapshot subsystemCounters = default)
         {
             Sequence = sequence;
             CapturedTimestamp = capturedTimestamp;
             Timings = timings;
+            TimingRanges = ranges;
             Runner = runner;
             SimSpeedMult = simSpeedMult;
             SimStepsPerUpdate = simStepsPerUpdate;
             BudgetedSimSteps = budgetedSimSteps;
             SimPaused = simPaused;
+            Counters = counters;
+            SubsystemCounters = subsystemCounters;
         }
 
         internal long Sequence { get; }
         internal long CapturedTimestamp { get; }
         internal GameLoopTimingSnapshot Timings { get; }
+        internal GameLoopTimingRanges TimingRanges { get; }
         internal GameRunnerTimingSnapshot Runner { get; }
         internal int SimSpeedMult { get; }
         internal int SimStepsPerUpdate { get; }
         internal int BudgetedSimSteps { get; }
         internal bool SimPaused { get; }
+        internal RuntimeCounterSnapshot Counters { get; }
+        internal RuntimeSubsystemCounterSnapshot SubsystemCounters { get; }
 
         internal long FrameTicks => Runner.UpdateTicks >= 0 ? Runner.UpdateTicks : Timings.MainPhaseTicks + Timings.WaitForSimTicks;
         internal long RenderTicks => Runner.RenderTicks >= 0 ? Runner.RenderTicks : Timings.RenderPhaseTicks;
@@ -260,6 +271,17 @@ namespace TajsCOI.Profiler.Core
             if (waitTicks > 0 && waitTicks >= waitingThreshold && (sample.Runner.WasOvertime || sample.Runner.OvertimeTicks > 0))
             {
                 return RuntimeFrameClassification.WaitingForSimulation;
+            }
+
+            if (sample.Counters.HasGpuTelemetry &&
+                sample.Counters.GpuFrameTicks > Math.Max(frameTicks, Stopwatch.Frequency / 100))
+            {
+                return RuntimeFrameClassification.LikelyGpuBound;
+            }
+
+            if (sample.Counters.TotalGcDelta > 0 && frameTicks >= Stopwatch.Frequency / 30)
+            {
+                return RuntimeFrameClassification.GcRelated;
             }
 
             if (mainTicks <= 0 && simTicks <= 0)
@@ -320,6 +342,8 @@ namespace TajsCOI.Profiler.Core
             int mainRenderBoundCount,
             int simulationBoundCount,
             int waitingForSimulationCount,
+            int gcRelatedCount,
+            int likelyGpuBoundCount,
             int mixedCount)
         {
             Latest = latest;
@@ -331,6 +355,8 @@ namespace TajsCOI.Profiler.Core
             MainRenderBoundCount = mainRenderBoundCount;
             SimulationBoundCount = simulationBoundCount;
             WaitingForSimulationCount = waitingForSimulationCount;
+            GcRelatedCount = gcRelatedCount;
+            LikelyGpuBoundCount = likelyGpuBoundCount;
             MixedCount = mixedCount;
         }
 
@@ -343,6 +369,8 @@ namespace TajsCOI.Profiler.Core
         internal int MainRenderBoundCount { get; }
         internal int SimulationBoundCount { get; }
         internal int WaitingForSimulationCount { get; }
+        internal int GcRelatedCount { get; }
+        internal int LikelyGpuBoundCount { get; }
         internal int MixedCount { get; }
         internal int Count => Frame.Count;
     }
@@ -384,12 +412,40 @@ namespace TajsCOI.Profiler.Core
             int simSpeedMult,
             int simStepsPerUpdate,
             int budgetedSimSteps,
-            bool simPaused)
+            bool simPaused,
+            GameLoopTimingRanges ranges = default,
+            RuntimeCounterSnapshot counters = default,
+            RuntimeSubsystemCounterSnapshot subsystemCounters = default)
+        {
+            return RecordSample(
+                capturedTimestamp,
+                timings,
+                runner,
+                simSpeedMult,
+                simStepsPerUpdate,
+                budgetedSimSteps,
+                simPaused,
+                ranges,
+                counters,
+                subsystemCounters).Sequence;
+        }
+
+        internal RuntimeFrameSample RecordSample(
+            long capturedTimestamp,
+            GameLoopTimingSnapshot timings,
+            GameRunnerTimingSnapshot runner,
+            int simSpeedMult,
+            int simStepsPerUpdate,
+            int budgetedSimSteps,
+            bool simPaused,
+            GameLoopTimingRanges ranges = default,
+            RuntimeCounterSnapshot counters = default,
+            RuntimeSubsystemCounterSnapshot subsystemCounters = default)
         {
             lock (m_gate)
             {
                 long sequence = ++m_sequence;
-                m_samples[m_next] = new RuntimeFrameSample(
+                RuntimeFrameSample sample = new RuntimeFrameSample(
                     sequence,
                     capturedTimestamp,
                     timings,
@@ -397,10 +453,14 @@ namespace TajsCOI.Profiler.Core
                     simSpeedMult,
                     simStepsPerUpdate,
                     budgetedSimSteps,
-                    simPaused);
+                    simPaused,
+                    ranges,
+                    counters,
+                    subsystemCounters);
+                m_samples[m_next] = sample;
                 m_next = (m_next + 1) % m_samples.Length;
                 m_count = Math.Min(m_samples.Length, m_count + 1);
-                return sequence;
+                return sample;
             }
         }
 
@@ -435,6 +495,14 @@ namespace TajsCOI.Profiler.Core
             RuntimeFrameSample[] result = new RuntimeFrameSample[count];
             Array.Copy(snapshot, snapshot.Length - count, result, 0, count);
             return result;
+        }
+
+        internal RuntimeFrameSample[] SnapshotBetween(long startTimestamp, long endTimestamp)
+        {
+            RuntimeFrameSample[] snapshot = Snapshot();
+            return snapshot
+                .Where(x => x.CapturedTimestamp >= startTimestamp && x.CapturedTimestamp <= endTimestamp)
+                .ToArray();
         }
 
         internal RuntimeFrameSample[] FindSpikes(double seconds, int count)
@@ -493,6 +561,8 @@ namespace TajsCOI.Profiler.Core
             int mainRenderBound = 0;
             int simulationBound = 0;
             int waitingForSimulation = 0;
+            int gcRelated = 0;
+            int likelyGpuBound = 0;
             int mixed = 0;
             for (int index = 0; index < samples.Count; index++)
             {
@@ -507,6 +577,8 @@ namespace TajsCOI.Profiler.Core
                     case RuntimeFrameClassification.MainRenderBound: mainRenderBound++; break;
                     case RuntimeFrameClassification.SimulationBound: simulationBound++; break;
                     case RuntimeFrameClassification.WaitingForSimulation: waitingForSimulation++; break;
+                    case RuntimeFrameClassification.GcRelated: gcRelated++; break;
+                    case RuntimeFrameClassification.LikelyGpuBound: likelyGpuBound++; break;
                     case RuntimeFrameClassification.Mixed: mixed++; break;
                 }
             }
@@ -521,6 +593,8 @@ namespace TajsCOI.Profiler.Core
                 mainRenderBound,
                 simulationBound,
                 waitingForSimulation,
+                gcRelated,
+                likelyGpuBound,
                 mixed);
         }
 

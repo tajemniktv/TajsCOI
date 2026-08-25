@@ -52,6 +52,7 @@
       <HintPath>$(COIManagedDir)\Mafi.Base.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <Reference Include="System.Web.Extensions" />
   </ItemGroup>
 
   <ItemGroup>
