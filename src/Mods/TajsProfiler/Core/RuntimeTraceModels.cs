@@ -206,36 +206,6 @@ namespace TajsCOI.Profiler.Core
             new(false, timestamp, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, -1, false, 0);
     }
 
-    /// <summary>
-    ///     Cumulative values from an existing subsystem probe. This deliberately contains no
-    ///     subsystem objects or names so it can be copied into a frame sample and a trace ring.
-    /// </summary>
-    internal readonly struct RuntimeSubsystemCounterSnapshot
-    {
-        internal RuntimeSubsystemCounterSnapshot(
-            long dumpingCalls,
-            long dumpingTrueResults,
-            long dumpingFalseResults,
-            long dumpingElapsedTicks,
-            long pathEnqueues,
-            long pathSearchElapsedTicks)
-        {
-            DumpingCalls = dumpingCalls;
-            DumpingTrueResults = dumpingTrueResults;
-            DumpingFalseResults = dumpingFalseResults;
-            DumpingElapsedTicks = dumpingElapsedTicks;
-            PathEnqueues = pathEnqueues;
-            PathSearchElapsedTicks = pathSearchElapsedTicks;
-        }
-
-        internal long DumpingCalls { get; }
-        internal long DumpingTrueResults { get; }
-        internal long DumpingFalseResults { get; }
-        internal long DumpingElapsedTicks { get; }
-        internal long PathEnqueues { get; }
-        internal long PathSearchElapsedTicks { get; }
-    }
-
     internal readonly struct RuntimeTraceSpan
     {
         internal RuntimeTraceSpan(

@@ -81,31 +81,64 @@ namespace TajsCOI.Profiler.Core
     /// </summary>
     internal static class RuntimeTracePhaseContext
     {
+        private const int Unassigned = int.MinValue;
+
         private sealed class EventPhase
         {
-            internal EventPhase(int phaseId)
-            {
-                PhaseId = phaseId;
-            }
-
-            internal int PhaseId;
+            internal int PhaseId = Unassigned;
+            internal int Conflict;
         }
 
         private static readonly ConditionalWeakTable<object, EventPhase> s_eventPhases = new();
+        private static int s_phaseConflictCount;
 
         [ThreadStatic]
         private static int s_currentPhase;
 
         internal static int CurrentPhase => s_currentPhase;
+        internal static int PhaseConflictCount => Volatile.Read(ref s_phaseConflictCount);
 
         internal static void RegisterEvent(object eventSource, int phaseId)
         {
-            EventPhase phase = s_eventPhases.GetValue(eventSource, _ => new EventPhase(phaseId));
-            if (phase.PhaseId != phaseId)
+            EventPhase phase = s_eventPhases.GetValue(eventSource, _ => new EventPhase());
+            while (true)
             {
+                int current = Volatile.Read(ref phase.PhaseId);
+                if (current == Unassigned)
+                {
+                    if (Interlocked.CompareExchange(ref phase.PhaseId, phaseId, Unassigned) == Unassigned)
+                    {
+                        return;
+                    }
+                    continue;
+                }
+                if (current == phaseId)
+                {
+                    return;
+                }
+
                 // The same event instance should not represent multiple dispatch phases. Keep
-                // the mapping degraded rather than silently attributing callbacks incorrectly.
-                Volatile.Write(ref phase.PhaseId, RuntimeTracePhase.Unknown);
+                // the mapping degraded rather than silently attributing callbacks incorrectly,
+                // and count the transition once so compatibility output explains UNKNOWN.
+                if (current == RuntimeTracePhase.Unknown)
+                {
+                    if (Interlocked.Exchange(ref phase.Conflict, 1) == 0)
+                    {
+                        Interlocked.Increment(ref s_phaseConflictCount);
+                    }
+                    return;
+                }
+                if (Interlocked.CompareExchange(
+                        ref phase.PhaseId,
+                        RuntimeTracePhase.Unknown,
+                        current) == current)
+                {
+                    if (Interlocked.Exchange(ref phase.Conflict, 1) == 0)
+                    {
+                        Interlocked.Increment(ref s_phaseConflictCount);
+                    }
+                    return;
+                }
             }
         }
 
@@ -114,7 +147,7 @@ namespace TajsCOI.Profiler.Core
             if (eventSource is not null && s_eventPhases.TryGetValue(eventSource, out EventPhase? mapped))
             {
                 int mappedPhase = Volatile.Read(ref mapped.PhaseId);
-                if (mappedPhase != RuntimeTracePhase.Unknown)
+                if (mappedPhase != Unassigned && mappedPhase != RuntimeTracePhase.Unknown)
                 {
                     return mappedPhase;
                 }
@@ -148,20 +181,28 @@ namespace TajsCOI.Profiler.Core
 
     internal readonly struct DeepTracingPatchSummary
     {
-        internal DeepTracingPatchSummary(int expectedMethods, int patchedMethods, int replacedInvocations, int failures)
+        internal DeepTracingPatchSummary(
+            int expectedMethods,
+            int patchedMethods,
+            int replacedInvocations,
+            int failures,
+            int phaseConflicts = 0)
         {
             ExpectedMethods = expectedMethods;
             PatchedMethods = patchedMethods;
             ReplacedInvocations = replacedInvocations;
             Failures = failures;
+            PhaseConflicts = phaseConflicts;
         }
 
         internal int ExpectedMethods { get; }
         internal int PatchedMethods { get; }
         internal int ReplacedInvocations { get; }
         internal int Failures { get; }
+        internal int PhaseConflicts { get; }
         internal bool IsAvailable => PatchedMethods > 0 && ReplacedInvocations > 0;
-        internal bool IsComplete => ExpectedMethods > 0 && PatchedMethods == ExpectedMethods && Failures == 0;
+        internal bool IsComplete => ExpectedMethods > 0 && PatchedMethods == ExpectedMethods &&
+            Failures == 0 && PhaseConflicts == 0;
     }
 
     internal readonly struct DeepCaptureWindow
@@ -178,6 +219,44 @@ namespace TajsCOI.Profiler.Core
         internal long StartTimestamp { get; }
         internal long EndTimestamp { get; }
         internal bool Automatic { get; }
+    }
+
+    internal readonly struct DeepCallbackOverheadSnapshot
+    {
+        internal DeepCallbackOverheadSnapshot(long callbackCount, long overheadTicks, long frameCount)
+        {
+            CallbackCount = callbackCount;
+            OverheadTicks = overheadTicks;
+            FrameCount = frameCount;
+        }
+
+        internal long CallbackCount { get; }
+        internal long OverheadTicks { get; }
+        internal long FrameCount { get; }
+        internal long AverageOverheadPerFrameTicks => FrameCount <= 0 ? 0 : OverheadTicks / FrameCount;
+    }
+
+    internal readonly struct DeepCallbackOverheadBenchmark
+    {
+        internal DeepCallbackOverheadBenchmark(
+            int iterations,
+            long baselineTicks,
+            long disabledTicks,
+            long enabledTicks)
+        {
+            Available = true;
+            Iterations = iterations;
+            BaselineTicks = baselineTicks;
+            DisabledTicks = disabledTicks;
+            EnabledTicks = enabledTicks;
+        }
+
+        internal bool Available { get; }
+        internal int Iterations { get; }
+        internal long BaselineTicks { get; }
+        internal long DisabledTicks { get; }
+        internal long EnabledTicks { get; }
+        internal long EnabledOverheadTicks => Math.Max(0, EnabledTicks - DisabledTicks);
     }
 
     internal readonly struct CallbackToken
@@ -249,11 +328,16 @@ namespace TajsCOI.Profiler.Core
         private static int s_patchAttempted;
         private static DeepTracingPatchSummary s_patchSummary;
         private static int s_active;
+        private static int s_benchmarkMode;
+        private static readonly TraceSpanRing s_benchmarkRing = new(SpanCapacityPerThread);
         private static long s_captureStartTimestamp;
         private static long s_captureEndTimestamp;
         private static int s_captureGeneration;
         private static bool s_captureAutomatic;
         private static long s_spanSequence;
+        private static long s_deepCallbackCount;
+        private static long s_deepOverheadTicks;
+        private static long s_deepFrameCount;
 
         internal static DeepTracingPatchSummary Initialize(IGameLoopEvents gameLoop, SimLoopEvents simLoop)
         {
@@ -331,7 +415,8 @@ namespace TajsCOI.Profiler.Core
                         .Count(y => y.Name == "Invoke" || y.Name == "InvokeTraced")),
                     patched,
                     replacements,
-                    failures);
+                    failures,
+                    RuntimeTracePhaseContext.PhaseConflictCount);
                 Volatile.Write(ref s_patchAttempted, 1);
                 return s_patchSummary;
             }
@@ -371,6 +456,9 @@ namespace TajsCOI.Profiler.Core
                 s_captureStartTimestamp = now;
                 s_captureEndTimestamp = now + Math.Max(1, duration);
                 s_captureAutomatic = automatic;
+                Volatile.Write(ref s_deepCallbackCount, 0);
+                Volatile.Write(ref s_deepOverheadTicks, 0);
+                Volatile.Write(ref s_deepFrameCount, 0);
                 Volatile.Write(ref s_active, 1);
             }
             lock (s_markerGate)
@@ -392,6 +480,93 @@ namespace TajsCOI.Profiler.Core
                 AddMarker(now, "deep capture stopped");
             }
             return new DeepCaptureWindow(wasActive, start, end, s_captureAutomatic);
+        }
+
+        internal static DeepCallbackOverheadSnapshot SnapshotOverhead() =>
+            new(
+                Volatile.Read(ref s_deepCallbackCount),
+                Volatile.Read(ref s_deepOverheadTicks),
+                Volatile.Read(ref s_deepFrameCount));
+
+        internal static void RecordFrame()
+        {
+            if (Volatile.Read(ref s_active) != 0 && Volatile.Read(ref s_benchmarkMode) == 0)
+            {
+                Interlocked.Increment(ref s_deepFrameCount);
+            }
+        }
+
+        internal static DeepCallbackOverheadBenchmark MeasureOverhead(int iterations)
+        {
+            if (iterations <= 0 || IsActive || Interlocked.CompareExchange(ref s_benchmarkMode, 1, 0) != 0)
+            {
+                return default;
+            }
+
+            Action callback = NoOpCallback;
+            object eventSource = new object();
+            RuntimeTracePhaseContext.RegisterEvent(eventSource, RuntimeTracePhase.SimUpdate);
+            const int WarmupIterations = 256;
+            for (int index = 0; index < WarmupIterations; index++)
+            {
+                callback();
+                InvokeWithOwner(null, callback, RuntimeTracePhase.Unknown, eventSource);
+            }
+
+            long baselineStart = Stopwatch.GetTimestamp();
+            for (int index = 0; index < iterations; index++)
+            {
+                callback();
+            }
+            long baselineTicks = Stopwatch.GetTimestamp() - baselineStart;
+
+            long disabledStart = Stopwatch.GetTimestamp();
+            for (int index = 0; index < iterations; index++)
+            {
+                InvokeWithOwner(null, callback, RuntimeTracePhase.Unknown, eventSource);
+            }
+            long disabledTicks = Stopwatch.GetTimestamp() - disabledStart;
+
+            int previousActive = Volatile.Read(ref s_active);
+            long previousStart = Volatile.Read(ref s_captureStartTimestamp);
+            long previousEnd = Volatile.Read(ref s_captureEndTimestamp);
+            long previousCallbackCount = Volatile.Read(ref s_deepCallbackCount);
+            long previousOverheadTicks = Volatile.Read(ref s_deepOverheadTicks);
+            long previousFrameCount = Volatile.Read(ref s_deepFrameCount);
+            try
+            {
+                s_benchmarkRing.Reset(Volatile.Read(ref s_captureGeneration));
+                Volatile.Write(ref s_captureStartTimestamp, Stopwatch.GetTimestamp());
+                Volatile.Write(ref s_captureEndTimestamp, long.MaxValue);
+                Volatile.Write(ref s_active, 1);
+
+                // Warm metadata/ring paths before measuring the steady-state enabled wrapper.
+                for (int index = 0; index < WarmupIterations; index++)
+                {
+                    InvokeWithOwner(null, callback, RuntimeTracePhase.Unknown, eventSource);
+                }
+                long enabledStart = Stopwatch.GetTimestamp();
+                for (int index = 0; index < iterations; index++)
+                {
+                    InvokeWithOwner(null, callback, RuntimeTracePhase.Unknown, eventSource);
+                }
+                long enabledTicks = Stopwatch.GetTimestamp() - enabledStart;
+                return new DeepCallbackOverheadBenchmark(iterations, baselineTicks, disabledTicks, enabledTicks);
+            }
+            finally
+            {
+                Volatile.Write(ref s_active, previousActive);
+                Volatile.Write(ref s_captureStartTimestamp, previousStart);
+                Volatile.Write(ref s_captureEndTimestamp, previousEnd);
+                Volatile.Write(ref s_deepCallbackCount, previousCallbackCount);
+                Volatile.Write(ref s_deepOverheadTicks, previousOverheadTicks);
+                Volatile.Write(ref s_deepFrameCount, previousFrameCount);
+                Volatile.Write(ref s_benchmarkMode, 0);
+            }
+        }
+
+        private static void NoOpCallback()
+        {
         }
 
         internal static void AddMarker(long timestamp, string label)
@@ -642,79 +817,121 @@ namespace TajsCOI.Profiler.Core
                              x.GetGenericArguments().Length == genericArgumentCount);
         }
 
-        private static void InvokeWithOwner(object owner, Action action, int phaseId, object eventSource)
+        private static void InvokeWithOwner(object? owner, Action action, int phaseId, object? eventSource)
         {
             if (!IsActive)
             {
                 action();
                 return;
             }
+            long wrapperStart = Stopwatch.GetTimestamp();
             RuntimeTracePhaseContext.PhaseScope phaseScope = RuntimeTracePhaseContext.Enter(eventSource, phaseId);
+            CallbackToken token = default;
+            long callbackStart = 0;
+            long callbackEnd = 0;
             try
             {
-                CallbackToken token = Begin(owner, action, RuntimeTracePhaseContext.CurrentPhase);
+                token = Begin(owner, action, RuntimeTracePhaseContext.CurrentPhase);
+                callbackStart = Stopwatch.GetTimestamp();
                 try { action(); }
-                finally { End(token); }
+                finally { callbackEnd = End(token); }
             }
             finally
             {
                 phaseScope.Dispose();
+                if (callbackStart > 0)
+                {
+                    RecordCallbackOverhead(
+                        wrapperStart,
+                        callbackStart,
+                        callbackEnd,
+                        Stopwatch.GetTimestamp(),
+                        token.Generation);
+                }
             }
         }
 
-        private static void InvokeWithoutOwner(Action action, int phaseId, object eventSource) =>
+        private static void InvokeWithoutOwner(Action action, int phaseId, object? eventSource) =>
             InvokeWithOwner(action.Target, action, phaseId, eventSource);
 
-        private static void InvokeWithOwner<T>(object owner, Action<T> action, T arg, int phaseId, object eventSource)
+        private static void InvokeWithOwner<T>(object? owner, Action<T> action, T arg, int phaseId, object? eventSource)
         {
             if (!IsActive)
             {
                 action(arg);
                 return;
             }
+            long wrapperStart = Stopwatch.GetTimestamp();
             RuntimeTracePhaseContext.PhaseScope phaseScope = RuntimeTracePhaseContext.Enter(eventSource, phaseId);
+            CallbackToken token = default;
+            long callbackStart = 0;
+            long callbackEnd = 0;
             try
             {
-                CallbackToken token = Begin(owner, action, RuntimeTracePhaseContext.CurrentPhase);
+                token = Begin(owner, action, RuntimeTracePhaseContext.CurrentPhase);
+                callbackStart = Stopwatch.GetTimestamp();
                 try { action(arg); }
-                finally { End(token); }
+                finally { callbackEnd = End(token); }
             }
             finally
             {
                 phaseScope.Dispose();
+                if (callbackStart > 0)
+                {
+                    RecordCallbackOverhead(
+                        wrapperStart,
+                        callbackStart,
+                        callbackEnd,
+                        Stopwatch.GetTimestamp(),
+                        token.Generation);
+                }
             }
         }
 
-        private static void InvokeWithoutOwner<T>(Action<T> action, T arg, int phaseId, object eventSource) =>
+        private static void InvokeWithoutOwner<T>(Action<T> action, T arg, int phaseId, object? eventSource) =>
             InvokeWithOwner(action.Target, action, arg, phaseId, eventSource);
 
         private static void InvokeWithOwner<T1, T2>(
-            object owner,
+            object? owner,
             Action<T1, T2> action,
             T1 arg1,
             T2 arg2,
             int phaseId,
-            object eventSource)
+            object? eventSource)
         {
             if (!IsActive)
             {
                 action(arg1, arg2);
                 return;
             }
+            long wrapperStart = Stopwatch.GetTimestamp();
             RuntimeTracePhaseContext.PhaseScope phaseScope = RuntimeTracePhaseContext.Enter(eventSource, phaseId);
+            CallbackToken token = default;
+            long callbackStart = 0;
+            long callbackEnd = 0;
             try
             {
-                CallbackToken token = Begin(owner, action, RuntimeTracePhaseContext.CurrentPhase);
+                token = Begin(owner, action, RuntimeTracePhaseContext.CurrentPhase);
+                callbackStart = Stopwatch.GetTimestamp();
                 try { action(arg1, arg2); }
-                finally { End(token); }
+                finally { callbackEnd = End(token); }
             }
             finally
             {
                 phaseScope.Dispose();
+                if (callbackStart > 0)
+                {
+                    RecordCallbackOverhead(
+                        wrapperStart,
+                        callbackStart,
+                        callbackEnd,
+                        Stopwatch.GetTimestamp(),
+                        token.Generation);
+                }
             }
         }
 
-        private static void InvokeWithoutOwner<T1, T2>(Action<T1, T2> action, T1 arg1, T2 arg2, int phaseId, object eventSource) =>
+        private static void InvokeWithoutOwner<T1, T2>(Action<T1, T2> action, T1 arg1, T2 arg2, int phaseId, object? eventSource) =>
             InvokeWithOwner(action.Target, action, arg1, arg2, phaseId, eventSource);
 
         private static CallbackToken Begin(object? owner, Delegate callback, int phaseId)
@@ -739,13 +956,13 @@ namespace TajsCOI.Profiler.Core
                 Volatile.Read(ref s_captureGeneration));
         }
 
-        private static void End(CallbackToken token)
+        private static long End(CallbackToken token)
         {
+            long end = Stopwatch.GetTimestamp();
             if (!token.IsActive || token.Generation != Volatile.Read(ref s_captureGeneration))
             {
-                return;
+                return end;
             }
-            long end = Stopwatch.GetTimestamp();
             TraceSpanRing? ring = GetRing(token.ThreadId);
             ring?.Add(new RuntimeTraceSpan(
                 token.StartTimestamp,
@@ -755,6 +972,27 @@ namespace TajsCOI.Profiler.Core
                 token.ThreadId,
                 token.Sequence,
                 0));
+            return end;
+        }
+
+        private static void RecordCallbackOverhead(
+            long wrapperStart,
+            long callbackStart,
+            long callbackEnd,
+            long wrapperEnd,
+            int generation)
+        {
+            if (generation != Volatile.Read(ref s_captureGeneration))
+            {
+                return;
+            }
+            long overheadTicks = Math.Max(0, callbackStart - wrapperStart) +
+                Math.Max(0, wrapperEnd - callbackEnd);
+            long accountingStart = Stopwatch.GetTimestamp();
+            Interlocked.Increment(ref s_deepCallbackCount);
+            Interlocked.Add(ref s_deepOverheadTicks, overheadTicks);
+            long accountingEnd = Stopwatch.GetTimestamp();
+            Interlocked.Add(ref s_deepOverheadTicks, Math.Max(0, accountingEnd - accountingStart));
         }
 
         private static int InternMetadata(object? owner, Delegate callback)
@@ -808,6 +1046,10 @@ namespace TajsCOI.Profiler.Core
 
         private static TraceSpanRing? GetRing(int threadId)
         {
+            if (Volatile.Read(ref s_benchmarkMode) != 0)
+            {
+                return s_benchmarkRing;
+            }
             if (s_threadRingId == threadId && s_threadRing is not null)
             {
                 return s_threadRing;
@@ -978,6 +1220,13 @@ namespace TajsCOI.Profiler.Core
                 int index = Interlocked.Increment(ref m_next) - 1;
                 m_spans[index % m_spans.Length] = span;
                 Volatile.Write(ref m_count, Math.Min(m_spans.Length, index + 1));
+            }
+
+            internal void Reset(int generation)
+            {
+                m_next = 0;
+                m_count = 0;
+                m_generation = generation;
             }
 
             internal RuntimeTraceSpan[] Snapshot(int generation)

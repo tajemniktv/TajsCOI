@@ -58,7 +58,8 @@ namespace TajsCOI.Profiler.Core
             IReadOnlyList<RuntimeFrameSample> frames,
             IReadOnlyList<RuntimeTraceSpan> spans,
             IReadOnlyList<CallbackMetadataSnapshot> metadata,
-            IReadOnlyList<RuntimeTraceMarker> markers)
+            IReadOnlyList<RuntimeTraceMarker> markers,
+            IReadOnlyList<RuntimeTelemetryEventSnapshot>? telemetryEvents = null)
         {
             if (string.IsNullOrWhiteSpace(path))
             {
@@ -71,7 +72,7 @@ namespace TajsCOI.Profiler.Core
                 Directory.CreateDirectory(directory);
             }
 
-            long baseTimestamp = FindBaseTimestamp(frames, spans, markers);
+            long baseTimestamp = FindBaseTimestamp(frames, spans, markers, telemetryEvents);
             var builder = new StringBuilder(8192);
             builder.Append("{\"traceEvents\":[");
             int eventCount = 0;
@@ -148,6 +149,16 @@ namespace TajsCOI.Profiler.Core
                 eventCount++;
             }
 
+            if (telemetryEvents is not null)
+            {
+                for (int eventIndex = 0; eventIndex < telemetryEvents.Count; eventIndex++)
+                {
+                    RuntimeTelemetryEventSnapshot telemetryEvent = telemetryEvents[eventIndex];
+                    AppendTelemetryEvent(ref first, builder, telemetryEvent, baseTimestamp);
+                    eventCount++;
+                }
+            }
+
             builder.Append("],\"displayTimeUnit\":\"ms\"}");
             File.WriteAllText(path, builder.ToString(), new UTF8Encoding(false));
             return new RuntimeTraceExportResult(path, eventCount);
@@ -156,7 +167,8 @@ namespace TajsCOI.Profiler.Core
         private static long FindBaseTimestamp(
             IReadOnlyList<RuntimeFrameSample> frames,
             IReadOnlyList<RuntimeTraceSpan> spans,
-            IReadOnlyList<RuntimeTraceMarker> markers)
+            IReadOnlyList<RuntimeTraceMarker> markers,
+            IReadOnlyList<RuntimeTelemetryEventSnapshot>? events)
         {
             long result = long.MaxValue;
             for (int i = 0; i < frames.Count; i++)
@@ -179,6 +191,16 @@ namespace TajsCOI.Profiler.Core
                 if (markers[i].Timestamp > 0)
                 {
                     result = Math.Min(result, markers[i].Timestamp);
+                }
+            }
+            if (events is not null)
+            {
+                for (int i = 0; i < events.Count; i++)
+                {
+                    if (events[i].Timestamp > 0)
+                    {
+                        result = Math.Min(result, events[i].Timestamp);
+                    }
                 }
             }
             return result == long.MaxValue ? Stopwatch.GetTimestamp() : result;
@@ -261,10 +283,15 @@ namespace TajsCOI.Profiler.Core
             AppendCounter(builder, ref firstArg, "gen0Delta", frame.Counters.Gen0Delta);
             AppendCounter(builder, ref firstArg, "gen1Delta", frame.Counters.Gen1Delta);
             AppendCounter(builder, ref firstArg, "gen2Delta", frame.Counters.Gen2Delta);
-            AppendCounter(builder, ref firstArg, "dumpingCalls", frame.SubsystemCounters.DumpingCalls);
-            AppendCounter(builder, ref firstArg, "dumpingElapsedTicks", frame.SubsystemCounters.DumpingElapsedTicks);
-            AppendCounter(builder, ref firstArg, "pathEnqueues", frame.SubsystemCounters.PathEnqueues);
-            AppendCounter(builder, ref firstArg, "pathSearchElapsedTicks", frame.SubsystemCounters.PathSearchElapsedTicks);
+            for (int index = 0; index < frame.Telemetry.Count; index++)
+            {
+                AppendTelemetryCounter(
+                    builder,
+                    ref firstArg,
+                    RuntimeTelemetry.CounterName(index),
+                    RuntimeTelemetry.CounterUnit(index),
+                    frame.Telemetry.Get(index));
+            }
             builder.Append("}}");
         }
 
@@ -286,6 +313,29 @@ namespace TajsCOI.Profiler.Core
             }
         }
 
+        private static void AppendTelemetryCounter(
+            StringBuilder builder,
+            ref bool first,
+            string name,
+            RuntimeTelemetryUnit unit,
+            long value)
+        {
+            if (unit == RuntimeTelemetryUnit.StopwatchTicks)
+            {
+                if (!first)
+                {
+                    builder.Append(',');
+                }
+                first = false;
+                AppendJsonString(builder, name);
+                builder.Append(':');
+                AppendNumber(builder, value * 1000.0 / Stopwatch.Frequency);
+                return;
+            }
+
+            AppendCounter(builder, ref first, name, value);
+        }
+
         private static void AppendInstant(ref bool first, StringBuilder builder, string name, long timestamp, long baseTimestamp, int threadId)
         {
             BeginEvent(ref first, builder);
@@ -294,6 +344,24 @@ namespace TajsCOI.Profiler.Core
             builder.Append(",\"cat\":\"coi.marker\",\"ph\":\"i\",\"s\":\"t\",\"ts\":");
             AppendNumber(builder, ToMicroseconds(timestamp - baseTimestamp));
             builder.Append(",\"pid\":1,\"tid\":").Append(threadId).Append('}');
+        }
+
+        private static void AppendTelemetryEvent(
+            ref bool first,
+            StringBuilder builder,
+            RuntimeTelemetryEventSnapshot telemetryEvent,
+            long baseTimestamp)
+        {
+            BeginEvent(ref first, builder);
+            builder.Append("\"name\":");
+            AppendJsonString(builder, telemetryEvent.Name);
+            builder.Append(",\"cat\":\"coi.telemetry\",\"ph\":\"i\",\"s\":\"t\",\"ts\":");
+            AppendNumber(builder, ToMicroseconds(telemetryEvent.Timestamp - baseTimestamp));
+            builder.Append(",\"pid\":1,\"tid\":").Append(telemetryEvent.ThreadId)
+                .Append(",\"args\":{\"sequence\":").Append(telemetryEvent.Sequence)
+                .Append(",\"phase\":");
+            AppendJsonString(builder, RuntimeTracePhase.Name(telemetryEvent.PhaseId));
+            builder.Append("}}");
         }
 
         private static void BeginEvent(ref bool first, StringBuilder builder)

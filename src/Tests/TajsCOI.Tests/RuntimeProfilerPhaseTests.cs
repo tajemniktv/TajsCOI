@@ -32,6 +32,77 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void SharedTelemetryPublishesAtomicDeltasAndSparseEvents()
+        {
+            RuntimeTelemetryCounter counter = RuntimeTelemetry.RegisterCounter(
+                "tests.telemetry." + Guid.NewGuid().ToString("N"));
+            RuntimeTelemetryEvent telemetryEvent = RuntimeTelemetry.RegisterEvent(
+                "tests.event." + Guid.NewGuid().ToString("N"));
+            RuntimeTelemetry.Reset(counter);
+            RuntimeTelemetry.Capture();
+
+            Parallel.For(0, 4, _ => RuntimeTelemetry.Add(counter, 25));
+            RuntimeTelemetrySnapshot snapshot = RuntimeTelemetry.Capture();
+
+            Assert.Equal(100, snapshot.Get(counter));
+            Assert.Equal(0, RuntimeTelemetry.Capture().Get(counter));
+
+            RuntimeTelemetry.Publish(telemetryEvent, 1234, RuntimeTracePhase.SimUpdate);
+            RuntimeTelemetryEventSnapshot[] events = RuntimeTelemetry.SnapshotEvents();
+            RuntimeTelemetryEventSnapshot observed = events.Last(x => x.Name.StartsWith("tests.event.", StringComparison.Ordinal));
+            Assert.Equal(1234, observed.Timestamp);
+            Assert.Equal(RuntimeTracePhase.SimUpdate, observed.PhaseId);
+        }
+
+        [Fact]
+        public void SharedTelemetryIsRepresentedInTheUnifiedTrace()
+        {
+            string counterName = "tests.trace.counter." + Guid.NewGuid().ToString("N");
+            string eventName = "tests.trace.event." + Guid.NewGuid().ToString("N");
+            RuntimeTelemetryCounter counter = RuntimeTelemetry.RegisterCounter(counterName);
+            RuntimeTelemetryEvent telemetryEvent = RuntimeTelemetry.RegisterEvent(eventName);
+            RuntimeTelemetry.Reset(counter);
+            RuntimeTelemetry.Capture();
+            RuntimeTelemetry.Add(counter, 7);
+            RuntimeTelemetrySnapshot telemetry = RuntimeTelemetry.Capture();
+            RuntimeTelemetry.Publish(telemetryEvent, 1500, RuntimeTracePhase.Render);
+
+            string path = Path.Combine(Path.GetTempPath(), "tajs-telemetry-" + Guid.NewGuid().ToString("N") + ".json");
+            try
+            {
+                RuntimeFrameSample frame = new RuntimeFrameSample(
+                    1,
+                    1000,
+                    new GameLoopTimingSnapshot(),
+                    new GameRunnerTimingSnapshot(updateTicks: 1000),
+                    1,
+                    1,
+                    1,
+                    false,
+                    telemetry: telemetry);
+                RuntimeTraceExporter.Export(
+                    path,
+                    new[] { frame },
+                    Array.Empty<RuntimeTraceSpan>(),
+                    Array.Empty<CallbackMetadataSnapshot>(),
+                    Array.Empty<RuntimeTraceMarker>(),
+                    RuntimeTelemetry.SnapshotEvents());
+
+                string json = File.ReadAllText(path);
+                Assert.Contains(counterName, json);
+                Assert.Contains(eventName, json);
+                Assert.Contains("coi.telemetry", json);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+        }
+
+        [Fact]
         public void RollingPercentileRetainsBoundedValuesAndRanksTail()
         {
             var percentile = new RuntimeRollingPercentile(3);
@@ -139,6 +210,36 @@ namespace TajsCOI.Tests
             Assert.Equal(RuntimeTracePhase.Render, renderPhase);
             Assert.Equal(RuntimeTracePhase.Unknown, simulationRestored);
             Assert.Equal(RuntimeTracePhase.Unknown, renderRestored);
+        }
+
+        [Fact]
+        public void ConflictingEventRegistrationIsReportedOnceAndRemainsUnknown()
+        {
+            object eventSource = new object();
+            int conflictsBefore = RuntimeTracePhaseContext.PhaseConflictCount;
+
+            RuntimeTracePhaseContext.RegisterEvent(eventSource, RuntimeTracePhase.SimUpdate);
+            RuntimeTracePhaseContext.RegisterEvent(eventSource, RuntimeTracePhase.Render);
+            RuntimeTracePhaseContext.RegisterEvent(eventSource, RuntimeTracePhase.Render);
+            RuntimeTracePhaseContext.RegisterEvent(eventSource, RuntimeTracePhase.SimUpdate);
+
+            Assert.Equal(conflictsBefore + 1, RuntimeTracePhaseContext.PhaseConflictCount);
+            Assert.Equal(
+                RuntimeTracePhase.Unknown,
+                RuntimeTracePhaseContext.Resolve(eventSource, RuntimeTracePhase.Unknown));
+        }
+
+        [Fact]
+        public void DeepOverheadBenchmarkComparesCallbackModesWithoutLeavingCaptureActive()
+        {
+            DeepCallbackOverheadBenchmark benchmark = DeepCallbackRecorder.MeasureOverhead(1000);
+
+            Assert.True(benchmark.Available);
+            Assert.Equal(1000, benchmark.Iterations);
+            Assert.True(benchmark.BaselineTicks > 0);
+            Assert.True(benchmark.DisabledTicks > 0);
+            Assert.True(benchmark.EnabledTicks > 0);
+            Assert.False(DeepCallbackRecorder.IsActive);
         }
 
         [Fact]

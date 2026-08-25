@@ -11,9 +11,14 @@ Current probes:
   GameLoopTimings ring and broad GameRunner timings.
 - Configurable absolute/relative spike triggers with bounded pre/post captures.
 - Opt-in deep callback tracing, callback ranking, markers, and Chrome trace JSON export.
-- Managed/Unity/GC counters where supported, with dumping/pathfinding timeline correlation.
+- Managed/Unity/GC counters where supported, with shared dumping/pathfinding/terrain timeline correlation.
+- One TajsProfiler subsystem report and trace model for all registered probe counters/events.
 
 Console commands:
+- tajs_profiler_dumping
+- tajs_profiler_subsystems [seconds]
+
+Legacy detailed dumping compatibility views:
 - tajs_dump_search_stats
 - tajs_dump_search_stats_reset
 - tajs_dump_pf_stats
@@ -42,6 +47,7 @@ Console commands:
 - tajs_profiler_deep_stop
 - tajs_profiler_deep_report [count]
 - tajs_profiler_deep_worst [count]
+- tajs_profiler_deep_overhead_bench [iterations]
 - tajs_profiler_trace_export [name]
 - tajs_profiler_mark <label>
 - tajs_profiler_overhead_bench [iterations]

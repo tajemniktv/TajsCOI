@@ -291,7 +291,7 @@ namespace TajsCOI.Profiler.Core
             bool simPaused,
             GameLoopTimingRanges ranges = default,
             RuntimeCounterSnapshot counters = default,
-            RuntimeSubsystemCounterSnapshot subsystemCounters = default)
+            RuntimeTelemetrySnapshot telemetry = default)
         {
             Sequence = sequence;
             CapturedTimestamp = capturedTimestamp;
@@ -303,7 +303,7 @@ namespace TajsCOI.Profiler.Core
             BudgetedSimSteps = budgetedSimSteps;
             SimPaused = simPaused;
             Counters = counters;
-            SubsystemCounters = subsystemCounters;
+            Telemetry = telemetry;
         }
 
         internal long Sequence { get; }
@@ -316,7 +316,7 @@ namespace TajsCOI.Profiler.Core
         internal int BudgetedSimSteps { get; }
         internal bool SimPaused { get; }
         internal RuntimeCounterSnapshot Counters { get; }
-        internal RuntimeSubsystemCounterSnapshot SubsystemCounters { get; }
+        internal RuntimeTelemetrySnapshot Telemetry { get; }
 
         internal long FrameTicks
         {
@@ -544,7 +544,7 @@ namespace TajsCOI.Profiler.Core
             bool simPaused,
             GameLoopTimingRanges ranges = default,
             RuntimeCounterSnapshot counters = default,
-            RuntimeSubsystemCounterSnapshot subsystemCounters = default)
+            RuntimeTelemetrySnapshot telemetry = default)
         {
             return RecordSample(
                 capturedTimestamp,
@@ -556,7 +556,7 @@ namespace TajsCOI.Profiler.Core
                 simPaused,
                 ranges,
                 counters,
-                subsystemCounters).Sequence;
+                telemetry).Sequence;
         }
 
         internal RuntimeFrameSample RecordSample(
@@ -569,7 +569,7 @@ namespace TajsCOI.Profiler.Core
             bool simPaused,
             GameLoopTimingRanges ranges = default,
             RuntimeCounterSnapshot counters = default,
-            RuntimeSubsystemCounterSnapshot subsystemCounters = default)
+            RuntimeTelemetrySnapshot telemetry = default)
         {
             lock (m_gate)
             {
@@ -585,7 +585,7 @@ namespace TajsCOI.Profiler.Core
                     simPaused,
                     ranges,
                     counters,
-                    subsystemCounters);
+                    telemetry);
                 m_samples[m_next] = sample;
                 m_next = (m_next + 1) % m_samples.Length;
                 m_count = Math.Min(m_samples.Length, m_count + 1);

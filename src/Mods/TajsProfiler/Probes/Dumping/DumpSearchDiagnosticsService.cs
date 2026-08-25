@@ -66,6 +66,33 @@ namespace TajsCOI.Profiler.Probes.Dumping
         private static readonly object s_profileGate = new();
         private static readonly List<ProfileSnapshot> s_profileHistory = new(MaxProfileHistory);
 
+        internal static readonly RuntimeTelemetryCounter DumpingJobsCreatedCounter =
+            RuntimeTelemetry.RegisterCounter("dumping.jobs-created");
+        internal static readonly RuntimeTelemetryCounter DumpingCallsCounter =
+            RuntimeTelemetry.RegisterCounter("dumping.calls");
+        internal static readonly RuntimeTelemetryCounter DumpingTrueResultsCounter =
+            RuntimeTelemetry.RegisterCounter("dumping.true-results");
+        internal static readonly RuntimeTelemetryCounter DumpingFalseResultsCounter =
+            RuntimeTelemetry.RegisterCounter("dumping.false-results");
+        internal static readonly RuntimeTelemetryCounter DumpingTimeCounter =
+            RuntimeTelemetry.RegisterCounter("dumping.time", RuntimeTelemetryUnit.StopwatchTicks);
+        internal static readonly RuntimeTelemetryCounter PathfindingEnqueuesCounter =
+            RuntimeTelemetry.RegisterCounter("pathfinding.enqueues");
+        internal static readonly RuntimeTelemetryCounter PathfindingTimeCounter =
+            RuntimeTelemetry.RegisterCounter("pathfinding.time", RuntimeTelemetryUnit.StopwatchTicks);
+        internal static readonly RuntimeTelemetryCounter DumpingFailuresCounter =
+            RuntimeTelemetry.RegisterCounter("dumping.failures");
+        internal static readonly RuntimeTelemetryCounter TerrainEligibleCacheCallsCounter =
+            RuntimeTelemetry.RegisterCounter("terrain.eligible-cache-calls");
+        internal static readonly RuntimeTelemetryCounter TerrainNearbyChecksCounter =
+            RuntimeTelemetry.RegisterCounter("terrain.nearby-checks");
+        private static readonly RuntimeTelemetryEvent s_profileStartedEvent =
+            RuntimeTelemetry.RegisterEvent("dumping.profile-enabled");
+        private static readonly RuntimeTelemetryEvent s_profileStoppedEvent =
+            RuntimeTelemetry.RegisterEvent("dumping.profile-disabled");
+        private static readonly RuntimeTelemetryEvent s_largeSearchEvent =
+            RuntimeTelemetry.RegisterEvent("dumping.large-search");
+
         private static WeakReference<IGameConsole>? s_console;
         private static ITajsLogger? s_log;
 
@@ -125,13 +152,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
         private static long s_lastPfMaxIndividualSearchElapsedTicks;
         private static long s_peakPfMaxIndividualSearchElapsedTicks;
         private static long s_peakPfSearchCalls;
-        private static long s_timelinePreviousCalls;
-        private static long s_timelinePreviousTrueResults;
-        private static long s_timelinePreviousFalseResults;
-        private static long s_timelinePreviousElapsedTicks;
-        private static long s_timelinePreviousPfEnqueues;
-        private static int s_timelineBaselineEstablished;
-
         private static ProfileSession? s_activeProfile;
         private static int s_profileState;
         private static long s_nextProfileSequence;
@@ -186,44 +206,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
             RuntimePerformanceDiagnosticsService.RecordWeakLifecycleWatch("dump-service/service", this);
             EnsurePatchesApplied();
             ReportCompatibility(runtime);
-        }
-
-        internal static RuntimeSubsystemCounterSnapshot ReadTimelineCounters()
-        {
-            long calls = Read(ref s_totalCalls);
-            long trueResults = Read(ref s_totalTrueResults);
-            long falseResults = Read(ref s_totalFalseResults);
-            long elapsedTicks = Read(ref s_totalElapsedTicks);
-            long pathEnqueues = Read(ref s_totalPfEnqueues);
-            if (Interlocked.Exchange(ref s_timelineBaselineEstablished, 1) == 0)
-            {
-                s_timelinePreviousCalls = calls;
-                s_timelinePreviousTrueResults = trueResults;
-                s_timelinePreviousFalseResults = falseResults;
-                s_timelinePreviousElapsedTicks = elapsedTicks;
-                s_timelinePreviousPfEnqueues = pathEnqueues;
-                return new RuntimeSubsystemCounterSnapshot(0, 0, 0, 0, 0, Read(ref s_lastPfSearchElapsedTicks));
-            }
-
-            long callDelta = CounterDelta(calls, ref s_timelinePreviousCalls);
-            long trueDelta = CounterDelta(trueResults, ref s_timelinePreviousTrueResults);
-            long falseDelta = CounterDelta(falseResults, ref s_timelinePreviousFalseResults);
-            long elapsedDelta = CounterDelta(elapsedTicks, ref s_timelinePreviousElapsedTicks);
-            long enqueueDelta = CounterDelta(pathEnqueues, ref s_timelinePreviousPfEnqueues);
-            return new RuntimeSubsystemCounterSnapshot(
-                callDelta,
-                trueDelta,
-                falseDelta,
-                elapsedDelta,
-                enqueueDelta,
-                Read(ref s_lastPfSearchElapsedTicks));
-        }
-
-        private static long CounterDelta(long current, ref long previous)
-        {
-            long delta = current >= previous ? current - previous : 0;
-            previous = current;
-            return delta;
         }
 
         [ConsoleCommand(
@@ -457,6 +439,11 @@ namespace TajsCOI.Profiler.Probes.Dumping
         }
 
         [ConsoleCommand(
+            documentation: "Shows dumping, pathfinding, and terrain telemetry from the unified TajsProfiler probe pipeline.",
+            customCommandName: "tajs_profiler_dumping")]
+        public string ProfilerDumping() => GetStats();
+
+        [ConsoleCommand(
             documentation: "Compatibility alias for the dumping-search and path-finding diagnostics.",
             customCommandName: "tajs_dump_pf_stats")]
         public string GetPathfindingStats() => GetStats();
@@ -534,6 +521,11 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 Volatile.Write(ref s_profileState, (int)sessionState);
             }
 
+            RuntimeTelemetry.Publish(
+                s_profileStartedEvent,
+                active.StartTimestamp,
+                RuntimeTracePhaseContext.CurrentPhase);
+
             return requestedWarmupSeconds > 0.0
                 ? $"Dump profile '{active.Label}' armed: warmup={FormatSeconds(requestedWarmupSeconds)}, recording={FormatSeconds(requestedSeconds)}."
                 : $"Dump profile '{active.Label}' recording for {FormatSeconds(requestedSeconds)}.";
@@ -578,6 +570,10 @@ namespace TajsCOI.Profiler.Probes.Dumping
             }
 
             PublishCompletedProfile(completed, false);
+            RuntimeTelemetry.Publish(
+                s_profileStoppedEvent,
+                Stopwatch.GetTimestamp(),
+                RuntimeTracePhaseContext.CurrentPhase);
             return $"Dump profile '{completed.Label}' stopped and stored.";
         }
 
@@ -596,6 +592,10 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 string label = s_activeProfile.Label;
                 s_activeProfile = null;
                 Volatile.Write(ref s_profileState, (int)ProfileState.Idle);
+                RuntimeTelemetry.Publish(
+                    s_profileStoppedEvent,
+                    Stopwatch.GetTimestamp(),
+                    RuntimeTracePhaseContext.CurrentPhase);
                 return $"Dump profile '{label}' cancelled; no completed profile was stored.";
             }
         }
@@ -848,12 +848,22 @@ namespace TajsCOI.Profiler.Probes.Dumping
             {
                 if (method.Name == "TryCreateAndEnqueueJob" && !method.IsStatic)
                 {
-                    PatchCaller(harmony, method, nameof(BeginDumpingJob), "DumpingJob.Factory.TryCreateAndEnqueueJob");
+                    PatchCaller(
+                        harmony,
+                        method,
+                        nameof(BeginDumpingJobFactory),
+                        "DumpingJob.Factory.TryCreateAndEnqueueJob",
+                        nameof(AfterDumpingJobFactory));
                 }
             }
         }
 
-        private static void PatchCaller(Harmony harmony, MethodInfo? method, string prefixName, string label)
+        private static void PatchCaller(
+            Harmony harmony,
+            MethodInfo? method,
+            string prefixName,
+            string label,
+            string? postfixName = null)
         {
             if (method is null)
             {
@@ -865,7 +875,10 @@ namespace TajsCOI.Profiler.Probes.Dumping
             {
                 harmony.Patch(
                     method,
-                    new HarmonyMethod(typeof(DumpSearchDiagnosticsService), prefixName),
+                    prefix: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), prefixName),
+                    postfix: postfixName is null
+                        ? null
+                        : new HarmonyMethod(typeof(DumpSearchDiagnosticsService), postfixName),
                     finalizer: new HarmonyMethod(typeof(DumpSearchDiagnosticsService), nameof(EndCallerContext)));
                 Interlocked.Increment(ref s_callerPatchCount);
             }
@@ -960,6 +973,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 stats.RecordCallStart();
                 Interlocked.Increment(ref s_totalCalls);
                 Interlocked.Increment(ref s_currentCalls);
+                RuntimeTelemetry.Increment(DumpingCallsCounter);
                 __state = new DumpSearchCallState(context);
             }
             catch (Exception ex)
@@ -1113,20 +1127,36 @@ namespace TajsCOI.Profiler.Probes.Dumping
             UpdateWorstCall(context, elapsedTicks, candidateDesignations, candidateCalls, cacheSummary, residualTicks);
             Interlocked.Add(ref s_currentPfSearchElapsedTicks, elapsedTicks);
             UpdateMax(ref s_currentPfMaxIndividualSearchElapsedTicks, elapsedTicks);
+            RuntimeTelemetry.Add(PathfindingTimeCounter, elapsedTicks);
 
             if (hasResult)
             {
                 if (result)
                 {
                     Interlocked.Increment(ref s_totalTrueResults);
+                    RuntimeTelemetry.Increment(DumpingTrueResultsCounter);
                 }
                 else
                 {
                     Interlocked.Increment(ref s_totalFalseResults);
+                    RuntimeTelemetry.Increment(DumpingFalseResultsCounter);
                 }
 
                 Interlocked.Add(ref s_totalElapsedTicks, elapsedTicks);
+                RuntimeTelemetry.Add(DumpingTimeCounter, elapsedTicks);
                 UpdateMax(ref s_maxElapsedTicks, elapsedTicks);
+            }
+            else
+            {
+                RuntimeTelemetry.Increment(DumpingFailuresCounter);
+            }
+
+            if (elapsedTicks >= Stopwatch.Frequency * 10 / 1000)
+            {
+                RuntimeTelemetry.Publish(
+                    s_largeSearchEvent,
+                    context.StartTimestamp,
+                    RuntimeTracePhaseContext.CurrentPhase);
             }
 
             if (candidateCalls > 0)
@@ -1143,6 +1173,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
         {
             Interlocked.Increment(ref s_currentPfEnqueues);
             Interlocked.Increment(ref s_totalPfEnqueues);
+            RuntimeTelemetry.Increment(PathfindingEnqueuesCounter);
         }
 
         private static void BeginPathFindingTick()
@@ -1267,6 +1298,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
             {
                 long completedTimestamp = Stopwatch.GetTimestamp();
                 long elapsedTicks = Math.Max(0, completedTimestamp - context.StartTimestamp);
+                RuntimeTelemetry.Increment(TerrainEligibleCacheCallsCounter);
                 if (context.IsPerTower)
                 {
                     Interlocked.Increment(ref s_towerEligibleCacheCalls);
@@ -1361,7 +1393,11 @@ namespace TajsCOI.Profiler.Probes.Dumping
             return __exception;
         }
 
-        private static void BeforeNearbyEligibility() => s_currentSearchContext?.RecordNearbyDesignationScanned();
+        private static void BeforeNearbyEligibility()
+        {
+            RuntimeTelemetry.Increment(TerrainNearbyChecksCounter);
+            s_currentSearchContext?.RecordNearbyDesignationScanned();
+        }
 
         private static void AfterNearbyEligibility(bool __result)
         {
@@ -1405,6 +1441,10 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 if (completed is not null)
                 {
                     PublishCompletedProfile(completed, true);
+                    RuntimeTelemetry.Publish(
+                        s_profileStoppedEvent,
+                        Stopwatch.GetTimestamp(),
+                        RuntimeTracePhaseContext.CurrentPhase);
                 }
             }
             catch (Exception ex)
@@ -1591,12 +1631,16 @@ namespace TajsCOI.Profiler.Probes.Dumping
             Interlocked.Exchange(ref s_lastPfMaxIndividualSearchElapsedTicks, 0);
             Interlocked.Exchange(ref s_peakPfMaxIndividualSearchElapsedTicks, 0);
             Interlocked.Exchange(ref s_peakPfSearchCalls, 0);
-            Interlocked.Exchange(ref s_timelinePreviousCalls, 0);
-            Interlocked.Exchange(ref s_timelinePreviousTrueResults, 0);
-            Interlocked.Exchange(ref s_timelinePreviousFalseResults, 0);
-            Interlocked.Exchange(ref s_timelinePreviousElapsedTicks, 0);
-            Interlocked.Exchange(ref s_timelinePreviousPfEnqueues, 0);
-            Interlocked.Exchange(ref s_timelineBaselineEstablished, 0);
+            RuntimeTelemetry.Reset(DumpingJobsCreatedCounter);
+            RuntimeTelemetry.Reset(DumpingCallsCounter);
+            RuntimeTelemetry.Reset(DumpingTrueResultsCounter);
+            RuntimeTelemetry.Reset(DumpingFalseResultsCounter);
+            RuntimeTelemetry.Reset(DumpingTimeCounter);
+            RuntimeTelemetry.Reset(PathfindingEnqueuesCounter);
+            RuntimeTelemetry.Reset(PathfindingTimeCounter);
+            RuntimeTelemetry.Reset(DumpingFailuresCounter);
+            RuntimeTelemetry.Reset(TerrainEligibleCacheCallsCounter);
+            RuntimeTelemetry.Reset(TerrainNearbyChecksCounter);
         }
 
         private static void ResetDumpSearchStats()
@@ -1718,6 +1762,19 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
         private static void BeginDumpingJob(out CallerContextState __state) => __state = EnterCaller(SearchCaller.DumpingJob);
 
+        private static void BeginDumpingJobFactory(out CallerContextState __state)
+        {
+            __state = EnterCaller(SearchCaller.DumpingJob);
+        }
+
+        private static void AfterDumpingJobFactory(bool __result)
+        {
+            if (__result)
+            {
+                RuntimeTelemetry.Increment(DumpingJobsCreatedCounter);
+            }
+        }
+
         private static CallerContextState EnterCaller(SearchCaller caller)
         {
             var state = new CallerContextState(s_currentCaller);
@@ -1754,18 +1811,30 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 ReadInt(ref s_callerPatchCount) > 0 &&
                 ReadInt(ref s_cachePatchCount) == 2 &&
                 ReadInt(ref s_breakdownPatchCount) > 0;
+            bool telemetryComplete =
+                DumpingJobsCreatedCounter.IsValid &&
+                DumpingCallsCounter.IsValid &&
+                DumpingTrueResultsCounter.IsValid &&
+                DumpingFalseResultsCounter.IsValid &&
+                DumpingTimeCounter.IsValid &&
+                PathfindingEnqueuesCounter.IsValid &&
+                PathfindingTimeCounter.IsValid &&
+                DumpingFailuresCounter.IsValid &&
+                TerrainEligibleCacheCallsCounter.IsValid &&
+                TerrainNearbyChecksCounter.IsValid;
             CompatibilityState state = !rootPatched
                 ? CompatibilityState.Disabled
-                : optionalPatchesComplete
+                : optionalPatchesComplete && telemetryComplete
                     ? CompatibilityState.Compatible
                     : CompatibilityState.Degraded;
             string observed =
                 $"root={rootPatched}, PF tick={ReadInt(ref s_tickBoundaryPatchApplied) != 0}, " +
                 $"PF enqueue={ReadInt(ref s_pfEnqueuePatchApplied) != 0}, callers={ReadInt(ref s_callerPatchCount)}, " +
-                $"cache={ReadInt(ref s_cachePatchCount)}, breakdown={ReadInt(ref s_breakdownPatchCount)}";
+                $"cache={ReadInt(ref s_cachePatchCount)}, breakdown={ReadInt(ref s_breakdownPatchCount)}, " +
+                $"telemetry={telemetryComplete}, registered-counters={RuntimeTelemetry.CounterCount}";
             string reason = state switch
             {
-                CompatibilityState.Compatible => "All required and optional dumping instrumentation resolved.",
+                CompatibilityState.Compatible => "All required and optional dumping instrumentation and shared telemetry resolved.",
                 CompatibilityState.Degraded => "The root probe is active, but optional instrumentation is incomplete.",
                 _ => "The required dumping-search signature or root patch could not be installed.",
             };

@@ -65,18 +65,43 @@ callback order and exception behavior, and ranks total, share of captured callba
 p95, p99, maximum, slow-call count, and the timestamp of the worst invocation. The separate
 `tajs_profiler_deep_worst` view ranks individual callback executions by duration, which exposes
 rare hitch contributors that total-time ranking can hide. Unsupported callback forms fail
-independently and are shown in compatibility status.
+independently and are shown in compatibility status. Phase-registration conflicts are counted in
+compatibility output instead of silently leaving users with unexplained `UNKNOWN` labels.
+
+The runtime summary includes the last deep-capture callback count and measured instrumentation
+overhead per captured frame. `tajs_profiler_deep_overhead_bench` compares a direct callback,
+the deep-disabled wrapper, and the deep-enabled wrapper; it uses an isolated temporary span ring
+and does not replace an existing capture.
+
+Subsystem probes publish through a bounded Core-owned telemetry store. Counter registration happens
+once during probe setup; hot-path publication is an atomic numeric add/increment with no strings,
+LINQ, locks, or per-call allocation. Frame capture copies counter deltas into fixed value fields,
+so the runtime summary, spike records, subsystem report, and trace export consume the same timeline
+model. Sparse probe events use a preallocated ring and are intended for state changes or threshold
+crossings such as dumping-profile transitions and unusually long dump searches.
+
+The dumping probe owns the COI-specific Harmony bindings and detailed search breakdowns, while
+Core owns the shared counter/event transport. `tajs_profiler_subsystems` aggregates the published
+counters over a paused-excluded interval, and `tajs_profiler_dumping` is the unified-prefixed entry
+point for the detailed dumping view. The existing `tajs_dump_*` commands remain compatibility
+views for product/path/cache breakdowns and timed dump comparisons; their duplicate timed history
+is retained until a future shared interval-comparison view can represent those probe-specific
+dimensions without losing detail. Published duration counters are cumulative observed work, not
+exclusive wall time; nested or concurrent work can therefore exceed the enclosing frame duration.
 
 The exporter writes Chrome trace-event JSON with main/simulation phase spans, callback spans,
-markers, memory/GC counters, and interval dumping/pathfinding counters. Unsupported values are emitted as
-`"unavailable"`, never as synthetic zeroes. GPU classification remains unavailable unless a
-trusted player-build telemetry surface is added.
+markers, sparse probe events, memory/GC counters, and interval-named subsystem counters. Duration
+counters are emitted in milliseconds. Unsupported values are emitted as `"unavailable"`, never as
+synthetic zeroes. GPU classification remains unavailable unless a trusted player-build telemetry
+surface is added.
 
 ## Commands
 
 ```text
 tajs_profiler_status
 tajs_profiler_runtime [seconds]
+tajs_profiler_subsystems [seconds]
+tajs_profiler_dumping
 tajs_profiler_spikes [count]
 tajs_profiler_runtime_raw [count]
 tajs_profiler_runtime_clear
@@ -85,6 +110,7 @@ tajs_profiler_deep_start [seconds]
 tajs_profiler_deep_stop
 tajs_profiler_deep_report [count]
 tajs_profiler_deep_worst [count]
+tajs_profiler_deep_overhead_bench [iterations]
 tajs_profiler_trace_export [name]
 tajs_profiler_mark <label>
 tajs_profiler_overhead_bench [iterations]
