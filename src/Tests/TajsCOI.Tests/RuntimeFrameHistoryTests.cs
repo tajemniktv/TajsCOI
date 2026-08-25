@@ -1,0 +1,197 @@
+// Taj's COI Mods | RuntimeFrameHistoryTests.cs
+// Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
+// All Rights Reserved.
+
+using System;
+using System.Linq;
+using System.Reflection;
+using TajsCOI.Profiler.Core;
+using Xunit;
+
+namespace TajsCOI.Tests
+{
+    public sealed class RuntimeFrameHistoryTests
+    {
+        [Fact]
+        public void HistoryWrapsWithoutGrowingAndPreservesChronologicalSamples()
+        {
+            var history = new RuntimeFrameHistory(3);
+            for (int index = 1; index <= 5; index++)
+            {
+                history.Record(
+                    index,
+                    new GameLoopTimingSnapshot(renderTicks: index),
+                    new GameRunnerTimingSnapshot(updateTicks: index),
+                    simSpeedMult: 1,
+                    simStepsPerUpdate: 1,
+                    budgetedSimSteps: 1,
+                    simPaused: false);
+            }
+
+            Assert.Equal(3, history.Count);
+            Assert.Equal(new long[] { 3, 4, 5 }, history.SnapshotRecent(10).Select(x => x.Sequence));
+        }
+
+        [Fact]
+        public void SummaryCalculatesPercentilesOnDemand()
+        {
+            var history = new RuntimeFrameHistory(8);
+            for (int index = 1; index <= 8; index++)
+            {
+                history.Record(
+                    index,
+                    new GameLoopTimingSnapshot(renderTicks: index),
+                    new GameRunnerTimingSnapshot(updateTicks: index),
+                    simSpeedMult: 1,
+                    simStepsPerUpdate: 1,
+                    budgetedSimSteps: 1,
+                    simPaused: false);
+            }
+
+            RuntimeFrameSummary summary = history.SummarizeRecent(100);
+
+            Assert.Equal(8, summary.Count);
+            Assert.Equal(4, summary.Frame.P50Ticks);
+            Assert.Equal(8, summary.Frame.P95Ticks);
+            Assert.Equal(8, summary.Frame.P99Ticks);
+            Assert.Equal(36, summary.Frame.TotalTicks);
+            Assert.Equal(8, summary.Latest.Sequence);
+        }
+
+        [Fact]
+        public void ClassificationDistinguishesWaitingSimulationAndMainRender()
+        {
+            RuntimeFrameSample waiting = new RuntimeFrameSample(
+                1,
+                1,
+                new GameLoopTimingSnapshot(
+                    renderTicks: 10,
+                    waitForSimTicks: 60),
+                new GameRunnerTimingSnapshot(updateTicks: 80, wasOvertime: true, overtimeTicks: 60),
+                1,
+                1,
+                1,
+                false);
+            RuntimeFrameSample main = new RuntimeFrameSample(
+                2,
+                2,
+                new GameLoopTimingSnapshot(renderTicks: 60),
+                new GameRunnerTimingSnapshot(updateTicks: 60),
+                1,
+                1,
+                1,
+                false);
+            RuntimeFrameSample sim = new RuntimeFrameSample(
+                3,
+                3,
+                new GameLoopTimingSnapshot(simUpdateTicks: 60),
+                new GameRunnerTimingSnapshot(updateTicks: 60, simTicks: 60),
+                15,
+                15,
+                15,
+                false);
+
+            Assert.Equal(RuntimeFrameClassification.WaitingForSimulation, waiting.Classification);
+            Assert.Equal(RuntimeFrameClassification.MainRenderBound, main.Classification);
+            Assert.Equal(RuntimeFrameClassification.SimulationBound, sim.Classification);
+        }
+
+        [Fact]
+        public void RawSnapshotRetainsAllMajorPhasesWithoutResolverObjects()
+        {
+            var history = new RuntimeFrameHistory(2);
+            history.Record(
+                10,
+                new GameLoopTimingSnapshot(
+                    inputTicks: 1,
+                    syncTicks: 2,
+                    renderTicks: 3,
+                    waitForSimTicks: 4,
+                    simUpdateTicks: 5),
+                new GameRunnerTimingSnapshot(updateTicks: 15),
+                simSpeedMult: 20,
+                simStepsPerUpdate: 20,
+                budgetedSimSteps: 20,
+                simPaused: false);
+
+            RuntimeFrameSample sample = history.SnapshotRecent(1).Single();
+
+            Assert.Equal(1, sample.Timings.InputTicks);
+            Assert.Equal(2, sample.Timings.SyncTicks);
+            Assert.Equal(3, sample.Timings.RenderTicks);
+            Assert.Equal(4, sample.Timings.WaitForSimTicks);
+            Assert.Equal(5, sample.Timings.SimUpdateTicks);
+            Assert.Equal(20, sample.SimSpeedMult);
+            Assert.False(sample.SimPaused);
+        }
+
+        [Fact]
+        public void CurrentGameLoopTimingsShapeBuildsValidatedZeroAllocationReader()
+        {
+            bool available = GameLoopTimingsAccess.TryCreate(out GameLoopTimingsAccess? access, out string reason);
+
+            Assert.True(available, reason);
+            Assert.NotNull(access);
+            Assert.Equal(2048, access!.BufferSize);
+            Assert.True(access.IsAvailable);
+
+            Type timingsType = typeof(Mafi.Core.GameLoop.IGameLoopEvents).Assembly
+                .GetType("Mafi.Core.GameLoop.GameLoopTimings", throwOnError: true)!;
+            Type eventType = timingsType.GetNestedType("Event", BindingFlags.Public | BindingFlags.NonPublic)!;
+            MethodInfo begin = timingsType.GetMethod("Begin", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!;
+            MethodInfo end = timingsType.GetMethod("End", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!;
+            object renderEvent = Enum.ToObject(eventType, 5);
+            end.Invoke(null, new[] { begin.Invoke(null, new[] { renderEvent }) });
+            end.Invoke(null, new[] { begin.Invoke(null, new[] { renderEvent }) });
+
+            Assert.True(access.ReadLatest().RenderTicks > 0);
+        }
+
+        [Fact]
+        public void RunnerTimingAccessorCompilesGettersOnceAndConvertsBroadDurations()
+        {
+            var fake = new FakeGameRunner
+            {
+                LatestUpdateDuration = System.TimeSpan.FromMilliseconds(12),
+                LatestInputUpdateDuration = System.TimeSpan.FromMilliseconds(1),
+                LatestSyncDuration = System.TimeSpan.FromMilliseconds(2),
+                LatestRenderUpdateDuration = System.TimeSpan.FromMilliseconds(3),
+                LatestSimUpdateDuration = System.TimeSpan.FromMilliseconds(4),
+                LatestSimUpdateWasOvertime = true,
+                LatestSimUpdateOvertimeDuration = System.TimeSpan.FromMilliseconds(5),
+                RunSimulationInBackgroundThread = true,
+                SimUpdateCount = 6,
+                SimStepsSinceLoad = 7,
+            };
+
+            GameRunnerTimingAccess? access = GameRunnerTimingAccess.TryCreate(fake, out string reason);
+
+            Assert.NotNull(access);
+            Assert.True(access!.IsAvailable, reason);
+            GameRunnerTimingSnapshot snapshot = access.Read();
+            Assert.True(snapshot.UpdateTicks > 0);
+            Assert.True(snapshot.InputTicks > 0);
+            Assert.True(snapshot.RenderTicks > 0);
+            Assert.True(snapshot.SimTicks > 0);
+            Assert.True(snapshot.WasOvertime);
+            Assert.True(snapshot.OvertimeTicks > 0);
+            Assert.True(snapshot.RunSimulationInBackgroundThread);
+            Assert.Equal(6, snapshot.SimUpdateCount);
+            Assert.Equal(7, snapshot.SimStepsSinceLoad);
+        }
+
+        private sealed class FakeGameRunner
+        {
+            public System.TimeSpan LatestUpdateDuration { get; set; }
+            public System.TimeSpan LatestInputUpdateDuration { get; set; }
+            public System.TimeSpan LatestSyncDuration { get; set; }
+            public System.TimeSpan LatestRenderUpdateDuration { get; set; }
+            public System.TimeSpan LatestSimUpdateDuration { get; set; }
+            public bool LatestSimUpdateWasOvertime { get; set; }
+            public System.TimeSpan LatestSimUpdateOvertimeDuration { get; set; }
+            public bool RunSimulationInBackgroundThread { get; set; }
+            public int SimUpdateCount { get; set; }
+            public int SimStepsSinceLoad { get; set; }
+        }
+    }
+}
