@@ -147,11 +147,11 @@ namespace TajsCOI.Tweaks
 
         internal static void Install(DependencyResolver resolver, ITajsSettings settings)
         {
+            // TajsTweaksFeatureHost is itself being resolved when this method runs. Resolving
+            // HudController here would recurse through the gameplay dependency graph. The host
+            // already calls Apply after construction and on render updates, so defer discovery
+            // until the resolver is fully unlocked.
             s_settings = settings;
-            if (!resolver.TryResolve(out HudController _))
-            {
-                throw new MissingMemberException(typeof(HudController).FullName, "HudController dependency");
-            }
         }
 
         internal static void Apply(DependencyResolver resolver, ITajsSettings settings)

@@ -36,7 +36,6 @@ namespace TajsCOI.Tweaks
         private readonly DependencyResolver m_resolver;
         private readonly ITajsSettings m_settings;
         private readonly ITajsLogger m_log;
-        private readonly Harmony m_harmony;
         private Option<TajsWorldOperationsWindow> m_worldOperationsWindow;
         private Option<TajsFleetManagementWindow> m_fleetManagementWindow;
         private int m_renderTick;
@@ -49,7 +48,6 @@ namespace TajsCOI.Tweaks
             TajsTweaksSettingsCatalog.RegisterAll(settings);
             TajsTweaksRuntimeState.Load(settings);
             settings.Changed += OnSettingChanged;
-            m_harmony = new Harmony(HarmonyId);
             gameLoop.RenderUpdateEnd.AddNonSaveable(this, OnRenderUpdateEnd);
             gameLoop.Terminate.AddNonSaveable(this, OnTerminate);
 
@@ -81,9 +79,10 @@ namespace TajsCOI.Tweaks
 
         private void TryInstall(ITajsRuntime runtime, string id, Action<Harmony> install)
         {
+            Harmony harmony = new Harmony(HarmonyId + "." + id);
             try
             {
-                install(m_harmony);
+                install(harmony);
                 runtime.ReportCompatibility(new CompatibilityReport(
                     TajsTweaksSettingsCatalog.ModId,
                     id,
@@ -94,6 +93,18 @@ namespace TajsCOI.Tweaks
             }
             catch (Exception exception)
             {
+                // Features install several patches in sequence. Roll back this feature's
+                // owner if a later compatibility seam fails, so fail-open really means no
+                // partial behavior remains. Each feature has its own Harmony owner for this
+                // transaction; earlier features are not disturbed.
+                try
+                {
+                    harmony.UnpatchAll(harmony.Id);
+                }
+                catch (Exception rollbackException)
+                {
+                    m_log.Exception(rollbackException, "Feature '" + id + "' rollback failed.");
+                }
                 m_log.Exception(exception, "Feature '" + id + "' failed open during installation.");
                 runtime.ReportCompatibility(new CompatibilityReport(
                     TajsTweaksSettingsCatalog.ModId,

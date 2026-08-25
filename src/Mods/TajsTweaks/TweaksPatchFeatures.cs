@@ -74,14 +74,26 @@ namespace TajsCOI.Tweaks
                 postfix: new HarmonyMethod(typeof(TweaksLinePlacementFeature), nameof(TrimLinePositions)));
         }
 
-        private static bool ForceAxisAlignedPath(object __instance, Tile3i start, Tile3i cursor, Lyst<Tile3i> results)
+        private static bool ForceAxisAlignedPath(object __instance, object[] __args)
         {
             if (!TajsTweaksRuntimeState.LinePlacement)
             {
                 return true;
             }
 
-            s_axisMethod?.Invoke(__instance, new object[] { start, cursor, results });
+            if (__args.Length != 3 ||
+                __args[0] is not Tile3i start ||
+                __args[1] is not Tile3i cursor ||
+                __args[2] is not Lyst<Tile3i> results ||
+                s_axisMethod is null)
+            {
+                // The supported 0.8.7b paths all have the same three argument types, but the
+                // second parameter is named "end" on the free-angle path and "cursor" on the
+                // other paths. __args deliberately binds by position so both remain compatible.
+                return true;
+            }
+
+            s_axisMethod.Invoke(__instance, new object[] { start, cursor, results });
             return false;
         }
 
@@ -492,17 +504,23 @@ namespace TajsCOI.Tweaks
                 {
                     continue;
                 }
-                foreach (MethodInfo method in type.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
+
+                FieldInfo[] fields = type.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Where(x => x.Name.Contains("MAX_AREA", StringComparison.Ordinal))
+                    .ToArray();
+                if (fields.Length == 0)
+                {
+                    continue;
+                }
+
+                foreach (MethodInfo method in type.GetMethods(
+                    BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
                 {
                     if (method.IsAbstract || method.ContainsGenericParameters || method.GetMethodBody() is null)
                     {
                         continue;
                     }
-                    byte[]? il = method.GetMethodBody()!.GetILAsByteArray();
-                    FieldInfo[] fields = type.GetFields(BindingFlags.Static | BindingFlags.NonPublic)
-                        .Where(x => x.Name.Contains("MAX_AREA", StringComparison.Ordinal))
-                        .ToArray();
-                    if (fields.Length > 0 && il is not null && il.Length > 0)
+                    if (UsesAreaLimit(method, fields))
                     {
                         harmony.Patch(method, transpiler: new HarmonyMethod(typeof(TweaksDesignationFeature), nameof(ReplaceLimits)));
                     }
@@ -515,6 +533,18 @@ namespace TajsCOI.Tweaks
             {
                 harmony.Patch(render, prefix: new HarmonyMethod(typeof(TweaksDesignationFeature), nameof(RenderPrefix)));
             }
+        }
+
+        private static bool UsesAreaLimit(MethodInfo method, IReadOnlyCollection<FieldInfo> fields)
+        {
+            foreach (CodeInstruction instruction in PatchProcessor.GetOriginalInstructions(method, null))
+            {
+                if (instruction.opcode == OpCodes.Ldsfld && instruction.operand is FieldInfo field && fields.Contains(field))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static IEnumerable<CodeInstruction> ReplaceLimits(IEnumerable<CodeInstruction> instructions)
