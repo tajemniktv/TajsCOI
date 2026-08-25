@@ -1,0 +1,855 @@
+// Taj's COI Mods | DeepCallbackRecorder.cs
+// Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
+// All Rights Reserved.
+
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using HarmonyLib;
+using Mafi;
+using Mafi.Core.GameLoop;
+using Mafi.Core.Simulation;
+
+namespace TajsCOI.Profiler.Core
+{
+    internal static class RuntimeTracePhase
+    {
+        internal const int Unknown = 0;
+        internal const int SyncStart = 1;
+        internal const int Sync = 2;
+        internal const int SyncEnd = 3;
+        internal const int Input = 4;
+        internal const int InputEnd = 5;
+        internal const int RenderAfterSync = 6;
+        internal const int Render = 7;
+        internal const int RenderEnd = 8;
+        internal const int SimSync = 9;
+        internal const int SimCommands = 10;
+        internal const int SimAfterSync = 11;
+        internal const int SimStart = 12;
+        internal const int SimParallelStart = 13;
+        internal const int SimUpdate = 14;
+        internal const int SimParallelEnd = 15;
+        internal const int SimEnd = 16;
+        internal const int SimReadState = 17;
+        internal const int SimEndForUi = 18;
+        internal const int SimPausedUi = 19;
+        internal const int SimIdle = 20;
+
+        internal static string Name(int phaseId)
+        {
+            switch (phaseId)
+            {
+                case SyncStart: return "SYNC_START";
+                case Sync: return "SYNC";
+                case SyncEnd: return "SYNC_END";
+                case Input: return "INPUT";
+                case InputEnd: return "INPUT_END";
+                case RenderAfterSync: return "RENDER_AFTER_SYNC";
+                case Render: return "RENDER";
+                case RenderEnd: return "RENDER_END";
+                case SimSync: return "SIM_SYNC";
+                case SimCommands: return "SIM_CMD";
+                case SimAfterSync: return "SIM_AFTER_SYNC";
+                case SimStart: return "SIM_START";
+                case SimParallelStart: return "SIM_PARALLEL_START";
+                case SimUpdate: return "SIM_UPDATE";
+                case SimParallelEnd: return "SIM_PARALLEL_END";
+                case SimEnd: return "SIM_END";
+                case SimReadState: return "SIM_READ_STATE";
+                case SimEndForUi: return "SIM_END_FOR_UI";
+                case SimPausedUi: return "SIM_PAUSED_UI";
+                case SimIdle: return "SIM_IDLE";
+                default: return "UNKNOWN";
+            }
+        }
+
+        internal static bool IsSimulation(int phaseId) => phaseId >= SimSync;
+    }
+
+    internal readonly struct DeepTracingPatchSummary
+    {
+        internal DeepTracingPatchSummary(int expectedMethods, int patchedMethods, int replacedInvocations, int failures)
+        {
+            ExpectedMethods = expectedMethods;
+            PatchedMethods = patchedMethods;
+            ReplacedInvocations = replacedInvocations;
+            Failures = failures;
+        }
+
+        internal int ExpectedMethods { get; }
+        internal int PatchedMethods { get; }
+        internal int ReplacedInvocations { get; }
+        internal int Failures { get; }
+        internal bool IsAvailable => PatchedMethods > 0 && ReplacedInvocations > 0;
+        internal bool IsComplete => ExpectedMethods > 0 && PatchedMethods == ExpectedMethods && Failures == 0;
+    }
+
+    internal readonly struct DeepCaptureWindow
+    {
+        internal DeepCaptureWindow(bool active, long startTimestamp, long endTimestamp, bool automatic)
+        {
+            WasActive = active;
+            StartTimestamp = startTimestamp;
+            EndTimestamp = endTimestamp;
+            Automatic = automatic;
+        }
+
+        internal bool WasActive { get; }
+        internal long StartTimestamp { get; }
+        internal long EndTimestamp { get; }
+        internal bool Automatic { get; }
+    }
+
+    internal readonly struct CallbackToken
+    {
+        internal CallbackToken(
+            long startTimestamp,
+            int callbackId,
+            int phaseId,
+            int threadId,
+            long sequence,
+            int generation)
+        {
+            StartTimestamp = startTimestamp;
+            CallbackId = callbackId;
+            PhaseId = phaseId;
+            ThreadId = threadId;
+            Sequence = sequence;
+            Generation = generation;
+        }
+
+        internal long StartTimestamp { get; }
+        internal int CallbackId { get; }
+        internal int PhaseId { get; }
+        internal int ThreadId { get; }
+        internal long Sequence { get; }
+        internal int Generation { get; }
+        internal bool IsActive => StartTimestamp > 0 && CallbackId > 0;
+    }
+
+    /// <summary>
+    ///     Owns the opt-in callback recorder and its process-scoped Harmony patches. The only
+    ///     process-scoped references to scene objects are weak loop-context references used to
+    ///     name the current phase; callback owners are converted to strings/IDs immediately.
+    /// </summary>
+    internal static class DeepCallbackRecorder
+    {
+        private const string HarmonyId = "TajsCOI.Profiler.DeepTracing";
+        private const int SpanCapacityPerThread = 65536;
+        private const int MarkerCapacity = 128;
+        private const int MetadataCapacity = 4096;
+        private const int MaximumTraceThreads = 64;
+        private static readonly long SlowCallbackTicks = Stopwatch.Frequency * 2 / 1000;
+
+        private static readonly object s_patchGate = new object();
+        private static readonly object s_metadataGate = new object();
+        private static readonly object s_markerGate = new object();
+        private static readonly ConcurrentDictionary<int, TraceSpanRing> s_rings = new();
+        private static readonly ConcurrentDictionary<Type, int> s_eventPhases = new();
+        private static readonly ConcurrentDictionary<MethodBase, int> s_methodPhases = new();
+        private static readonly Dictionary<CallbackMetadataKey, CallbackMetadataSnapshot> s_metadataByKey = new();
+        private static readonly List<CallbackMetadataSnapshot> s_metadata = new();
+        private static readonly List<RuntimeTraceMarker> s_markers = new(MarkerCapacity);
+        private static readonly ConditionalWeakTable<object, OwnerMetadata> s_ownerMetadata = new();
+        private static readonly ConditionalWeakTable<Delegate, CallbackMetadataCache> s_delegateMetadata = new();
+        [ThreadStatic]
+        private static TraceSpanRing? s_threadRing;
+        [ThreadStatic]
+        private static int s_threadRingId;
+        private static int s_metadataCount;
+        private static readonly MethodInfo s_invokeAction = typeof(DeepCallbackRecorder).GetMethod(
+            nameof(InvokeWithOwner), BindingFlags.Static | BindingFlags.NonPublic, null,
+            new[] { typeof(object), typeof(Action), typeof(int) }, null)!;
+        private static readonly MethodInfo s_invokeActionWithoutOwner = typeof(DeepCallbackRecorder).GetMethod(
+            nameof(InvokeWithoutOwner), BindingFlags.Static | BindingFlags.NonPublic, null,
+            new[] { typeof(Action), typeof(int) }, null)!;
+        private static readonly MethodInfo s_invokeAction1 = GetGenericWrapper(nameof(InvokeWithOwner), 1);
+        private static readonly MethodInfo s_invokeAction1WithoutOwner = GetGenericWrapper(nameof(InvokeWithoutOwner), 1);
+        private static readonly MethodInfo s_invokeAction2 = GetGenericWrapper(nameof(InvokeWithOwner), 2);
+        private static readonly MethodInfo s_invokeAction2WithoutOwner = GetGenericWrapper(nameof(InvokeWithoutOwner), 2);
+
+        private static int s_patchAttempted;
+        private static DeepTracingPatchSummary s_patchSummary;
+        private static int s_active;
+        private static long s_captureStartTimestamp;
+        private static long s_captureEndTimestamp;
+        private static int s_captureGeneration;
+        private static bool s_captureAutomatic;
+        private static long s_spanSequence;
+
+        internal static DeepTracingPatchSummary Initialize(IGameLoopEvents gameLoop, SimLoopEvents simLoop)
+        {
+            if (Volatile.Read(ref s_patchAttempted) != 0)
+            {
+                return s_patchSummary;
+            }
+
+            lock (s_patchGate)
+            {
+                if (s_patchAttempted != 0)
+                {
+                    return s_patchSummary;
+                }
+
+                var eventTypes = new HashSet<Type>();
+                AddEventType(eventTypes, gameLoop.SyncUpdateStart, RuntimeTracePhase.SyncStart);
+                AddEventType(eventTypes, gameLoop.SyncUpdate, RuntimeTracePhase.Sync);
+                AddEventType(eventTypes, gameLoop.SyncUpdateEnd, RuntimeTracePhase.SyncEnd);
+                AddEventType(eventTypes, gameLoop.InputUpdate, RuntimeTracePhase.Input);
+                AddEventType(eventTypes, gameLoop.InputUpdateEnd, RuntimeTracePhase.InputEnd);
+                AddEventType(eventTypes, gameLoop.RenderUpdateAfterSync, RuntimeTracePhase.RenderAfterSync);
+                AddEventType(eventTypes, gameLoop.RenderUpdate, RuntimeTracePhase.Render);
+                AddEventType(eventTypes, gameLoop.RenderUpdateEnd, RuntimeTracePhase.RenderEnd);
+                AddEventType(eventTypes, gameLoop.Terminate, RuntimeTracePhase.Unknown);
+                AddEventType(eventTypes, simLoop.Sync, RuntimeTracePhase.SimSync);
+                AddEventType(eventTypes, simLoop.UpdateBeforeCmdProc, RuntimeTracePhase.SimCommands);
+                AddEventType(eventTypes, simLoop.UpdateAfterCmdProc, RuntimeTracePhase.SimCommands);
+                AddEventType(eventTypes, simLoop.UpdateAfterSync, RuntimeTracePhase.SimAfterSync);
+                AddEventType(eventTypes, simLoop.UpdateStart, RuntimeTracePhase.SimStart);
+                AddEventType(eventTypes, simLoop.ParallelUpdateStart, RuntimeTracePhase.SimParallelStart);
+                AddEventType(eventTypes, simLoop.Update, RuntimeTracePhase.SimUpdate);
+                AddEventType(eventTypes, simLoop.ParallelUpdateEnd, RuntimeTracePhase.SimParallelEnd);
+                AddEventType(eventTypes, simLoop.UpdateEnd, RuntimeTracePhase.SimEnd);
+                AddEventType(eventTypes, simLoop.ReadGameStateFrequent, RuntimeTracePhase.SimReadState);
+                AddEventType(eventTypes, simLoop.UpdateEndForUi, RuntimeTracePhase.SimEndForUi);
+                AddEventType(eventTypes, simLoop.UpdateEndForUiEnd, RuntimeTracePhase.SimPausedUi);
+                AddEventType(eventTypes, simLoop.IdleUpdate, RuntimeTracePhase.SimIdle);
+
+                if (eventTypes.Count == 0)
+                {
+                    s_patchSummary = default;
+                    Volatile.Write(ref s_patchAttempted, 1);
+                    return s_patchSummary;
+                }
+
+                int patched = 0;
+                int replacements = 0;
+                int failures = 0;
+                var harmony = new Harmony(HarmonyId);
+                foreach (Type eventType in eventTypes)
+                {
+                    MethodInfo[] methods = eventType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                        .Where(x => x.Name == "Invoke" || x.Name == "InvokeTraced")
+                        .ToArray();
+                    int eventPhase = s_eventPhases.TryGetValue(eventType, out int mappedPhase)
+                        ? mappedPhase
+                        : RuntimeTracePhase.Unknown;
+                    foreach (MethodInfo method in methods)
+                    {
+                        try
+                        {
+                            s_methodPhases[method] = eventPhase;
+                            harmony.Patch(
+                                method,
+                                transpiler: new HarmonyMethod(typeof(DeepCallbackRecorder), nameof(TranspileCallbackInvocations)));
+                            patched++;
+                        }
+                        catch
+                        {
+                            failures++;
+                        }
+                    }
+                }
+
+                replacements = Volatile.Read(ref s_transpiledInvocationCount);
+                s_patchSummary = new DeepTracingPatchSummary(
+                    eventTypes.Sum(x => x.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                        .Count(y => y.Name == "Invoke" || y.Name == "InvokeTraced")),
+                    patched,
+                    replacements,
+                    failures);
+                Volatile.Write(ref s_patchAttempted, 1);
+                return s_patchSummary;
+            }
+        }
+
+        private static int s_transpiledInvocationCount;
+
+        internal static bool IsActive
+        {
+            get
+            {
+                if (Volatile.Read(ref s_active) == 0)
+                {
+                    return false;
+                }
+                if (Stopwatch.GetTimestamp() < Volatile.Read(ref s_captureEndTimestamp))
+                {
+                    return true;
+                }
+                Volatile.Write(ref s_active, 0);
+                return false;
+            }
+        }
+
+        internal static DeepCaptureWindow Start(double seconds, bool automatic, long timestamp = 0)
+        {
+            if (double.IsNaN(seconds) || double.IsInfinity(seconds) || seconds < 1.0 || seconds > 30.0)
+            {
+                return default;
+            }
+
+            long now = timestamp > 0 ? timestamp : Stopwatch.GetTimestamp();
+            long duration = (long)Math.Round(seconds * Stopwatch.Frequency, MidpointRounding.AwayFromZero);
+            lock (s_patchGate)
+            {
+                s_captureGeneration++;
+                s_captureStartTimestamp = now;
+                s_captureEndTimestamp = now + Math.Max(1, duration);
+                s_captureAutomatic = automatic;
+                Volatile.Write(ref s_active, 1);
+            }
+            lock (s_markerGate)
+            {
+                s_markers.Clear();
+            }
+            AddMarker(now, automatic ? "automatic deep capture started" : "deep capture started");
+            return new DeepCaptureWindow(true, now, now + Math.Max(1, duration), automatic);
+        }
+
+        internal static DeepCaptureWindow Stop(long timestamp = 0)
+        {
+            long now = timestamp > 0 ? timestamp : Stopwatch.GetTimestamp();
+            bool wasActive = Interlocked.Exchange(ref s_active, 0) != 0;
+            long start = Volatile.Read(ref s_captureStartTimestamp);
+            long end = now;
+            if (wasActive)
+            {
+                AddMarker(now, "deep capture stopped");
+            }
+            return new DeepCaptureWindow(wasActive, start, end, s_captureAutomatic);
+        }
+
+        internal static void AddMarker(long timestamp, string label)
+        {
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                return;
+            }
+            lock (s_markerGate)
+            {
+                if (s_markers.Count == MarkerCapacity && s_markers.Count > 0)
+                {
+                    s_markers.RemoveAt(0);
+                }
+                s_markers.Add(new RuntimeTraceMarker(timestamp, label.Trim(), Thread.CurrentThread.ManagedThreadId));
+            }
+        }
+
+        internal static RuntimeTraceMarker[] SnapshotMarkers()
+        {
+            lock (s_markerGate)
+            {
+                return s_markers.ToArray();
+            }
+        }
+
+        internal static RuntimeTraceSpan[] SnapshotSpans()
+        {
+            int generation = Volatile.Read(ref s_captureGeneration);
+            var spans = new List<RuntimeTraceSpan>();
+            foreach (TraceSpanRing ring in s_rings.Values)
+            {
+                spans.AddRange(ring.Snapshot(generation));
+            }
+            return spans
+                .OrderBy(x => x.StartTimestamp)
+                .ThenBy(x => x.Sequence)
+                .ToArray();
+        }
+
+        internal static CallbackMetadataSnapshot[] SnapshotMetadata()
+        {
+            lock (s_metadataGate)
+            {
+                return s_metadata.ToArray();
+            }
+        }
+
+        internal static CallbackMetricSnapshot[] SnapshotCallbackMetrics(int count)
+        {
+            RuntimeTraceSpan[] spans = SnapshotSpans();
+            var metrics = new Dictionary<CallbackMetricKey, CallbackMetricBuilder>();
+            foreach (RuntimeTraceSpan span in spans)
+            {
+                if (span.DurationTicks <= 0)
+                {
+                    continue;
+                }
+                var key = new CallbackMetricKey(span.CallbackId, span.PhaseId);
+                if (!metrics.TryGetValue(key, out CallbackMetricBuilder? builder))
+                {
+                    builder = new CallbackMetricBuilder();
+                    metrics.Add(key, builder);
+                }
+                builder.Add(span.DurationTicks);
+            }
+
+            CallbackMetadataSnapshot[] metadata = SnapshotMetadata();
+            var byId = metadata.ToDictionary(x => x.Id);
+            return metrics
+                .Where(x => byId.ContainsKey(x.Key.CallbackId))
+                .Select(x => x.Value.ToSnapshot(byId[x.Key.CallbackId], x.Key.PhaseId))
+                .OrderByDescending(x => x.TotalTicks)
+                .ThenByDescending(x => x.MaxTicks)
+                .Take(Math.Max(1, Math.Min(64, count)))
+                .ToArray();
+        }
+
+        internal static long MeasureReader(Func<GameLoopTimingSnapshot> reader, int iterations)
+        {
+            if (reader is null || iterations <= 0)
+            {
+                return 0;
+            }
+            long start = Stopwatch.GetTimestamp();
+            for (int i = 0; i < iterations; i++)
+            {
+                _ = reader();
+            }
+            return Stopwatch.GetTimestamp() - start;
+        }
+
+        private static void AddEventType(HashSet<Type> eventTypes, object? value, int phaseId)
+        {
+            if (value is not null)
+            {
+                Type type = value.GetType();
+                eventTypes.Add(type);
+                s_eventPhases.AddOrUpdate(
+                    type,
+                    phaseId,
+                    (_, existing) => existing == phaseId ? phaseId : RuntimeTracePhase.Unknown);
+            }
+        }
+
+        private static IEnumerable<CodeInstruction> TranspileCallbackInvocations(
+            IEnumerable<CodeInstruction> instructions,
+            MethodBase __originalMethod)
+        {
+            // Harmony supplies the dispatcher method being transpiled. Baking that validated
+            // dispatch phase into each wrapper avoids consulting the global SimLoop state from
+            // another thread; callbacks therefore keep their owning main/simulation phase even
+            // while the other loop is advancing concurrently.
+            int phaseId = s_methodPhases.TryGetValue(__originalMethod, out int mappedPhase)
+                ? mappedPhase
+                : __originalMethod.DeclaringType is not null &&
+                  s_eventPhases.TryGetValue(__originalMethod.DeclaringType, out mappedPhase)
+                    ? mappedPhase
+                    : RuntimeTracePhase.Unknown;
+            List<CodeInstruction> source = instructions.ToList();
+            var result = new List<CodeInstruction>(source.Count + 8);
+            for (int index = 0; index < source.Count; index++)
+            {
+                CodeInstruction instruction = source[index];
+                if (index >= 2 && instruction.opcode == OpCodes.Callvirt &&
+                    instruction.operand is MethodInfo invoke &&
+                    invoke.Name == "Invoke" && invoke.DeclaringType is Type delegateType &&
+                    typeof(Delegate).IsAssignableFrom(delegateType) &&
+                    TryGetCallbackField(source[index - 1], out FieldInfo? callbackField))
+                {
+                    bool hasOwner = TryGetOwnerField(source[index - 2], callbackField!, out FieldInfo? ownerField);
+                    MethodInfo? wrapper = GetWrapper(delegateType, hasOwner);
+                    if (wrapper is not null)
+                    {
+                        if (hasOwner)
+                        {
+                            // The value-load and callback-field load have already been emitted.
+                            // Replace that pair so the wrapper receives (owner, callback) in the
+                            // correct order while retaining any labels/exception blocks.
+                            CodeInstruction valueLoad = result[result.Count - 2];
+                            CodeInstruction callbackLoad = result[result.Count - 1];
+                            result.RemoveRange(result.Count - 2, 2);
+                            result.Add(new CodeInstruction(valueLoad));
+                            result.Add(new CodeInstruction(OpCodes.Ldfld, ownerField));
+                            result.Add(new CodeInstruction(valueLoad));
+                            result.Add(new CodeInstruction(callbackLoad));
+                        }
+                        result.Add(new CodeInstruction(OpCodes.Ldc_I4, phaseId));
+                        instruction = new CodeInstruction(OpCodes.Call, wrapper);
+                        Interlocked.Increment(ref s_transpiledInvocationCount);
+                    }
+                }
+                result.Add(instruction);
+            }
+            return result;
+        }
+
+        private static bool TryGetCallbackField(CodeInstruction instruction, out FieldInfo? field)
+        {
+            field = instruction.operand as FieldInfo;
+            return instruction.opcode == OpCodes.Ldfld &&
+                field is not null &&
+                (field.Name == "Callback" || field.Name == "Action");
+        }
+
+        private static bool TryGetOwnerField(CodeInstruction valueLoad, FieldInfo callbackField, out FieldInfo? ownerField)
+        {
+            ownerField = callbackField.DeclaringType?.GetField(
+                "Owner",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (ownerField is null || valueLoad.opcode == OpCodes.Nop)
+            {
+                ownerField = null;
+                return false;
+            }
+            return valueLoad.opcode == OpCodes.Ldloc ||
+                   valueLoad.opcode == OpCodes.Ldloc_0 ||
+                   valueLoad.opcode == OpCodes.Ldloc_1 ||
+                   valueLoad.opcode == OpCodes.Ldloc_2 ||
+                   valueLoad.opcode == OpCodes.Ldloc_3 ||
+                   valueLoad.opcode == OpCodes.Ldloc_S ||
+                   valueLoad.opcode == OpCodes.Ldloca ||
+                   valueLoad.opcode == OpCodes.Ldloca_S;
+        }
+
+        private static MethodInfo? GetWrapper(Type delegateType, bool hasOwner)
+        {
+            Type genericDefinition = delegateType.IsGenericType
+                ? delegateType.GetGenericTypeDefinition()
+                : delegateType;
+            if (genericDefinition == typeof(Action))
+            {
+                return hasOwner ? s_invokeAction : s_invokeActionWithoutOwner;
+            }
+            if (genericDefinition == typeof(Action<>))
+            {
+                Type argument = delegateType.GetGenericArguments()[0];
+                MethodInfo method = hasOwner ? s_invokeAction1 : s_invokeAction1WithoutOwner;
+                return method.MakeGenericMethod(argument);
+            }
+            if (genericDefinition == typeof(Action<,>))
+            {
+                Type[] arguments = delegateType.GetGenericArguments();
+                MethodInfo method = hasOwner ? s_invokeAction2 : s_invokeAction2WithoutOwner;
+                return method.MakeGenericMethod(arguments);
+            }
+            return null;
+        }
+
+        private static MethodInfo GetGenericWrapper(string name, int genericArgumentCount)
+        {
+            return typeof(DeepCallbackRecorder).GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
+                .Single(x => x.Name == name && x.IsGenericMethodDefinition &&
+                             x.GetGenericArguments().Length == genericArgumentCount);
+        }
+
+        private static void InvokeWithOwner(object owner, Action action, int phaseId)
+        {
+            if (!IsActive)
+            {
+                action();
+                return;
+            }
+            CallbackToken token = Begin(owner, action, phaseId);
+            try { action(); }
+            finally { End(token); }
+        }
+
+        private static void InvokeWithoutOwner(Action action, int phaseId) => InvokeWithOwner(action.Target, action, phaseId);
+
+        private static void InvokeWithOwner<T>(object owner, Action<T> action, T arg, int phaseId)
+        {
+            if (!IsActive)
+            {
+                action(arg);
+                return;
+            }
+            CallbackToken token = Begin(owner, action, phaseId);
+            try { action(arg); }
+            finally { End(token); }
+        }
+
+        private static void InvokeWithoutOwner<T>(Action<T> action, T arg, int phaseId) => InvokeWithOwner(action.Target, action, arg, phaseId);
+
+        private static void InvokeWithOwner<T1, T2>(object owner, Action<T1, T2> action, T1 arg1, T2 arg2, int phaseId)
+        {
+            if (!IsActive)
+            {
+                action(arg1, arg2);
+                return;
+            }
+            CallbackToken token = Begin(owner, action, phaseId);
+            try { action(arg1, arg2); }
+            finally { End(token); }
+        }
+
+        private static void InvokeWithoutOwner<T1, T2>(Action<T1, T2> action, T1 arg1, T2 arg2, int phaseId) =>
+            InvokeWithOwner(action.Target, action, arg1, arg2, phaseId);
+
+        private static CallbackToken Begin(object? owner, Delegate callback, int phaseId)
+        {
+            if (!IsActive)
+            {
+                return default;
+            }
+            long now = Stopwatch.GetTimestamp();
+            if (now >= Volatile.Read(ref s_captureEndTimestamp))
+            {
+                Volatile.Write(ref s_active, 0);
+                return default;
+            }
+            int callbackId = InternMetadata(owner, callback);
+            return new CallbackToken(
+                now,
+                callbackId,
+                phaseId,
+                Thread.CurrentThread.ManagedThreadId,
+                Interlocked.Increment(ref s_spanSequence),
+                Volatile.Read(ref s_captureGeneration));
+        }
+
+        private static void End(CallbackToken token)
+        {
+            if (!token.IsActive || token.Generation != Volatile.Read(ref s_captureGeneration))
+            {
+                return;
+            }
+            long end = Stopwatch.GetTimestamp();
+            TraceSpanRing? ring = GetRing(token.ThreadId);
+            ring?.Add(new RuntimeTraceSpan(
+                token.StartTimestamp,
+                end,
+                token.CallbackId,
+                token.PhaseId,
+                token.ThreadId,
+                token.Sequence,
+                0));
+        }
+
+        private static int InternMetadata(object? owner, Delegate callback)
+        {
+            if (s_delegateMetadata.TryGetValue(callback, out CallbackMetadataCache? cached))
+            {
+                return cached.Id;
+            }
+            if (Volatile.Read(ref s_metadataCount) >= MetadataCapacity)
+            {
+                return 0;
+            }
+            MethodInfo method = callback.Method;
+            OwnerMetadata? ownerMetadata = owner is null ? null : s_ownerMetadata.GetValue(owner, CreateOwnerMetadata);
+            string ownerType = ownerMetadata?.TypeName ??
+                callback.Target?.GetType().FullName ??
+                method.DeclaringType?.FullName ?? "<static>";
+            string assembly = ownerMetadata?.AssemblyName ?? RuntimeTraceText.AssemblyName(method);
+            var key = new CallbackMetadataKey(ownerType, method.Name, assembly);
+            lock (s_metadataGate)
+            {
+                if (s_metadataCount >= MetadataCapacity)
+                {
+                    return 0;
+                }
+                if (s_metadataByKey.TryGetValue(key, out CallbackMetadataSnapshot existing))
+                {
+                    TryCacheDelegateMetadata(callback, existing.Id);
+                    return existing.Id;
+                }
+                CallbackMetadataSnapshot metadata = new(s_metadata.Count + 1, ownerType, method.Name, assembly);
+                s_metadataByKey.Add(key, metadata);
+                s_metadata.Add(metadata);
+                Volatile.Write(ref s_metadataCount, s_metadata.Count);
+                TryCacheDelegateMetadata(callback, metadata.Id);
+                return metadata.Id;
+            }
+        }
+
+        private static void TryCacheDelegateMetadata(Delegate callback, int id)
+        {
+            try
+            {
+                s_delegateMetadata.Add(callback, new CallbackMetadataCache(id));
+            }
+            catch (ArgumentException)
+            {
+                // Another callback thread won the weak-table race; its ID is equivalent.
+            }
+        }
+
+        private static TraceSpanRing? GetRing(int threadId)
+        {
+            if (s_threadRingId == threadId && s_threadRing is not null)
+            {
+                return s_threadRing;
+            }
+            if (s_rings.TryGetValue(threadId, out TraceSpanRing? existing))
+            {
+                s_threadRingId = threadId;
+                s_threadRing = existing;
+                return existing;
+            }
+            if (s_rings.Count >= MaximumTraceThreads)
+            {
+                return null;
+            }
+            TraceSpanRing ring = s_rings.GetOrAdd(threadId, _ => new TraceSpanRing(SpanCapacityPerThread));
+            s_threadRingId = threadId;
+            s_threadRing = ring;
+            return ring;
+        }
+
+        private static OwnerMetadata CreateOwnerMetadata(object value)
+        {
+            Type type = value.GetType();
+            return new OwnerMetadata(type.FullName ?? type.Name, RuntimeTraceText.AssemblyName(type));
+        }
+
+        private sealed class OwnerMetadata
+        {
+            internal OwnerMetadata(string typeName, string assemblyName)
+            {
+                TypeName = typeName;
+                AssemblyName = assemblyName;
+            }
+
+            internal string TypeName { get; }
+            internal string AssemblyName { get; }
+        }
+
+        private sealed class CallbackMetadataCache
+        {
+            internal CallbackMetadataCache(int id)
+            {
+                Id = id;
+            }
+
+            internal int Id { get; }
+        }
+
+        private readonly struct CallbackMetadataKey : IEquatable<CallbackMetadataKey>
+        {
+            internal CallbackMetadataKey(string ownerType, string methodName, string assemblyName)
+            {
+                OwnerType = ownerType;
+                MethodName = methodName;
+                AssemblyName = assemblyName;
+            }
+
+            private string OwnerType { get; }
+            private string MethodName { get; }
+            private string AssemblyName { get; }
+
+            public bool Equals(CallbackMetadataKey other) =>
+                string.Equals(OwnerType, other.OwnerType, StringComparison.Ordinal) &&
+                string.Equals(MethodName, other.MethodName, StringComparison.Ordinal) &&
+                string.Equals(AssemblyName, other.AssemblyName, StringComparison.Ordinal);
+
+            public override bool Equals(object? obj) => obj is CallbackMetadataKey other && Equals(other);
+
+            public override int GetHashCode() =>
+                StringComparer.Ordinal.GetHashCode(OwnerType) * 397 ^
+                StringComparer.Ordinal.GetHashCode(MethodName) * 31 ^
+                StringComparer.Ordinal.GetHashCode(AssemblyName);
+        }
+
+        private readonly struct CallbackMetricKey : IEquatable<CallbackMetricKey>
+        {
+            internal CallbackMetricKey(int callbackId, int phaseId)
+            {
+                CallbackId = callbackId;
+                PhaseId = phaseId;
+            }
+
+            internal int CallbackId { get; }
+            internal int PhaseId { get; }
+
+            public bool Equals(CallbackMetricKey other) => CallbackId == other.CallbackId && PhaseId == other.PhaseId;
+            public override bool Equals(object? obj) => obj is CallbackMetricKey other && Equals(other);
+            public override int GetHashCode() => CallbackId * 397 ^ PhaseId;
+        }
+
+        private sealed class CallbackMetricBuilder
+        {
+            private readonly List<long> m_durations = new();
+            internal long TotalTicks { get; private set; }
+            internal long MaxTicks { get; private set; }
+            internal long SlowCallCount { get; private set; }
+
+            internal void Add(long ticks)
+            {
+                TotalTicks = RuntimeTraceMath.SaturatingAdd(TotalTicks, ticks);
+                MaxTicks = Math.Max(MaxTicks, ticks);
+                if (ticks >= SlowCallbackTicks)
+                {
+                    SlowCallCount++;
+                }
+                m_durations.Add(ticks);
+            }
+
+            internal CallbackMetricSnapshot ToSnapshot(CallbackMetadataSnapshot metadata, int phaseId)
+            {
+                m_durations.Sort();
+                return new CallbackMetricSnapshot(
+                    metadata,
+                    phaseId,
+                    m_durations.Count,
+                    TotalTicks,
+                    Percentile(m_durations, 0.95),
+                    Percentile(m_durations, 0.99),
+                    MaxTicks,
+                    SlowCallCount);
+            }
+
+            private static long Percentile(IReadOnlyList<long> values, double percentile)
+            {
+                if (values.Count == 0)
+                {
+                    return 0;
+                }
+                int index = (int)Math.Ceiling(values.Count * percentile) - 1;
+                return values[Math.Max(0, Math.Min(values.Count - 1, index))];
+            }
+        }
+
+        private sealed class TraceSpanRing
+        {
+            private readonly RuntimeTraceSpan[] m_spans;
+            private int m_next;
+            private int m_count;
+            private int m_generation;
+
+            internal TraceSpanRing(int capacity)
+            {
+                m_spans = new RuntimeTraceSpan[capacity];
+            }
+
+            internal void Add(RuntimeTraceSpan span)
+            {
+                int generation = Volatile.Read(ref s_captureGeneration);
+                if (m_generation != generation)
+                {
+                    m_next = 0;
+                    m_count = 0;
+                    m_generation = generation;
+                }
+                int index = Interlocked.Increment(ref m_next) - 1;
+                m_spans[index % m_spans.Length] = span;
+                Volatile.Write(ref m_count, Math.Min(m_spans.Length, index + 1));
+            }
+
+            internal RuntimeTraceSpan[] Snapshot(int generation)
+            {
+                if (m_generation != generation)
+                {
+                    return Array.Empty<RuntimeTraceSpan>();
+                }
+                int count = Math.Min(m_spans.Length, Volatile.Read(ref m_count));
+                int next = Volatile.Read(ref m_next);
+                var result = new RuntimeTraceSpan[count];
+                int start = Math.Max(0, next - count);
+                for (int index = 0; index < count; index++)
+                {
+                    result[index] = m_spans[(start + index) % m_spans.Length];
+                }
+                return result;
+            }
+        }
+    }
+}

@@ -8,7 +8,7 @@
     <ModDescription>Evidence-backed, individually switchable performance fixes.</ModDescription>
     <ModAuthor>TajemnikTV</ModAuthor>
     <MinGameVersion>0.8.7</MinGameVersion>
-    <MaxVerifiedGameVersion>0.8.7a</MaxVerifiedGameVersion>
+    <MaxVerifiedGameVersion>0.8.7b</MaxVerifiedGameVersion>
     <PrimaryModClassName>TajsPerformanceMod</PrimaryModClassName>
 
     <AssemblyName>$(ModId)</AssemblyName>

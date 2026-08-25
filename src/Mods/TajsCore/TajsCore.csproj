@@ -8,7 +8,7 @@
     <ModDescription>Runtime foundation for the Taj's COI mod suite.</ModDescription>
     <ModAuthor>TajemnikTV</ModAuthor>
     <MinGameVersion>0.8.7</MinGameVersion>
-    <MaxVerifiedGameVersion>0.8.7a</MaxVerifiedGameVersion>
+    <MaxVerifiedGameVersion>0.8.7b</MaxVerifiedGameVersion>
     <PrimaryModClassName>TajsCoreMod</PrimaryModClassName>
 
     <AssemblyName>$(ModId)</AssemblyName>

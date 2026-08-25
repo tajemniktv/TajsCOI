@@ -7,6 +7,11 @@ Requires Taj's Core 0.1.0 or newer.
 Current probes:
 - Dumping destination search and pathfinding-stage diagnostics.
 - Save/load stage timing, memory, GC, and product-renderer buffer diagnostics.
+- Low-overhead runtime flight recorder backed by Captain of Industry's 0.8.7b
+  GameLoopTimings ring and broad GameRunner timings.
+- Configurable absolute/relative spike triggers with bounded pre/post captures.
+- Opt-in deep callback tracing, callback ranking, markers, and Chrome trace JSON export.
+- Managed/Unity/GC counters where supported, with dumping/pathfinding timeline correlation.
 
 Console commands:
 - tajs_dump_search_stats
@@ -27,5 +32,25 @@ Console commands:
 - tajs_runtime_profile_compare <before> <after>
 - tajs_runtime_profile_clear
 - tajs_runtime_profile_reset
+- tajs_profiler_status
+- tajs_profiler_runtime [seconds]
+- tajs_profiler_spikes [count]
+- tajs_profiler_runtime_raw [count]
+- tajs_profiler_runtime_clear
+- tajs_profiler_arm [seconds]
+- tajs_profiler_deep_start [seconds]
+- tajs_profiler_deep_stop
+- tajs_profiler_deep_report [count]
+- tajs_profiler_trace_export [name]
+- tajs_profiler_mark <label>
+- tajs_profiler_overhead_bench [iterations]
+- tajs_profiler_spike_policy [frameMs] [waitMs] [simMs] [phaseMs] [relative] [cooldown] [maxCaptures] [preSeconds] [postSeconds]
+- tajs_profiler_auto_deep [true|false]
 
 Runtime captures are held in a bounded in-memory history. They do not modify saves or gameplay.
+The runtime flight recorder keeps a separate bounded frame history and calculates percentiles only
+when a command is requested. If the game's private timing surface changes, the probe reports the
+unsupported detail and leaves the rest of Taj's Profiler active. Deep callback timing is off until
+explicitly armed; trace files are written below the user's application-data `TajsCOI/Profiler`
+directory and can be opened in Chrome's trace viewer. The TajsCOI dashboard exposes the same
+profiler controls and persisted threshold/window settings.
