@@ -27,8 +27,13 @@ namespace TajsCOI.Core.Settings
         private readonly ITajsSettings m_settings;
         private readonly ITajsRuntime m_runtime;
         private readonly GameConsoleCommandsExecutor m_consoleCommands;
-        private readonly ScrollColumn m_content;
+        private readonly ScrollColumn m_pageContent;
+        private readonly Dictionary<DashboardPage, ButtonText> m_pageButtons = new();
+        private readonly Dictionary<string, ButtonText> m_categoryButtons = new(StringComparer.Ordinal);
         private string m_selectedCategory = AllCategories;
+        private DashboardPage m_selectedPage = DashboardPage.Overview;
+        private Label m_headerFeedback = null!;
+        private bool m_refreshQueued;
 
         public TajsDashboardWindow(
             ITajsSettings settings,
@@ -40,302 +45,407 @@ namespace TajsCOI.Core.Settings
             m_settings = settings;
             m_runtime = runtime;
             m_consoleCommands = consoleCommands;
-            m_content = new ScrollColumn().Fill().AlignItemsStretch().Gap(4.pt());
+            m_pageContent = new ScrollColumn().Fill().AlignItemsStretch().Gap(5.pt());
 
-            AddBodySingle(
-                new Row(2.pt())
-                {
-                    new Column(1.pt())
-                    {
-                        new Label("TajsCOI control center".AsLoc()).FontBold().FontSize(18),
-                        new Label("Tune loaded mods, inspect compatibility, and run explicit maintenance actions.".AsLoc())
-                            .FontSize(12),
-                    }.FlexGrow(1f),
-                    new ButtonText(Button.General, "Refresh".AsLoc(), Rebuild).Compact(),
-                },
-                m_content);
-            WindowSize(980.px(), 820.px());
+            BuildShell();
+            WindowSize(1180.px(), 860.px());
             MakeMovableAndEnablePositionSaving();
             CloseOnClickOutside();
-            Rebuild();
+            OnCloseStart += _ => m_refreshQueued = false;
+            RebuildPage();
             Open(uiRoot);
         }
 
-        private void Rebuild()
+        private void BuildShell()
         {
-            m_content.Clear();
+            Panel header = new Panel(true).ReducedPadding().BodyGap(2.pt());
+            m_headerFeedback = new Label().FontSize(11).Hide();
 
+            Column title = new Column(1.pt())
+            {
+                new Label("TajsCOI control center".AsLoc()).FontBold().FontSize(19),
+                new Label("Live diagnostics, suite configuration, and safe maintenance tools for the active save.".AsLoc())
+                    .FontSize(12),
+            }.FlexGrow(1f);
+
+            Row actions = new Row(2.pt()).AlignItemsCenter();
+            actions.Add(
+                new ButtonText(Button.Area, "Refresh".AsLoc(), QueueRefresh).Compact(),
+                new ButtonText(Button.Area, "Export trace".AsLoc(), ExportTrace).Compact(),
+                new ButtonText(Button.General, "Close".AsLoc(), Close).Compact());
+            header.Body.Add(new Row(4.pt()) { title, actions }.AlignItemsCenter());
+            header.Body.Add(m_headerFeedback);
+
+            Row body = new Row(6.pt()).FlexGrow(1f).AlignItemsStretch();
+            body.Add(BuildSidebar(), m_pageContent);
+
+            Column shell = new Column(6.pt()).Fill().AlignItemsStretch();
+            shell.Add(header, body);
+            AddBodySingle(shell);
+        }
+
+        private Column BuildSidebar()
+        {
+            Column sidebar = new Column(2.pt()).Width(188.px()).FlexShrink(0f).AlignItemsStretch();
+            Panel navigation = new Panel(true).ReducedPadding().BodyGap(2.pt()).FlexGrow(1f);
+            navigation.Body.Add(new Label("Dashboard".AsLoc()).FontBold().FontSize(13));
+
+            Column pageNavigation = new Column(1.pt()).AlignItemsStretch();
+            AddPageButton(pageNavigation, DashboardPage.Overview, "Overview");
+            AddPageButton(pageNavigation, DashboardPage.Profiler, "Profiler");
+            AddPageButton(pageNavigation, DashboardPage.Performance, "Performance");
+            AddPageButton(pageNavigation, DashboardPage.Tweaks, "Tweaks");
+            AddPageButton(pageNavigation, DashboardPage.SaveLoad, "Save & Load");
+            AddPageButton(pageNavigation, DashboardPage.Memory, "Memory");
+            AddPageButton(pageNavigation, DashboardPage.Rendering, "Rendering");
+            AddPageButton(pageNavigation, DashboardPage.Compatibility, "Compatibility");
+            AddPageButton(pageNavigation, DashboardPage.Logs, "Logs");
+            navigation.Body.Add(pageNavigation);
+
+            navigation.Body.Add(new Label("Settings".AsLoc()).FontBold().FontSize(11).MarginTop(4.pt()));
+            Column settingNavigation = new Column(1.pt()).AlignItemsStretch();
+            AddPageButton(settingNavigation, DashboardPage.Settings, "All settings");
+
+            foreach (IGrouping<string, SettingSnapshot> category in GetCategories(m_settings.GetSnapshot()))
+            {
+                ButtonText button = CreateCategoryButton(category.Key, category.Count(), settingNavigation);
+                m_categoryButtons[category.Key] = button;
+            }
+
+            navigation.Body.Add(settingNavigation);
+            sidebar.Add(navigation);
+            UpdateNavigationSelection();
+            return sidebar;
+        }
+
+        private void AddPageButton(Column container, DashboardPage page, string text)
+        {
+            ButtonText button = new ButtonText(
+                Button.Area,
+                text.AsLoc(),
+                () => SelectPage(page)).Compact();
+            container.Add(button);
+            m_pageButtons[page] = button;
+        }
+
+        private ButtonText CreateCategoryButton(string category, int count, Column container)
+        {
+            ButtonText button = new ButtonText(
+                Button.Area,
+                ($"{category} ({count})").AsLoc(),
+                () => SelectCategory(category)).Compact();
+            container.Add(button);
+            return button;
+        }
+
+        private void SelectPage(DashboardPage page)
+        {
+            m_selectedPage = page;
+            UpdateNavigationSelection();
+            QueueRefresh();
+        }
+
+        private void SelectCategory(string category)
+        {
+            m_selectedCategory = category;
+            m_selectedPage = DashboardPage.Settings;
+            UpdateNavigationSelection();
+            QueueRefresh();
+        }
+
+        private void UpdateNavigationSelection()
+        {
+            foreach (KeyValuePair<DashboardPage, ButtonText> button in m_pageButtons)
+            {
+                button.Value.Selected(button.Key == m_selectedPage);
+            }
+
+            foreach (KeyValuePair<string, ButtonText> button in m_categoryButtons)
+            {
+                button.Value.Selected(
+                    m_selectedPage == DashboardPage.Settings &&
+                    string.Equals(button.Key, m_selectedCategory, StringComparison.Ordinal));
+            }
+        }
+
+        private void QueueRefresh()
+        {
+            if (!IsOpen || m_refreshQueued)
+            {
+                return;
+            }
+
+            m_refreshQueued = true;
+            m_pageContent.Schedule.Execute(() =>
+            {
+                m_refreshQueued = false;
+                if (IsOpen)
+                {
+                    RebuildPage();
+                }
+            }).StartingIn(1L);
+        }
+
+        private void RebuildPage()
+        {
             IReadOnlyList<SettingSnapshot> settings = m_settings.GetSnapshot();
+            EnsureSelectedCategory(settings);
             IReadOnlyList<CompatibilityReport> reports = m_runtime.GetCompatibilitySnapshot();
             IReadOnlyList<LoadedModData> mods = GetTajsMods();
 
-            AddOverview(mods, settings, reports);
-            AddLoadedMods(mods);
-            AddCategoryFilter(settings);
-            AddActions();
-            AddProfilerActions();
-            AddSettings(settings);
-            AddCompatibility(reports);
+            m_pageContent.Clear();
+            switch (m_selectedPage)
+            {
+                case DashboardPage.Overview:
+                    AddOverview(settings, reports, mods, ReadProfilerSnapshot());
+                    break;
+                case DashboardPage.Profiler:
+                    AddProfilerPage(settings, ReadProfilerSnapshot());
+                    break;
+                case DashboardPage.Performance:
+                    AddDomainPage("Performance", "Behavior-neutral runtime diagnostics and explicitly opt-in maintenance operations.", settings, new[] { "Performance", "Diagnostics" }, includeMaintenance: true);
+                    break;
+                case DashboardPage.Tweaks:
+                    AddDomainPage("Tweaks", "Settings registered by gameplay and quality-of-life features.", settings, new[] { "Tweak" }, includeMaintenance: false);
+                    break;
+                case DashboardPage.SaveLoad:
+                    AddDomainPage("Save & Load", "Settings and lifecycle controls that apply at save reload or game restart.", settings, new[] { "Save", "Load" }, includeMaintenance: false);
+                    break;
+                case DashboardPage.Memory:
+                    AddDomainPage("Memory", "Explicit memory-facing diagnostics and paused-only asset maintenance.", settings, new[] { "Memory", "Asset" }, includeMaintenance: true);
+                    break;
+                case DashboardPage.Rendering:
+                    AddDomainPage("Rendering", "Rendering and visual-load settings exposed by the loaded suite.", settings, new[] { "Render", "Texture", "Graphics" }, includeMaintenance: false);
+                    break;
+                case DashboardPage.Compatibility:
+                    AddCompatibilityPage(reports, mods);
+                    break;
+                case DashboardPage.Logs:
+                    AddLogsPage(ReadProfilerSnapshot());
+                    break;
+                case DashboardPage.Settings:
+                    AddSettingsPage(settings);
+                    break;
+                default:
+                    AddOverview(settings, reports, mods, ReadProfilerSnapshot());
+                    break;
+            }
+        }
+
+        private void EnsureSelectedCategory(IReadOnlyList<SettingSnapshot> settings)
+        {
+            if (string.Equals(m_selectedCategory, AllCategories, StringComparison.Ordinal) ||
+                settings.Any(snapshot => string.Equals(
+                    snapshot.Descriptor.Category,
+                    m_selectedCategory,
+                    StringComparison.Ordinal)))
+            {
+                return;
+            }
+
+            m_selectedCategory = AllCategories;
+            UpdateNavigationSelection();
         }
 
         private void AddOverview(
-            IReadOnlyList<LoadedModData> mods,
             IReadOnlyList<SettingSnapshot> settings,
-            IReadOnlyList<CompatibilityReport> reports)
+            IReadOnlyList<CompatibilityReport> reports,
+            IReadOnlyList<LoadedModData> mods,
+            ProfilerSnapshot profiler)
         {
-            int failedMods = mods.Count(mod => mod.LoadError.HasValue);
-            int unavailableComponents = reports.Count(report => report.State == CompatibilityState.Disabled);
-            var summary = new Panel(true)
-                .ReducedPadding()
-                .BodyGap(2.pt())
-                .BodyAdd(
-                    new Label("Everything important at a glance".AsLoc()).FontBold().FontSize(16),
-                    new Label("Changes are persisted through the same settings service used by the console commands.".AsLoc())
-                        .FontSize(12),
-                    new Row(3.pt()).Wrap().AlignItemsCenter()
-                        .AddStats(
-                            $"{mods.Count} mod{PluralSuffix(mods.Count)}",
-                            $"{settings.Count} setting{PluralSuffix(settings.Count)}",
-                            $"{reports.Count} compatibility report{PluralSuffix(reports.Count)}",
-                            failedMods == 0 ? "No mod load errors" : $"{failedMods} mod load error{PluralSuffix(failedMods)}",
-                            unavailableComponents == 0 ? "All components available" :
-                                $"{unavailableComponents} component{PluralSuffix(unavailableComponents)} unavailable"));
-            m_content.Add(summary);
+            int loadErrors = mods.Count(mod => mod.LoadError.HasValue);
+            int unavailable = reports.Count(report => report.State == CompatibilityState.Disabled);
+            int degraded = reports.Count(report => report.State == CompatibilityState.Degraded);
+            int activeSettings = settings.Count(snapshot => !Equals(snapshot.Value, snapshot.Descriptor.DefaultValue));
+            bool healthy = loadErrors == 0 && unavailable == 0 && degraded == 0;
+
+            m_pageContent.Add(
+                TajsDashboardUi.SectionHeader("Overview"),
+                new Label("A compact operational view of the Taj's COI runtime in this gameplay scene.".AsLoc())
+                    .FontSize(12));
+
+            Row metrics = new Row(4.pt()).Wrap().AlignItemsStretch();
+            metrics.Add(
+                TajsDashboardUi.MetricTile("Mods loaded", mods.Count.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan),
+                TajsDashboardUi.MetricTile("Active settings", activeSettings.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan),
+                TajsDashboardUi.MetricTile("Compatibility", healthy ? "Healthy" : "Attention", healthy ? TajsDashboardUi.Green : TajsDashboardUi.Yellow),
+                TajsDashboardUi.MetricTile("Runtime status", profiler.IsAvailable ? "Recording" : "Unavailable", profiler.IsAvailable ? TajsDashboardUi.Green : TajsDashboardUi.Red),
+                TajsDashboardUi.MetricTile("Load errors", loadErrors.ToString(CultureInfo.InvariantCulture), loadErrors == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Red));
+            m_pageContent.Add(metrics);
+
+            m_pageContent.Add(BuildLiveProfilerPanel(profiler));
+            m_pageContent.Add(BuildQuickActionsPanel());
+            m_pageContent.Add(BuildRuntimeSnapshotPanel(profiler));
+            m_pageContent.Add(BuildCompatibilitySummary(reports));
+            m_pageContent.Add(BuildLoadedModsPanel(mods));
         }
 
-        private void AddLoadedMods(IReadOnlyList<LoadedModData> mods)
+        private void AddProfilerPage(IReadOnlyList<SettingSnapshot> settings, ProfilerSnapshot profiler)
         {
-            m_content.Add(SectionTitle($"Mods in this game ({mods.Count})"));
-            var panel = new Panel(true).ReducedPadding().BodyGap(1.pt());
+            m_pageContent.Add(
+                TajsDashboardUi.SectionHeader("Profiler"),
+                new Label("Inspect the existing low-overhead flight recorder and arm bounded deep tracing when needed.".AsLoc())
+                    .FontSize(12),
+                BuildLiveProfilerPanel(profiler),
+                BuildQuickActionsPanel(),
+                BuildRuntimeSnapshotPanel(profiler));
 
-            if (mods.Count == 0)
+            IReadOnlyList<SettingSnapshot> profilerSettings = settings
+                .Where(snapshot => snapshot.Descriptor.ModId.IndexOf("Profiler", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                   snapshot.Descriptor.Category.IndexOf("Profiler", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToArray();
+            AddSettingsList(profilerSettings, "Profiler settings");
+        }
+
+        private void AddDomainPage(
+            string title,
+            string subtitle,
+            IReadOnlyList<SettingSnapshot> settings,
+            IReadOnlyList<string> keywords,
+            bool includeMaintenance)
+        {
+            m_pageContent.Add(TajsDashboardUi.SectionHeader(title), new Label(subtitle.AsLoc()).FontSize(12));
+            if (includeMaintenance)
             {
-                panel.Body.Add(new Label("No TajsCOI mods were reported by the loader.".AsLoc()).FontSize(12));
-                m_content.Add(panel);
+                m_pageContent.Add(BuildMaintenancePanel());
+            }
+
+            IReadOnlyList<SettingSnapshot> filtered = settings
+                .Where(snapshot => MatchesDomain(snapshot.Descriptor, keywords))
+                .ToArray();
+            if (filtered.Count == 0)
+            {
+                m_pageContent.Add(TajsDashboardUi.Card(
+                    "No registered settings",
+                    "This surface is ready for settings from the loaded suite; the current scene did not report any matching descriptors."));
                 return;
             }
 
-            foreach (LoadedModData mod in mods)
-            {
-                bool failed = mod.LoadError.HasValue;
-                string state = failed ? "Load failed" : "Loaded";
-                string version = Convert.ToString(mod.Manifest.Version, CultureInfo.InvariantCulture) ?? "unknown";
-                var details = new Column(1.pt())
-                {
-                    new Label(mod.Manifest.Id.AsLoc()).FontBold(),
-                    new Label($"Version {version}".AsLoc()).FontSize(11),
-                }.FlexGrow(1f);
-                panel.Body.Add(new Row(4.pt())
-                {
-                    details,
-                    new Label(state.AsLoc()).StyleChip(),
-                }.AlignItemsCenter());
+            AddSettingsList(filtered, $"{title} settings");
+        }
 
-                if (failed)
+        private void AddCompatibilityPage(
+            IReadOnlyList<CompatibilityReport> reports,
+            IReadOnlyList<LoadedModData> mods)
+        {
+            m_pageContent.Add(
+                TajsDashboardUi.SectionHeader("Compatibility"),
+                new Label("Expected-versus-observed seams reported by the loaded suite and its gameplay-scene services.".AsLoc())
+                    .FontSize(12),
+                BuildCompatibilitySummary(reports),
+                BuildLoadedModsPanel(mods));
+
+            Panel details = TajsDashboardUi.Card("Component reports", "Unavailable and degraded components remain visible with their owning mod and reason.");
+            if (reports.Count == 0)
+            {
+                details.Body.Add(new Label("No component reports are available in this scene.".AsLoc()).FontSize(12));
+            }
+            else
+            {
+                foreach (CompatibilityReport report in reports)
                 {
-                    panel.Body.Add(new Label(mod.LoadError.Value.ToString().AsLoc()).FontSize(11));
+                    details.Body.Add(new Row(4.pt())
+                    {
+                        new Column(1.pt())
+                        {
+                            new Label($"{report.ModId} / {report.ComponentId}".AsLoc()).FontBold(),
+                            new Label(report.Reason.AsLoc()).FontSize(11),
+                            new Label($"Expected: {report.Expected} · Observed: {report.Observed}".AsLoc()).FontSize(11),
+                        }.FlexGrow(1f),
+                        TajsDashboardUi.StatusBadge(report.State.ToString(), CompatibilityColor(report.State)),
+                    }.AlignItemsCenter());
                 }
             }
-
-            m_content.Add(panel);
+            m_pageContent.Add(details);
         }
 
-        private void AddCategoryFilter(IReadOnlyList<SettingSnapshot> settings)
+        private void AddLogsPage(ProfilerSnapshot profiler)
         {
-            IReadOnlyList<IGrouping<string, SettingSnapshot>> categories = settings
-                .GroupBy(snapshot => snapshot.Descriptor.Category)
-                .OrderBy(group => group.Key, StringComparer.Ordinal)
-                .ToArray();
+            m_pageContent.Add(
+                TajsDashboardUi.SectionHeader("Logs"),
+                new Label("The dashboard keeps command output copyable and leaves the suite's structured log ownership with each service.".AsLoc())
+                    .FontSize(12));
 
-            if (!string.Equals(m_selectedCategory, AllCategories, StringComparison.Ordinal) &&
-                !categories.Any(group => string.Equals(group.Key, m_selectedCategory, StringComparison.Ordinal)))
-            {
-                m_selectedCategory = AllCategories;
-            }
+            Panel panel = TajsDashboardUi.Card("Latest diagnostics output", "Use the in-game console for the complete stream; these bounded snapshots are the most useful operational context.");
+            panel.Body.Add(new Label("Flight recorder status".AsLoc()).FontBold());
+            panel.Body.Add(new Label(Truncate(profiler.StatusText, 1200).AsLoc()).FontSize(11).Selectable(true));
+            panel.Body.Add(new Label("Runtime summary".AsLoc()).FontBold().MarginTop(3.pt()));
+            panel.Body.Add(new Label(Truncate(profiler.RuntimeText, 1800).AsLoc()).FontSize(11).Selectable(true));
+            m_pageContent.Add(panel);
+        }
 
-            var categoryButtons = new Row(2.pt()).Wrap().AlignItemsCenter();
-            categoryButtons.Add(CreateCategoryButton(AllCategories, settings.Count));
+        private void AddSettingsPage(IReadOnlyList<SettingSnapshot> settings)
+        {
+            IReadOnlyList<IGrouping<string, SettingSnapshot>> categories = GetCategories(settings);
+            Row categoryButtons = new Row(2.pt()).Wrap().AlignItemsCenter();
+            categoryButtons.Add(CreateInlineCategoryButton(AllCategories, settings.Count));
             foreach (IGrouping<string, SettingSnapshot> category in categories)
             {
-                categoryButtons.Add(CreateCategoryButton(category.Key, category.Count()));
+                categoryButtons.Add(CreateInlineCategoryButton(category.Key, category.Count()));
             }
 
-            m_content.Add(
-                new Panel(true)
-                    .ReducedPadding()
-                    .BodyGap(2.pt())
-                    .BodyAdd(
-                        new Label("Browse by category".AsLoc()).FontBold().FontSize(14),
-                        new Label("Use a category to keep the settings list focused on the kind of change you want to make.".AsLoc())
-                            .FontSize(12),
-                        categoryButtons));
-        }
+            m_pageContent.Add(
+                TajsDashboardUi.SectionHeader("Settings"),
+                TajsDashboardUi.Card(
+                    "Settings index",
+                    "All descriptors remain available here; use the sidebar or these compact filters to focus the list.",
+                    categoryButtons));
 
-        private ButtonText CreateCategoryButton(string category, int count)
-        {
-            bool selected = string.Equals(m_selectedCategory, category, StringComparison.Ordinal);
-            var button = new ButtonText(
-                Button.Area,
-                $"{category} ({count})".AsLoc(),
-                () =>
-                {
-                    m_selectedCategory = category;
-                    Rebuild();
-                });
-            return button.Selected(selected).Compact();
-        }
-
-        private void AddActions()
-        {
-            bool canTrimAssets = m_consoleCommands.Executor.Commands.ContainsKey("trim_unused_assets");
-            bool canReadTrimStatus = m_consoleCommands.Executor.Commands.ContainsKey("trim_unused_assets_status");
-            if (!canTrimAssets && !canReadTrimStatus)
-            {
-                return;
-            }
-
-            var feedback = new Label().FontSize(11).Hide();
-            var buttons = new Row(3.pt()).Wrap();
-            if (canTrimAssets)
-            {
-                buttons.Add(new ButtonText(
-                    Button.Warning,
-                    "Trim unused assets".AsLoc(),
-                    () => ExecuteConsoleCommand("trim_unused_assets", feedback)).Compact());
-            }
-            if (canReadTrimStatus)
-            {
-                buttons.Add(new ButtonText(
-                    Button.Area,
-                    "Show last trim result".AsLoc(),
-                    () => ExecuteConsoleCommand("trim_unused_assets_status", feedback)).Compact());
-            }
-
-            m_content.Add(SectionTitle("Maintenance actions"));
-            m_content.Add(
-                new Panel(true)
-                    .ReducedPadding()
-                    .BodyGap(2.pt())
-                    .BodyAdd(
-                        new Label("Manual memory maintenance".AsLoc()).FontBold(),
-                        new Label("These actions are explicit and follow the same paused-only safety checks as the console commands. They never run automatically.".AsLoc())
-                            .FontSize(12),
-                        buttons,
-                        feedback));
-        }
-
-        private void AddProfilerActions()
-        {
-            string[] commands =
-            {
-                "tajs_profiler_status",
-                "tajs_profiler_spikes 5",
-                "tajs_profiler_deep_report 10",
-                "tajs_profiler_deep_start 10",
-                "tajs_profiler_deep_stop",
-                "tajs_profiler_trace_export runtime",
-            };
-            if (!commands.Any(command =>
-                m_consoleCommands.Executor.Commands.ContainsKey(command.Split(' ')[0])))
-            {
-                return;
-            }
-
-            var feedback = new Label().FontSize(11).Hide();
-            var buttons = new Row(3.pt()).Wrap();
-            AddProfilerButton(buttons, "Profiler status", commands[0], feedback, Button.Area);
-            AddProfilerButton(buttons, "Browse spikes", commands[1], feedback, Button.Area);
-            AddProfilerButton(buttons, "Top callbacks", commands[2], feedback, Button.Area);
-            AddProfilerButton(buttons, "Deep start (10 s)", commands[3], feedback, Button.Warning);
-            AddProfilerButton(buttons, "Deep stop", commands[4], feedback, Button.Area);
-            AddProfilerButton(buttons, "Export trace", commands[5], feedback, Button.Area);
-
-            m_content.Add(SectionTitle("Profiler controls"));
-            m_content.Add(
-                new Panel(true)
-                    .ReducedPadding()
-                    .BodyGap(2.pt())
-                    .BodyAdd(
-                        new Label("Inspect broad spikes and opt-in callback traces without leaving the active save.".AsLoc())
-                            .FontSize(12),
-                        buttons,
-                        feedback));
-        }
-
-        private void AddProfilerButton(Row buttons, string text, string command, Label feedback, ButtonVariant style)
-        {
-            if (m_consoleCommands.Executor.Commands.ContainsKey(command.Split(' ')[0]))
-            {
-                buttons.Add(new ButtonText(
-                    style,
-                    text.AsLoc(),
-                    () => ExecuteConsoleCommand(command, feedback)).Compact());
-            }
-        }
-
-        private void ExecuteConsoleCommand(string command, Label feedback)
-        {
-            try
-            {
-                GameCommandResult result = m_consoleCommands.Executor.TryExecute(command);
-                string message = result.ErrorMessage.HasValue
-                    ? result.ErrorMessage.Value
-                    : result.Result.HasValue
-                        ? Convert.ToString(result.Result.Value, CultureInfo.InvariantCulture) ?? "Command completed."
-                        : "Command completed.";
-                feedback.Value(message.AsLoc()).Show();
-            }
-            catch (Exception exception)
-            {
-                feedback.Value($"Command failed: {exception.Message}".AsLoc()).Show();
-            }
-        }
-
-        private void AddSettings(IReadOnlyList<SettingSnapshot> settings)
-        {
-            IReadOnlyList<SettingSnapshot> visibleSettings = string.Equals(m_selectedCategory, AllCategories, StringComparison.Ordinal)
+            IReadOnlyList<SettingSnapshot> visible = string.Equals(m_selectedCategory, AllCategories, StringComparison.Ordinal)
                 ? settings
                 : settings.Where(snapshot => string.Equals(
                     snapshot.Descriptor.Category,
                     m_selectedCategory,
                     StringComparison.Ordinal)).ToArray();
+            AddSettingsList(visible, string.Equals(m_selectedCategory, AllCategories, StringComparison.Ordinal)
+                ? "All settings"
+                : $"Settings · {m_selectedCategory}");
+        }
 
-            string heading = string.Equals(m_selectedCategory, AllCategories, StringComparison.Ordinal)
-                ? "Settings"
-                : $"Settings · {m_selectedCategory}";
-            m_content.Add(SectionTitle($"{heading} ({visibleSettings.Count})"));
-            if (visibleSettings.Count == 0)
+        private ButtonText CreateInlineCategoryButton(string category, int count)
+        {
+            ButtonText button = new ButtonText(
+                Button.Area,
+                ($"{category} ({count})").AsLoc(),
+                () => SelectCategory(category)).Compact();
+            button.Selected(string.Equals(m_selectedCategory, category, StringComparison.Ordinal));
+            return button;
+        }
+
+        private void AddSettingsList(IReadOnlyList<SettingSnapshot> settings, string heading)
+        {
+            m_pageContent.Add(TajsDashboardUi.SectionHeader($"{heading} ({settings.Count})"));
+            if (settings.Count == 0)
             {
-                m_content.Add(new Label("No settings match this category.".AsLoc()).FontSize(12));
+                m_pageContent.Add(new Label("No settings match this view.".AsLoc()).FontSize(12));
                 return;
             }
 
-            foreach (IGrouping<string, SettingSnapshot> modGroup in visibleSettings
+            foreach (IGrouping<string, SettingSnapshot> modGroup in settings
                          .GroupBy(snapshot => snapshot.Descriptor.ModId)
                          .OrderBy(group => group.First().Descriptor.ModDisplayName, StringComparer.Ordinal))
             {
-                SettingDescriptor firstDescriptor = modGroup.First().Descriptor;
-                m_content.Add(
-                    new Label($"{firstDescriptor.ModDisplayName} · {modGroup.Count()} setting{PluralSuffix(modGroup.Count())}".AsLoc())
-                        .FontBold()
-                        .FontSize(17)
-                        .MarginTop(4.pt()));
+                SettingDescriptor first = modGroup.First().Descriptor;
+                m_pageContent.Add(new Label(
+                        $"{first.ModDisplayName} · {modGroup.Count()} setting{PluralSuffix(modGroup.Count())}".AsLoc())
+                    .FontBold()
+                    .FontSize(16)
+                    .MarginTop(3.pt()));
 
                 foreach (IGrouping<string, SettingSnapshot> category in modGroup
                              .GroupBy(snapshot => snapshot.Descriptor.Category)
                              .OrderBy(group => group.Key, StringComparer.Ordinal))
                 {
-                    m_content.Add(
-                        new Label($"{category.Key} · {category.Count()}".AsLoc())
-                            .FontBold()
-                            .FontSize(13)
-                            .StyleChip()
-                            .MarginTop(2.pt()));
+                    m_pageContent.Add(new Label($"{category.Key} · {category.Count()}".AsLoc())
+                        .FontBold()
+                        .FontSize(12)
+                        .StyleChip()
+                        .MarginTop(2.pt()));
                     foreach (SettingSnapshot setting in category.OrderBy(
                                  snapshot => snapshot.Descriptor.DisplayName,
                                  StringComparer.Ordinal))
                     {
-                        m_content.Add(CreateSettingControl(setting));
+                        m_pageContent.Add(CreateSettingControl(setting));
                     }
                 }
             }
@@ -345,7 +455,7 @@ namespace TajsCOI.Core.Settings
         {
             SettingDescriptor descriptor = snapshot.Descriptor;
             Label feedback = new Label().FontSize(11).Hide();
-            var description = new Column(1.pt())
+            Column description = new Column(1.pt())
             {
                 new Label(descriptor.DisplayName.AsLoc()).FontBold(),
                 new Label(descriptor.Description.AsLoc()).FontSize(12),
@@ -408,7 +518,7 @@ namespace TajsCOI.Core.Settings
                     break;
             }
 
-            var body = new Column(2.pt())
+            Column body = new Column(2.pt())
             {
                 new Row(4.pt())
                 {
@@ -423,43 +533,292 @@ namespace TajsCOI.Core.Settings
         private SettingSetResult Set(SettingDescriptor descriptor, object value, Label feedback)
         {
             SettingSetResult result = m_settings.TrySet(descriptor.ModId, descriptor.Key, value);
-            if (result.Success)
-            {
-                feedback.Value(ApplyModeText(result.ApplyMode).AsLoc()).Show();
-            }
-            else
-            {
-                feedback.Value(result.Error.AsLoc()).Show();
-            }
+            feedback.Value((result.Success ? ApplyModeText(result.ApplyMode) : result.Error).AsLoc()).Show();
             return result;
         }
 
-        private void AddCompatibility(IReadOnlyList<CompatibilityReport> reports)
+        private Panel BuildLiveProfilerPanel(ProfilerSnapshot profiler)
         {
-            m_content.Add(SectionTitle("Compatibility"));
-            var panel = new Panel(true).ReducedPadding().BodyGap(2.pt());
-            if (reports.Count == 0)
+            Panel panel = TajsDashboardUi.Card(
+                "Live profiler",
+                "Read-only status from the existing runtime profiler; no profiler state is recreated in Core.");
+            Row statuses = new Row(3.pt()).Wrap().AlignItemsCenter();
+            statuses.Add(
+                TajsDashboardUi.StatusBadge("Flight recorder: " + profiler.FlightRecorder, profiler.IsAvailable ? TajsDashboardUi.Green : TajsDashboardUi.Red),
+                TajsDashboardUi.StatusBadge("Deep trace: " + profiler.DeepTrace, profiler.DeepTrace.IndexOf("active", StringComparison.OrdinalIgnoreCase) >= 0 ? TajsDashboardUi.Yellow : TajsDashboardUi.Cyan),
+                TajsDashboardUi.StatusBadge("Ring drops: " + profiler.RingDrops, profiler.RingDrops == "0" ? TajsDashboardUi.Green : TajsDashboardUi.Yellow),
+                TajsDashboardUi.StatusBadge("GPU timing: " + profiler.GpuTiming, profiler.GpuTiming.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0 ? TajsDashboardUi.Yellow : TajsDashboardUi.Green));
+            panel.Body.Add(statuses);
+            panel.Body.Add(new Label(Truncate(profiler.StatusText, 900).AsLoc()).FontSize(11).Selectable(true));
+            return panel;
+        }
+
+        private Panel BuildRuntimeSnapshotPanel(ProfilerSnapshot profiler)
+        {
+            Panel panel = TajsDashboardUi.Card(
+                "Runtime snapshot",
+                "Latest frame sample plus the rolling summary retained by the profiler service.");
+            Row latest = new Row(3.pt()).Wrap().AlignItemsStretch();
+            latest.Add(
+                TajsDashboardUi.MetricTile("Frame", profiler.Frame, TajsDashboardUi.Cyan),
+                TajsDashboardUi.MetricTile("Wait for sim", profiler.WaitForSim, TajsDashboardUi.Cyan),
+                TajsDashboardUi.MetricTile("Sim update", profiler.SimUpdate, TajsDashboardUi.Cyan),
+                TajsDashboardUi.MetricTile("Render", profiler.Render, TajsDashboardUi.Cyan),
+                TajsDashboardUi.MetricTile("Classification", profiler.Classification, TajsDashboardUi.Green));
+            panel.Body.Add(latest);
+            panel.Body.Add(new Label("Rolling summary".AsLoc()).FontBold().MarginTop(2.pt()));
+            panel.Body.Add(new Label(Truncate(profiler.RuntimeText, 1600).AsLoc()).FontSize(11).Selectable(true));
+            return panel;
+        }
+
+        private Panel BuildQuickActionsPanel()
+        {
+            Panel panel = TajsDashboardUi.Card(
+                "Quick actions",
+                "Actions call the owning services through their existing console command contracts.");
+            Row buttons = new Row(3.pt()).Wrap();
+            Label feedback = new Label().FontSize(11).Hide();
+            bool any = false;
+            any |= AddCommandButton(buttons, Button.Warning, "Start deep trace", "tajs_profiler_deep_start 10", feedback);
+            any |= AddCommandButton(buttons, Button.Area, "Stop deep trace", "tajs_profiler_deep_stop", feedback);
+            any |= AddCommandButton(buttons, Button.Area, "Export trace", "tajs_profiler_trace_export runtime", feedback);
+            any |= AddCommandButton(buttons, Button.Area, "Clear runtime history", "tajs_profiler_runtime_clear", feedback);
+            any |= AddCommandButton(buttons, Button.Warning, "Trim unused assets", "trim_unused_assets", feedback);
+            if (any)
             {
-                panel.Body.Add(new Label("No component reports are available in this scene.".AsLoc()).FontSize(12));
-                m_content.Add(panel);
-                return;
+                panel.Body.Add(buttons);
+            }
+            else
+            {
+                panel.Body.Add(new Label("No profiler or maintenance commands are available in this scene.".AsLoc()).FontSize(12));
+            }
+            panel.Body.Add(new ButtonText(Button.Area, "Refresh diagnostics".AsLoc(), QueueRefresh).Compact());
+            panel.Body.Add(feedback);
+            return panel;
+        }
+
+        private Panel BuildMaintenancePanel()
+        {
+            Panel panel = TajsDashboardUi.Card(
+                "Maintenance actions",
+                "Manual asset trimming is still owned by TajsPerformance and remains paused-only and opt-in.");
+            Row buttons = new Row(3.pt()).Wrap();
+            Label feedback = new Label().FontSize(11).Hide();
+            bool any = false;
+            any |= AddCommandButton(buttons, Button.Warning, "Trim unused assets", "trim_unused_assets", feedback);
+            any |= AddCommandButton(buttons, Button.Area, "Show last trim result", "trim_unused_assets_status", feedback);
+            if (any)
+            {
+                panel.Body.Add(buttons);
+            }
+            else
+            {
+                panel.Body.Add(new Label("TajsPerformance maintenance commands are not loaded.".AsLoc()).FontSize(12));
+            }
+            panel.Body.Add(feedback);
+            return panel;
+        }
+
+        private Panel BuildCompatibilitySummary(IReadOnlyList<CompatibilityReport> reports)
+        {
+            int compatible = reports.Count(report => report.State == CompatibilityState.Compatible);
+            int degraded = reports.Count(report => report.State == CompatibilityState.Degraded);
+            int disabled = reports.Count(report => report.State == CompatibilityState.Disabled);
+            Panel panel = TajsDashboardUi.Card("Compatibility summary", "Missing components and load errors stay visible instead of silently disabling controls.");
+            Row summary = new Row(3.pt()).Wrap();
+            summary.Add(
+                TajsDashboardUi.MetricTile("Healthy", compatible.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Green),
+                TajsDashboardUi.MetricTile("Warnings", degraded.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Yellow),
+                TajsDashboardUi.MetricTile("Unavailable", disabled.ToString(CultureInfo.InvariantCulture), disabled == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Red));
+            panel.Body.Add(summary);
+
+            foreach (CompatibilityReport report in reports.Take(8))
+            {
+                panel.Body.Add(new Row(3.pt())
+                {
+                    new Label($"{report.ModId} / {report.ComponentId}".AsLoc()).FlexGrow(1f),
+                    TajsDashboardUi.StatusBadge(report.State.ToString(), CompatibilityColor(report.State)),
+                }.AlignItemsCenter());
+            }
+            if (reports.Count > 8)
+            {
+                panel.Body.Add(new Label($"{reports.Count - 8} more reports are available on the Compatibility page.".AsLoc()).FontSize(11));
+            }
+            return panel;
+        }
+
+        private Panel BuildLoadedModsPanel(IReadOnlyList<LoadedModData> mods)
+        {
+            Panel panel = TajsDashboardUi.Card("Loaded suite modules", "The dashboard only lists Taj's modules reported by the current gameplay resolver.");
+            if (mods.Count == 0)
+            {
+                panel.Body.Add(new Label("No TajsCOI mods were reported by the loader.".AsLoc()).FontSize(12));
+                return panel;
             }
 
-            foreach (CompatibilityReport report in reports)
+            foreach (LoadedModData mod in mods)
             {
+                bool failed = mod.LoadError.HasValue;
+                string version = Convert.ToString(mod.Manifest.Version, CultureInfo.InvariantCulture) ?? "unknown";
                 panel.Body.Add(new Row(4.pt())
                 {
                     new Column(1.pt())
                     {
-                        new Label($"{report.ModId} / {report.ComponentId}".AsLoc()).FontBold(),
-                        new Label(report.Reason.AsLoc()).FontSize(11),
+                        new Label(mod.Manifest.Id.AsLoc()).FontBold(),
+                        new Label($"Version {version}".AsLoc()).FontSize(11),
                     }.FlexGrow(1f),
-                    new Label(report.State.ToString().AsLoc()).StyleChip(),
+                    TajsDashboardUi.StatusBadge(failed ? "Load failed" : "Loaded", failed ? TajsDashboardUi.Red : TajsDashboardUi.Green),
                 }.AlignItemsCenter());
-                panel.Body.Add(new Label($"Expected: {report.Expected} · Observed: {report.Observed}".AsLoc()).FontSize(11));
+                if (failed)
+                {
+                    panel.Body.Add(new Label(mod.LoadError.Value.ToString().AsLoc()).FontSize(11));
+                }
+            }
+            return panel;
+        }
+
+        private bool AddCommandButton(Row buttons, ButtonVariant variant, string text, string command, Label feedback)
+        {
+            string commandName = command.Split(' ')[0];
+            if (!m_consoleCommands.Executor.Commands.ContainsKey(commandName))
+            {
+                return false;
             }
 
-            m_content.Add(panel);
+            buttons.Add(new ButtonText(
+                variant,
+                text.AsLoc(),
+                () => ExecuteConsoleCommand(command, feedback)).Compact());
+            return true;
+        }
+
+        private void ExportTrace()
+        {
+            if (!TryReadCommand("tajs_profiler_trace_export runtime", out string output))
+            {
+                m_headerFeedback.Value(output.AsLoc()).Show();
+                return;
+            }
+            m_headerFeedback.Value(output.AsLoc()).Show();
+        }
+
+        private void ExecuteConsoleCommand(string command, Label feedback)
+        {
+            TryReadCommand(command, out string output);
+            feedback.Value(output.AsLoc()).Show();
+        }
+
+        private bool TryReadCommand(string command, out string output)
+        {
+            string commandName = command.Split(' ')[0];
+            if (!m_consoleCommands.Executor.Commands.ContainsKey(commandName))
+            {
+                output = "Command unavailable: " + commandName;
+                return false;
+            }
+
+            try
+            {
+                GameCommandResult result = m_consoleCommands.Executor.TryExecute(command);
+                if (result.ErrorMessage.HasValue)
+                {
+                    output = result.ErrorMessage.Value;
+                    return false;
+                }
+
+                output = result.Result.HasValue
+                    ? Convert.ToString(result.Result.Value, CultureInfo.InvariantCulture) ?? "Command completed."
+                    : "Command completed.";
+                return true;
+            }
+            catch (Exception exception)
+            {
+                output = $"Command failed: {exception.Message}";
+                return false;
+            }
+        }
+
+        private ProfilerSnapshot ReadProfilerSnapshot()
+        {
+            bool statusAvailable = TryReadCommand("tajs_profiler_status", out string status);
+            bool runtimeAvailable = TryReadCommand("tajs_profiler_runtime 10", out string runtime);
+            if (!statusAvailable && !runtimeAvailable)
+            {
+                return ProfilerSnapshot.Unavailable(status, runtime);
+            }
+
+            return new ProfilerSnapshot(
+                statusAvailable || runtimeAvailable,
+                status,
+                runtime,
+                ReadField(status, "frames"),
+                ReadField(status, "deep"),
+                ReadField(status, "timing-ring-drops"),
+                ReadField(status, "gpu-frame"),
+                ReadField(status, "classification"),
+                ReadField(status, "frame"),
+                ReadField(status, "wait-for-sim"),
+                ReadField(status, "sim"),
+                ReadSummaryLine(runtime, "render"));
+        }
+
+        private static string ReadField(string text, string key)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return "unavailable";
+            }
+
+            string needle = key + "=";
+            int start = text.IndexOf(needle, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+            {
+                return "unavailable";
+            }
+
+            start += needle.Length;
+            int end = text.Length;
+            foreach (char delimiter in new[] { ',', ';', '\n', '\r' })
+            {
+                int candidate = text.IndexOf(delimiter, start);
+                if (candidate >= 0 && candidate < end)
+                {
+                    end = candidate;
+                }
+            }
+            return text.Substring(start, end - start).Trim();
+        }
+
+        private static string ReadSummaryLine(string text, string key)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return "unavailable";
+            }
+
+            foreach (string line in text.Replace("\r", string.Empty).Split('\n'))
+            {
+                string trimmed = line.TrimStart();
+                if (trimmed.StartsWith(key, StringComparison.OrdinalIgnoreCase))
+                {
+                    return trimmed.Substring(key.Length).Trim();
+                }
+            }
+            return "unavailable";
+        }
+
+        private static IReadOnlyList<IGrouping<string, SettingSnapshot>> GetCategories(IReadOnlyList<SettingSnapshot> settings) =>
+            settings
+                .GroupBy(snapshot => snapshot.Descriptor.Category)
+                .OrderBy(group => group.Key, StringComparer.Ordinal)
+                .ToArray();
+
+        private static bool MatchesDomain(SettingDescriptor descriptor, IReadOnlyList<string> keywords)
+        {
+            return keywords.Any(keyword =>
+                descriptor.Category.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                descriptor.ModId.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                descriptor.DisplayName.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         private IReadOnlyList<LoadedModData> GetTajsMods() =>
@@ -468,10 +827,7 @@ namespace TajsCOI.Core.Settings
                 .OrderBy(mod => mod.Manifest.Id, StringComparer.Ordinal)
                 .ToArray();
 
-        private string FormatCurrent(SettingDescriptor descriptor)
-        {
-            return FormatValue(GetCurrentValue(descriptor));
-        }
+        private string FormatCurrent(SettingDescriptor descriptor) => FormatValue(GetCurrentValue(descriptor));
 
         private object GetCurrentValue(SettingDescriptor descriptor) =>
             m_settings.GetSnapshot().Single(snapshot =>
@@ -485,8 +841,10 @@ namespace TajsCOI.Core.Settings
                    ?? descriptor.Choices[0];
         }
 
-        private static Label SectionTitle(string text) =>
-            new Label(text.AsLoc()).FontBold().FontSize(20).MarginTop(8.pt()).MarginBottom(2.pt());
+        private static ColorRgba CompatibilityColor(CompatibilityState state) =>
+            state == CompatibilityState.Compatible ? TajsDashboardUi.Green :
+            state == CompatibilityState.Degraded ? TajsDashboardUi.Yellow :
+            TajsDashboardUi.Red;
 
         private static string FormatValue(object value) =>
             Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
@@ -520,18 +878,121 @@ namespace TajsCOI.Core.Settings
             mode == SettingApplyMode.ReloadSave ? "After save reload" :
             "After game restart";
 
+        private static string Truncate(string text, int maximumLength)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= maximumLength)
+            {
+                return text ?? string.Empty;
+            }
+            return text.Substring(0, maximumLength) + "...";
+        }
+
         private static string PluralSuffix(int count) => count == 1 ? string.Empty : "s";
+
+        private enum DashboardPage
+        {
+            Overview,
+            Profiler,
+            Performance,
+            Tweaks,
+            SaveLoad,
+            Memory,
+            Rendering,
+            Compatibility,
+            Logs,
+            Settings,
+        }
+
+        private sealed class ProfilerSnapshot
+        {
+            internal ProfilerSnapshot(
+                bool isAvailable,
+                string statusText,
+                string runtimeText,
+                string flightRecorder,
+                string deepTrace,
+                string ringDrops,
+                string gpuTiming,
+                string classification,
+                string frame,
+                string waitForSim,
+                string simUpdate,
+                string render)
+            {
+                IsAvailable = isAvailable;
+                StatusText = statusText;
+                RuntimeText = runtimeText;
+                FlightRecorder = ValueOrUnavailable(flightRecorder);
+                DeepTrace = ValueOrUnavailable(deepTrace);
+                RingDrops = ValueOrUnavailable(ringDrops);
+                GpuTiming = ValueOrUnavailable(gpuTiming);
+                Classification = ValueOrUnavailable(classification);
+                Frame = ValueOrUnavailable(frame);
+                WaitForSim = ValueOrUnavailable(waitForSim);
+                SimUpdate = ValueOrUnavailable(simUpdate);
+                Render = ValueOrUnavailable(render);
+            }
+
+            internal bool IsAvailable { get; }
+            internal string StatusText { get; }
+            internal string RuntimeText { get; }
+            internal string FlightRecorder { get; }
+            internal string DeepTrace { get; }
+            internal string RingDrops { get; }
+            internal string GpuTiming { get; }
+            internal string Classification { get; }
+            internal string Frame { get; }
+            internal string WaitForSim { get; }
+            internal string SimUpdate { get; }
+            internal string Render { get; }
+
+            internal static ProfilerSnapshot Unavailable(string status, string runtime) =>
+                new(false, status, runtime, "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable");
+
+            private static string ValueOrUnavailable(string value) =>
+                string.IsNullOrWhiteSpace(value) ? "unavailable" : value;
+        }
     }
 
-    internal static class TajsDashboardUiExtensions
+    internal static class TajsDashboardUi
     {
-        internal static Row AddStats(this Row row, params string[] values)
+        internal static readonly ColorRgba Cyan = new ColorRgba(130, 200, 255);
+        internal static readonly ColorRgba Green = new ColorRgba(130, 220, 150);
+        internal static readonly ColorRgba Yellow = new ColorRgba(245, 195, 90);
+        internal static readonly ColorRgba Red = new ColorRgba(240, 105, 105);
+
+        internal static Label SectionHeader(string text) =>
+            new Label(text.AsLoc()).FontBold().FontSize(20).MarginTop(4.pt()).MarginBottom(1.pt());
+
+        internal static Panel Card(string title, string subtitle, params UiComponent[] children)
         {
-            foreach (string value in values)
+            Panel panel = new Panel(true)
+                .ReducedPadding()
+                .BodyGap(3.pt())
+                .StyleGroupDark();
+            panel.Body.Add(new Label(title.AsLoc()).FontBold().FontSize(15));
+            if (!string.IsNullOrWhiteSpace(subtitle))
             {
-                row.Add(new Label(value.AsLoc()).StyleChip().FontSize(11));
+                panel.Body.Add(new Label(subtitle.AsLoc()).FontSize(11));
             }
-            return row;
+            panel.Body.Add(children);
+            return panel;
         }
+
+        internal static Panel MetricTile(string title, string value, ColorRgba color)
+        {
+            return new Panel(true)
+                .ReducedPadding()
+                .BodyGap(1.pt())
+                .StyleGroupDark()
+                .MinWidth(130.px())
+                .FlexGrow(1f)
+                .BodyAdd(
+                    new Label(title.AsLoc()).FontSize(11),
+                    new Label(value.AsLoc()).FontBold().FontSize(17).Color(color));
+        }
+
+        internal static Label StatusBadge(string text, ColorRgba color) =>
+            new Label(text.AsLoc()).StyleChip().FontSize(11).Color(color);
     }
 }
