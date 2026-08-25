@@ -219,6 +219,13 @@ namespace TajsCOI.Profiler.Core
                 AddEventType(eventTypes, simLoop.UpdateEndForUiEnd);
                 AddEventType(eventTypes, simLoop.IdleUpdate);
 
+                if (eventTypes.Count == 0)
+                {
+                    s_patchSummary = default;
+                    Volatile.Write(ref s_patchAttempted, 1);
+                    return s_patchSummary;
+                }
+
                 int patched = 0;
                 int replacements = 0;
                 int failures = 0;
