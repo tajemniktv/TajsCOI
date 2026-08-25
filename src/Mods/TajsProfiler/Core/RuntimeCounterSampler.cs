@@ -45,6 +45,11 @@ namespace TajsCOI.Profiler.Core
             m_intervalTicks = Math.Max(1, (long)Math.Round(
                 Math.Max(0.01, intervalSeconds) * Stopwatch.Frequency,
                 MidpointRounding.AwayFromZero));
+            // Establish the baseline before the first frame callback so the first sample reports
+            // collections observed by the profiler, not the process lifetime total.
+            m_previousGen0 = GC.CollectionCount(0);
+            m_previousGen1 = GC.CollectionCount(1);
+            m_previousGen2 = GC.CollectionCount(2);
 
             Type? profiler = FindType("UnityEngine.Profiling.Profiler", "UnityEngine.CoreModule");
             m_unityAllocated = CreateLongGetter(profiler, "GetTotalAllocatedMemoryLong");
@@ -68,17 +73,24 @@ namespace TajsCOI.Profiler.Core
 
         internal RuntimeCounterSnapshot Read(long timestamp, bool force = false)
         {
-            if (!force && m_lastSampleTimestamp > 0 && timestamp - m_lastSampleTimestamp < m_intervalTicks)
-            {
-                return WithoutDeltas(timestamp);
-            }
-
             try
             {
-                long managedHeap = GC.GetTotalMemory(false);
                 int gen0 = GC.CollectionCount(0);
                 int gen1 = GC.CollectionCount(1);
                 int gen2 = GC.CollectionCount(2);
+                bool readMemory = force || m_lastSampleTimestamp <= 0 ||
+                    timestamp - m_lastSampleTimestamp >= m_intervalTicks;
+                if (!readMemory)
+                {
+                    RuntimeCounterSnapshot interval = WithGcDeltas(timestamp, gen0, gen1, gen2);
+                    m_previousGen0 = gen0;
+                    m_previousGen1 = gen1;
+                    m_previousGen2 = gen2;
+                    m_lastSnapshot = interval;
+                    return interval;
+                }
+
+                long managedHeap = GC.GetTotalMemory(false);
                 long unityAllocated = Read(m_unityAllocated);
                 long unityReserved = Read(m_unityReserved);
                 long unityUnusedReserved = Read(m_unityUnusedReserved);
@@ -124,7 +136,7 @@ namespace TajsCOI.Profiler.Core
             }
         }
 
-        private RuntimeCounterSnapshot WithoutDeltas(long timestamp) =>
+        private RuntimeCounterSnapshot WithGcDeltas(long timestamp, int gen0, int gen1, int gen2) =>
             new(
                 m_lastSnapshot.Available,
                 timestamp,
@@ -135,9 +147,9 @@ namespace TajsCOI.Profiler.Core
                 m_lastSnapshot.UnityGraphicsBytes,
                 m_lastSnapshot.MonoUsedBytes,
                 m_lastSnapshot.MonoHeapBytes,
-                0,
-                0,
-                0,
+                CounterDelta(gen0, m_previousGen0),
+                CounterDelta(gen1, m_previousGen1),
+                CounterDelta(gen2, m_previousGen2),
                 0,
                 0,
                 0,

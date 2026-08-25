@@ -141,6 +141,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 .Append(", deep=").Append(DeepCallbackRecorder.IsActive ? "active" : "idle")
                 .Append(", deep-patches=").Append(m_deepPatchSummary.PatchedMethods)
                 .Append('/').Append(m_deepPatchSummary.ExpectedMethods)
+                .Append(", timing-ring-drops=").Append(m_timings?.DroppedEntries ?? 0)
                 .Append(", counters=").Append(m_counters.SupportedUnityCounters == 0 ? "managed-only" : "available")
                 .Append(", gpu=").Append(m_counters.GpuTelemetryStatus);
 
@@ -384,7 +385,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 exportDirectory,
                 safeName + "_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture) + ".json");
             RuntimeFrameSample[] frames = m_traceWindowStart > 0
-                ? m_history.SnapshotBetween(m_traceWindowStart, Math.Max(m_traceWindowEnd, Stopwatch.GetTimestamp()))
+                ? m_history.SnapshotBetween(
+                    m_traceWindowStart,
+                    m_traceWindowEnd > 0 && m_traceWindowEnd <= Stopwatch.GetTimestamp()
+                        ? m_traceWindowEnd
+                        : Stopwatch.GetTimestamp())
                 : m_history.SnapshotRecent(600);
             RuntimeTraceExportResult result = RuntimeTraceExporter.Export(
                 path,
@@ -493,16 +498,20 @@ namespace TajsCOI.Profiler.Probes.Runtime
             {
                 long capturedTimestamp = Stopwatch.GetTimestamp();
                 GameLoopTimingRanges ranges = default;
-                GameLoopTimingSnapshot timings = m_timings is null
-                    ? default
-                    : m_timings.ReadLatest(out ranges);
-                if (m_timings is null)
+                GameLoopTimingSnapshot timings = new GameLoopTimingSnapshot();
+                bool hasTimingSample = m_timings is not null && m_timings.ReadCompleted(out timings, out ranges);
+                if (!hasTimingSample)
                 {
+                    timings = new GameLoopTimingSnapshot();
                     ranges = default;
                 }
                 GameRunnerTimingSnapshot runner = m_runner is null
-                    ? default
+                    ? GameRunnerTimingSnapshot.Unavailable
                     : m_runner.Read();
+                if (!hasTimingSample && (m_runner is null || !runner.IsAvailable))
+                {
+                    return;
+                }
                 RuntimeFrameSample sample = m_history.RecordSample(
                     capturedTimestamp,
                     timings,
@@ -632,7 +641,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         private static string FormatClassificationCounts(RuntimeFrameSummary summary) =>
             "main/render=" + summary.MainRenderBoundCount.ToString(CultureInfo.InvariantCulture) +
-            ", sim=" + summary.SimulationBoundCount.ToString(CultureInfo.InvariantCulture) +
+            ", sim-bound=" + summary.SimulationBoundCount.ToString(CultureInfo.InvariantCulture) +
+            ", sim-pressure=" + summary.SimulationPressureCount.ToString(CultureInfo.InvariantCulture) +
             ", wait=" + summary.WaitingForSimulationCount.ToString(CultureInfo.InvariantCulture) +
             ", gc=" + summary.GcRelatedCount.ToString(CultureInfo.InvariantCulture) +
             ", gpu=" + summary.LikelyGpuBoundCount.ToString(CultureInfo.InvariantCulture) +
@@ -670,6 +680,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             {
                 RuntimeFrameClassification.MainRenderBound => "main/render bound",
                 RuntimeFrameClassification.SimulationBound => "simulation bound",
+                RuntimeFrameClassification.SimulationPressure => "simulation pressure",
                 RuntimeFrameClassification.WaitingForSimulation => "waiting for simulation",
                 RuntimeFrameClassification.GcRelated => "GC-related",
                 RuntimeFrameClassification.LikelyGpuBound => "likely GPU bound",

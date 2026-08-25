@@ -93,7 +93,89 @@ namespace TajsCOI.Tests
 
             Assert.Equal(RuntimeFrameClassification.WaitingForSimulation, waiting.Classification);
             Assert.Equal(RuntimeFrameClassification.MainRenderBound, main.Classification);
-            Assert.Equal(RuntimeFrameClassification.SimulationBound, sim.Classification);
+            Assert.Equal(RuntimeFrameClassification.SimulationPressure, sim.Classification);
+        }
+
+        [Fact]
+        public void DegradedRunnerUsesRingTimingsAndPreservesUnavailableSentinels()
+        {
+            RuntimeFrameSample sample = new RuntimeFrameSample(
+                1,
+                1,
+                new GameLoopTimingSnapshot(renderTicks: 10),
+                GameRunnerTimingSnapshot.Unavailable,
+                1,
+                1,
+                1,
+                false);
+
+            Assert.Equal(-1, sample.Runner.UpdateTicks);
+            Assert.Equal(10, sample.FrameTicks);
+            Assert.Equal(10, sample.RenderTicks);
+        }
+
+        [Fact]
+        public void PartialRunnerFallsBackToAvailableComponentsWhenRingsAreUnavailable()
+        {
+            RuntimeFrameSample sample = new RuntimeFrameSample(
+                1,
+                1,
+                new GameLoopTimingSnapshot(),
+                new GameRunnerTimingSnapshot(inputTicks: 1, syncTicks: 1, renderTicks: 3, simTicks: 2),
+                1,
+                1,
+                1,
+                false);
+
+            Assert.Equal(7, sample.FrameTicks);
+            Assert.Equal(3, sample.RenderTicks);
+            Assert.Equal(2, sample.SimTicks);
+        }
+
+        [Fact]
+        public void SummarySaturatesTotalTicksAtLongMaximum()
+        {
+            var history = new RuntimeFrameHistory(2);
+            history.Record(
+                1,
+                new GameLoopTimingSnapshot(),
+                new GameRunnerTimingSnapshot(updateTicks: long.MaxValue),
+                1,
+                1,
+                1,
+                false);
+            history.Record(
+                2,
+                new GameLoopTimingSnapshot(),
+                new GameRunnerTimingSnapshot(updateTicks: long.MaxValue),
+                1,
+                1,
+                1,
+                false);
+
+            Assert.Equal(long.MaxValue, history.SummarizeRecent(10).Frame.TotalTicks);
+        }
+
+        [Fact]
+        public void RingCursorConsumesEachCompletedWindowOnceAndReportsOverrun()
+        {
+            var cursor = new GameLoopTimingRingCursor(4);
+
+            GameLoopTimingRingReadWindow first = cursor.Advance(1);
+            Assert.Equal(1, first.Count);
+            Assert.Equal(0, first.StartLogicalIndex);
+            Assert.Equal(0, first.DroppedEntries);
+            Assert.Equal(0, cursor.Advance(1).Count);
+
+            GameLoopTimingRingReadWindow slowerProducer = cursor.Advance(4);
+            Assert.Equal(3, slowerProducer.Count);
+            Assert.Equal(1, slowerProducer.StartLogicalIndex);
+
+            GameLoopTimingRingReadWindow fasterProducer = cursor.Advance(10);
+            Assert.Equal(4, fasterProducer.Count);
+            Assert.Equal(6, fasterProducer.StartLogicalIndex);
+            Assert.Equal(2, fasterProducer.DroppedEntries);
+            Assert.Equal(0, cursor.Advance(10).Count);
         }
 
         [Fact]

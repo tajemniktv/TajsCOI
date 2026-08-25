@@ -6,10 +6,15 @@ and the runtime flight-recorder milestone from [issue #29](https://github.com/ta
 ## Runtime design
 
 `GameLoopTimingDiagnosticsService` subscribes once to the main-thread `InputUpdate` event. Each
-callback reads the completed entries from Captain of Industry's existing `GameLoopTimings` rings
-and captures the public simulation state plus broad `GameRunner` durations. The callback intentionally
-reads the previous safe ring slot: `GameLoopTimings.End` advances the writer index before filling
-the entry, so the newest slot may still be in flight.
+callback harvests each newly completed entry from Captain of Industry's existing `GameLoopTimings`
+rings and captures the public simulation state plus broad `GameRunner` durations. Sampling happens
+inside `InputUpdate`, before the current `GameRunner` update-duration properties are finalized, so
+the safe ring entries and runner values are intentionally treated as the previous completed update
+boundary rather than being presented as an in-flight current-frame snapshot. Each event has an
+independent producer cursor, so faster simulation phases are not skipped and slower phases are not
+duplicated. `GameLoopTimings.End` advances the writer index before filling the entry, so the newest
+slot may still be in flight; entries that overrun the 2,048-slot retention window are reported as
+drops.
 
 The private timing adapter validates all of the following before it becomes active:
 
@@ -42,7 +47,7 @@ callback order and exception behavior, and ranks total, average, p95, p99, maxim
 metrics. Unsupported callback forms fail independently and are shown in compatibility status.
 
 The exporter writes Chrome trace-event JSON with main/simulation phase spans, callback spans,
-markers, memory/GC counters, and dumping/pathfinding counters. Unsupported values are emitted as
+markers, memory/GC counters, and interval dumping/pathfinding counters. Unsupported values are emitted as
 `"unavailable"`, never as synthetic zeroes. GPU classification remains unavailable unless a
 trusted player-build telemetry surface is added.
 

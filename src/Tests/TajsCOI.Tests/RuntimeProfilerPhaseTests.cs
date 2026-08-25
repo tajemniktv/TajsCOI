@@ -259,6 +259,19 @@ namespace TajsCOI.Tests
             }
         }
 
+        [Fact]
+        public void ManualDeepStopUsesActualStopTimestamp()
+        {
+            DeepCaptureWindow started = DeepCallbackRecorder.Start(1, automatic: false, timestamp: 100);
+            Assert.True(started.WasActive);
+
+            DeepCaptureWindow stopped = DeepCallbackRecorder.Stop(timestamp: 110);
+
+            Assert.True(stopped.WasActive);
+            Assert.Equal(100, stopped.StartTimestamp);
+            Assert.Equal(110, stopped.EndTimestamp);
+        }
+
         private static RuntimeFrameSample Sample(long sequence, long timestamp, long frameTicks, bool overtime)
         {
             return new RuntimeFrameSample(

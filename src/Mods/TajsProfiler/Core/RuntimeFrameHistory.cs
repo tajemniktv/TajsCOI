@@ -16,6 +16,7 @@ namespace TajsCOI.Profiler.Core
         Unknown,
         MainRenderBound,
         SimulationBound,
+        SimulationPressure,
         WaitingForSimulation,
         GcRelated,
         LikelyGpuBound,
@@ -59,6 +60,18 @@ namespace TajsCOI.Profiler.Core
         internal int SimUpdateCount { get; }
         internal int SimStepsSinceLoad { get; }
         internal bool IsAvailable => UpdateTicks >= 0 || InputTicks >= 0 || SyncTicks >= 0 || RenderTicks >= 0 || SimTicks >= 0;
+
+        internal static GameRunnerTimingSnapshot Unavailable => new GameRunnerTimingSnapshot(
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            false,
+            -1,
+            false,
+            -1,
+            -1);
     }
 
     internal sealed class GameRunnerTimingAccess
@@ -104,7 +117,8 @@ namespace TajsCOI.Profiler.Core
         }
 
         internal string UnavailableProperties { get; }
-        internal bool IsAvailable => m_update is not null || m_sim is not null || m_render is not null;
+        internal bool IsAvailable => m_update is not null || m_input is not null || m_sync is not null ||
+            m_sim is not null || m_render is not null;
 
         internal static GameRunnerTimingAccess? TryCreate(object? runner, out string reason)
         {
@@ -248,9 +262,56 @@ namespace TajsCOI.Profiler.Core
         internal RuntimeCounterSnapshot Counters { get; }
         internal RuntimeSubsystemCounterSnapshot SubsystemCounters { get; }
 
-        internal long FrameTicks => Runner.UpdateTicks >= 0 ? Runner.UpdateTicks : Timings.MainPhaseTicks + Timings.WaitForSimTicks;
-        internal long RenderTicks => Runner.RenderTicks >= 0 ? Runner.RenderTicks : Timings.RenderPhaseTicks;
-        internal long SimTicks => Runner.SimTicks >= 0 ? Runner.SimTicks : Timings.SimulationPhaseTicks;
+        internal long FrameTicks
+        {
+            get
+            {
+                long ringTicks = RuntimeTraceMath.SaturatingAdd(Timings.MainPhaseTicks, Timings.WaitForSimTicks);
+                if (Runner.UpdateTicks > 0)
+                {
+                    return Runner.UpdateTicks;
+                }
+                if (ringTicks > 0)
+                {
+                    return ringTicks;
+                }
+
+                long componentTicks = RunnerComponentTicks;
+                return componentTicks >= 0 ? componentTicks : Math.Max(0, Runner.UpdateTicks);
+            }
+        }
+
+        internal long RenderTicks => Runner.RenderTicks > 0
+            ? Runner.RenderTicks
+            : Timings.RenderPhaseTicks > 0
+                ? Timings.RenderPhaseTicks
+                : Math.Max(0, Runner.RenderTicks);
+
+        internal long SimTicks => Runner.SimTicks > 0
+            ? Runner.SimTicks
+            : Timings.SimulationPhaseTicks > 0
+                ? Timings.SimulationPhaseTicks
+                : Math.Max(0, Runner.SimTicks);
+
+        private long RunnerComponentTicks
+        {
+            get
+            {
+                if (Runner.InputTicks < 0 && Runner.SyncTicks < 0 &&
+                    Runner.RenderTicks < 0 && Runner.SimTicks < 0)
+                {
+                    return -1;
+                }
+
+                long total = 0;
+                total = RuntimeTraceMath.SaturatingAdd(total, Math.Max(0, Runner.InputTicks));
+                total = RuntimeTraceMath.SaturatingAdd(total, Math.Max(0, Runner.SyncTicks));
+                total = RuntimeTraceMath.SaturatingAdd(total, Math.Max(0, Runner.RenderTicks));
+                total = RuntimeTraceMath.SaturatingAdd(total, Math.Max(0, Runner.SimTicks));
+                return total;
+            }
+        }
+
         internal RuntimeFrameClassification Classification => RuntimeFrameClassifier.Classify(this);
     }
 
@@ -290,7 +351,7 @@ namespace TajsCOI.Profiler.Core
             }
             if (mainTicks <= 0)
             {
-                return RuntimeFrameClassification.SimulationBound;
+                return RuntimeFrameClassification.SimulationPressure;
             }
             if (simTicks <= 0)
             {
@@ -305,7 +366,7 @@ namespace TajsCOI.Profiler.Core
             }
 
             return simTicks > mainTicks
-                ? RuntimeFrameClassification.SimulationBound
+                ? RuntimeFrameClassification.SimulationPressure
                 : RuntimeFrameClassification.MainRenderBound;
         }
     }
@@ -341,6 +402,7 @@ namespace TajsCOI.Profiler.Core
             int unknownCount,
             int mainRenderBoundCount,
             int simulationBoundCount,
+            int simulationPressureCount,
             int waitingForSimulationCount,
             int gcRelatedCount,
             int likelyGpuBoundCount,
@@ -354,6 +416,7 @@ namespace TajsCOI.Profiler.Core
             UnknownCount = unknownCount;
             MainRenderBoundCount = mainRenderBoundCount;
             SimulationBoundCount = simulationBoundCount;
+            SimulationPressureCount = simulationPressureCount;
             WaitingForSimulationCount = waitingForSimulationCount;
             GcRelatedCount = gcRelatedCount;
             LikelyGpuBoundCount = likelyGpuBoundCount;
@@ -368,6 +431,7 @@ namespace TajsCOI.Profiler.Core
         internal int UnknownCount { get; }
         internal int MainRenderBoundCount { get; }
         internal int SimulationBoundCount { get; }
+        internal int SimulationPressureCount { get; }
         internal int WaitingForSimulationCount { get; }
         internal int GcRelatedCount { get; }
         internal int LikelyGpuBoundCount { get; }
@@ -560,6 +624,7 @@ namespace TajsCOI.Profiler.Core
             int unknown = 0;
             int mainRenderBound = 0;
             int simulationBound = 0;
+            int simulationPressure = 0;
             int waitingForSimulation = 0;
             int gcRelated = 0;
             int likelyGpuBound = 0;
@@ -576,6 +641,7 @@ namespace TajsCOI.Profiler.Core
                     case RuntimeFrameClassification.Unknown: unknown++; break;
                     case RuntimeFrameClassification.MainRenderBound: mainRenderBound++; break;
                     case RuntimeFrameClassification.SimulationBound: simulationBound++; break;
+                    case RuntimeFrameClassification.SimulationPressure: simulationPressure++; break;
                     case RuntimeFrameClassification.WaitingForSimulation: waitingForSimulation++; break;
                     case RuntimeFrameClassification.GcRelated: gcRelated++; break;
                     case RuntimeFrameClassification.LikelyGpuBound: likelyGpuBound++; break;
@@ -592,6 +658,7 @@ namespace TajsCOI.Profiler.Core
                 unknown,
                 mainRenderBound,
                 simulationBound,
+                simulationPressure,
                 waitingForSimulation,
                 gcRelated,
                 likelyGpuBound,
@@ -604,7 +671,7 @@ namespace TajsCOI.Profiler.Core
             long total = 0;
             for (int index = 0; index < values.Length; index++)
             {
-                total += values[index];
+                total = RuntimeTraceMath.SaturatingAdd(total, values[index]);
             }
             return new RuntimeMetricSummary(
                 values.Length,

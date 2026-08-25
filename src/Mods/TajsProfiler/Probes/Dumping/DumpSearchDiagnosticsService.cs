@@ -125,6 +125,12 @@ namespace TajsCOI.Profiler.Probes.Dumping
         private static long s_lastPfMaxIndividualSearchElapsedTicks;
         private static long s_peakPfMaxIndividualSearchElapsedTicks;
         private static long s_peakPfSearchCalls;
+        private static long s_timelinePreviousCalls;
+        private static long s_timelinePreviousTrueResults;
+        private static long s_timelinePreviousFalseResults;
+        private static long s_timelinePreviousElapsedTicks;
+        private static long s_timelinePreviousPfEnqueues;
+        private static int s_timelineBaselineEstablished;
 
         private static ProfileSession? s_activeProfile;
         private static int s_profileState;
@@ -184,13 +190,40 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
         internal static RuntimeSubsystemCounterSnapshot ReadTimelineCounters()
         {
+            long calls = Read(ref s_totalCalls);
+            long trueResults = Read(ref s_totalTrueResults);
+            long falseResults = Read(ref s_totalFalseResults);
+            long elapsedTicks = Read(ref s_totalElapsedTicks);
+            long pathEnqueues = Read(ref s_totalPfEnqueues);
+            if (Interlocked.Exchange(ref s_timelineBaselineEstablished, 1) == 0)
+            {
+                s_timelinePreviousCalls = calls;
+                s_timelinePreviousTrueResults = trueResults;
+                s_timelinePreviousFalseResults = falseResults;
+                s_timelinePreviousElapsedTicks = elapsedTicks;
+                s_timelinePreviousPfEnqueues = pathEnqueues;
+                return new RuntimeSubsystemCounterSnapshot(0, 0, 0, 0, 0, Read(ref s_lastPfSearchElapsedTicks));
+            }
+
+            long callDelta = CounterDelta(calls, ref s_timelinePreviousCalls);
+            long trueDelta = CounterDelta(trueResults, ref s_timelinePreviousTrueResults);
+            long falseDelta = CounterDelta(falseResults, ref s_timelinePreviousFalseResults);
+            long elapsedDelta = CounterDelta(elapsedTicks, ref s_timelinePreviousElapsedTicks);
+            long enqueueDelta = CounterDelta(pathEnqueues, ref s_timelinePreviousPfEnqueues);
             return new RuntimeSubsystemCounterSnapshot(
-                Read(ref s_totalCalls),
-                Read(ref s_totalTrueResults),
-                Read(ref s_totalFalseResults),
-                Read(ref s_totalElapsedTicks),
-                Read(ref s_totalPfEnqueues),
+                callDelta,
+                trueDelta,
+                falseDelta,
+                elapsedDelta,
+                enqueueDelta,
                 Read(ref s_lastPfSearchElapsedTicks));
+        }
+
+        private static long CounterDelta(long current, ref long previous)
+        {
+            long delta = current >= previous ? current - previous : 0;
+            previous = current;
+            return delta;
         }
 
         [ConsoleCommand(
@@ -1558,6 +1591,12 @@ namespace TajsCOI.Profiler.Probes.Dumping
             Interlocked.Exchange(ref s_lastPfMaxIndividualSearchElapsedTicks, 0);
             Interlocked.Exchange(ref s_peakPfMaxIndividualSearchElapsedTicks, 0);
             Interlocked.Exchange(ref s_peakPfSearchCalls, 0);
+            Interlocked.Exchange(ref s_timelinePreviousCalls, 0);
+            Interlocked.Exchange(ref s_timelinePreviousTrueResults, 0);
+            Interlocked.Exchange(ref s_timelinePreviousFalseResults, 0);
+            Interlocked.Exchange(ref s_timelinePreviousElapsedTicks, 0);
+            Interlocked.Exchange(ref s_timelinePreviousPfEnqueues, 0);
+            Interlocked.Exchange(ref s_timelineBaselineEstablished, 0);
         }
 
         private static void ResetDumpSearchStats()

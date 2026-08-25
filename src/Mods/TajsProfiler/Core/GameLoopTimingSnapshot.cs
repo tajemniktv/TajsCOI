@@ -135,15 +135,32 @@ namespace TajsCOI.Profiler.Core
             SimPausedUiTicks > 0 || SimCmdExtraTicks > 0;
 
         internal long MainPhaseTicks =>
-            InputTicks + InputEndTicks + SyncStartTicks + SyncTicks + SyncEndTicks +
-            RenderAfterSyncTicks + RenderTicks + RenderEndTicks;
+            RuntimeTraceMath.SaturatingAdd(
+                RuntimeTraceMath.SaturatingAdd(
+                    RuntimeTraceMath.SaturatingAdd(
+                        RuntimeTraceMath.SaturatingAdd(InputTicks, InputEndTicks),
+                        RuntimeTraceMath.SaturatingAdd(SyncStartTicks, SyncTicks)),
+                    SyncEndTicks),
+                RuntimeTraceMath.SaturatingAdd(
+                    RuntimeTraceMath.SaturatingAdd(RenderAfterSyncTicks, RenderTicks),
+                    RenderEndTicks));
 
-        internal long RenderPhaseTicks => RenderAfterSyncTicks + RenderTicks + RenderEndTicks;
+        internal long RenderPhaseTicks => RuntimeTraceMath.SaturatingAdd(
+            RuntimeTraceMath.SaturatingAdd(RenderAfterSyncTicks, RenderTicks),
+            RenderEndTicks);
 
         internal long SimulationPhaseTicks =>
-            SimCmdTicks + SimCmdExtraTicks + SimAfterSyncTicks + SimStartTicks +
-            SimParallelStartTicks + SimUpdateTicks + SimParallelEndTicks + SimEndTicks +
-            SimReadStateTicks + SimEndForUiTicks + SimPausedUiTicks;
+            RuntimeTraceMath.SaturatingAdd(
+                RuntimeTraceMath.SaturatingAdd(
+                    RuntimeTraceMath.SaturatingAdd(
+                        RuntimeTraceMath.SaturatingAdd(SimCmdTicks, SimCmdExtraTicks),
+                        RuntimeTraceMath.SaturatingAdd(SimAfterSyncTicks, SimStartTicks)),
+                    RuntimeTraceMath.SaturatingAdd(SimParallelStartTicks, SimUpdateTicks)),
+                RuntimeTraceMath.SaturatingAdd(
+                    RuntimeTraceMath.SaturatingAdd(
+                        RuntimeTraceMath.SaturatingAdd(SimParallelEndTicks, SimEndTicks),
+                        RuntimeTraceMath.SaturatingAdd(SimReadStateTicks, SimEndForUiTicks)),
+                    SimPausedUiTicks));
 
         internal long GetTicks(GameLoopTimingEvent eventId)
         {
@@ -171,6 +188,69 @@ namespace TajsCOI.Profiler.Core
                 case GameLoopTimingEvent.SimCmdExtra: return SimCmdExtraTicks;
                 default: return 0;
             }
+        }
+    }
+
+    internal readonly struct GameLoopTimingRingReadWindow
+    {
+        internal GameLoopTimingRingReadWindow(int startLogicalIndex, int count, long droppedEntries)
+        {
+            StartLogicalIndex = startLogicalIndex;
+            Count = count;
+            DroppedEntries = droppedEntries;
+        }
+
+        internal int StartLogicalIndex { get; }
+        internal int Count { get; }
+        internal long DroppedEntries { get; }
+    }
+
+    /// <summary>
+    ///     Tracks one independently-produced vanilla ring. The game exposes a logical write
+    ///     counter, even though entry lookup masks it to the 2048-slot backing array. A reader
+    ///     therefore consumes the interval exactly once and can detect when more than one full
+    ///     retention window elapsed between polls.
+    /// </summary>
+    internal sealed class GameLoopTimingRingCursor
+    {
+        private readonly int m_capacity;
+        private bool m_initialized;
+        private int m_nextLogicalIndex;
+
+        internal GameLoopTimingRingCursor(int capacity)
+        {
+            if (capacity <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(capacity));
+            }
+            m_capacity = capacity;
+        }
+
+        internal GameLoopTimingRingReadWindow Advance(int writeIndex)
+        {
+            if (!m_initialized)
+            {
+                m_initialized = true;
+                // writeIndex points at the entry currently being filled. The previous logical
+                // slot is the first safe candidate, but the range validator below rejects the
+                // empty slot when the reader starts before the first producer write.
+                m_nextLogicalIndex = writeIndex > 0 ? writeIndex - 1 : writeIndex;
+            }
+
+            uint unsignedDelta = unchecked((uint)(writeIndex - m_nextLogicalIndex));
+            if (unsignedDelta == 0)
+            {
+                return default;
+            }
+
+            long delta = unsignedDelta;
+            long dropped = Math.Max(0, delta - m_capacity);
+            int count = (int)Math.Min(m_capacity, delta);
+            int start = dropped > 0
+                ? unchecked(writeIndex - m_capacity)
+                : m_nextLogicalIndex;
+            m_nextLogicalIndex = writeIndex;
+            return new GameLoopTimingRingReadWindow(start, count, dropped);
         }
     }
 
@@ -209,6 +289,10 @@ namespace TajsCOI.Profiler.Core
         private readonly Func<int, int, long> m_readStart;
         private readonly Func<int, int, long> m_readEnd;
         private readonly int m_bufferMask;
+        private readonly GameLoopTimingRingCursor[] m_cursors;
+        private readonly long[] m_completedDurations;
+        private readonly GameLoopTimingRange[] m_latestRanges;
+        private long m_droppedEntries;
 
         private GameLoopTimingsAccess(
             int[] writeIndices,
@@ -221,10 +305,16 @@ namespace TajsCOI.Profiler.Core
             m_readEnd = readEnd;
             m_bufferMask = bufferMask;
             BufferSize = bufferMask + 1;
+            m_cursors = Enumerable.Range(0, s_expectedEventNames.Length)
+                .Select(_ => new GameLoopTimingRingCursor(BufferSize))
+                .ToArray();
+            m_completedDurations = new long[s_expectedEventNames.Length];
+            m_latestRanges = new GameLoopTimingRange[s_expectedEventNames.Length];
         }
 
         internal int BufferSize { get; }
         internal bool IsAvailable => true;
+        internal long DroppedEntries => m_droppedEntries;
 
         internal static bool TryCreate(out GameLoopTimingsAccess? access, out string reason)
         {
@@ -370,6 +460,42 @@ namespace TajsCOI.Profiler.Core
             return new GameLoopTimingSnapshot(ranges);
         }
 
+        internal bool ReadCompleted(out GameLoopTimingSnapshot snapshot, out GameLoopTimingRanges ranges)
+        {
+            bool hasSample = false;
+            for (int eventIndex = 0; eventIndex < m_completedDurations.Length; eventIndex++)
+            {
+                m_completedDurations[eventIndex] = 0;
+                m_latestRanges[eventIndex] = default;
+
+                int writeIndex = Volatile.Read(ref m_writeIndices[eventIndex]);
+                GameLoopTimingRingReadWindow window = m_cursors[eventIndex].Advance(writeIndex);
+                m_droppedEntries = RuntimeTraceMath.SaturatingAdd(m_droppedEntries, window.DroppedEntries);
+                for (int offset = 0; offset < window.Count; offset++)
+                {
+                    int logicalIndex = unchecked(window.StartLogicalIndex + offset);
+                    int physicalIndex = logicalIndex & m_bufferMask;
+                    long start = m_readStart(eventIndex, physicalIndex);
+                    long end = m_readEnd(eventIndex, physicalIndex);
+                    GameLoopTimingRange range = new GameLoopTimingRange(start, end);
+                    if (!range.IsValid)
+                    {
+                        continue;
+                    }
+
+                    m_completedDurations[eventIndex] = RuntimeTraceMath.SaturatingAdd(
+                        m_completedDurations[eventIndex],
+                        range.DurationTicks);
+                    m_latestRanges[eventIndex] = range;
+                    hasSample = true;
+                }
+            }
+
+            ranges = CreateRanges(m_latestRanges);
+            snapshot = CreateSnapshot(m_completedDurations);
+            return hasSample;
+        }
+
         private GameLoopTimingRange ReadLatestRange(GameLoopTimingEvent eventId)
         {
             int eventIndex = (int)eventId;
@@ -386,6 +512,50 @@ namespace TajsCOI.Profiler.Core
             long end = m_readEnd(eventIndex, safeIndex & m_bufferMask);
             return new GameLoopTimingRange(start, end);
         }
+
+        private static GameLoopTimingRanges CreateRanges(GameLoopTimingRange[] ranges) => new(
+            ranges[(int)GameLoopTimingEvent.Input],
+            ranges[(int)GameLoopTimingEvent.SyncStart],
+            ranges[(int)GameLoopTimingEvent.Sync],
+            ranges[(int)GameLoopTimingEvent.SyncEnd],
+            ranges[(int)GameLoopTimingEvent.RenderAfterSync],
+            ranges[(int)GameLoopTimingEvent.Render],
+            ranges[(int)GameLoopTimingEvent.RenderEnd],
+            ranges[(int)GameLoopTimingEvent.WaitForSim],
+            ranges[(int)GameLoopTimingEvent.InputEnd],
+            ranges[(int)GameLoopTimingEvent.SimCmd],
+            ranges[(int)GameLoopTimingEvent.SimStart],
+            ranges[(int)GameLoopTimingEvent.SimUpdate],
+            ranges[(int)GameLoopTimingEvent.SimEnd],
+            ranges[(int)GameLoopTimingEvent.SimEndForUi],
+            ranges[(int)GameLoopTimingEvent.SimAfterSync],
+            ranges[(int)GameLoopTimingEvent.SimParallelStart],
+            ranges[(int)GameLoopTimingEvent.SimParallelEnd],
+            ranges[(int)GameLoopTimingEvent.SimReadState],
+            ranges[(int)GameLoopTimingEvent.SimPausedUi],
+            ranges[(int)GameLoopTimingEvent.SimCmdExtra]);
+
+        private static GameLoopTimingSnapshot CreateSnapshot(long[] ticks) => new(
+            ticks[(int)GameLoopTimingEvent.Input],
+            ticks[(int)GameLoopTimingEvent.SyncStart],
+            ticks[(int)GameLoopTimingEvent.Sync],
+            ticks[(int)GameLoopTimingEvent.SyncEnd],
+            ticks[(int)GameLoopTimingEvent.RenderAfterSync],
+            ticks[(int)GameLoopTimingEvent.Render],
+            ticks[(int)GameLoopTimingEvent.RenderEnd],
+            ticks[(int)GameLoopTimingEvent.WaitForSim],
+            ticks[(int)GameLoopTimingEvent.InputEnd],
+            ticks[(int)GameLoopTimingEvent.SimCmd],
+            ticks[(int)GameLoopTimingEvent.SimStart],
+            ticks[(int)GameLoopTimingEvent.SimUpdate],
+            ticks[(int)GameLoopTimingEvent.SimEnd],
+            ticks[(int)GameLoopTimingEvent.SimEndForUi],
+            ticks[(int)GameLoopTimingEvent.SimAfterSync],
+            ticks[(int)GameLoopTimingEvent.SimParallelStart],
+            ticks[(int)GameLoopTimingEvent.SimParallelEnd],
+            ticks[(int)GameLoopTimingEvent.SimReadState],
+            ticks[(int)GameLoopTimingEvent.SimPausedUi],
+            ticks[(int)GameLoopTimingEvent.SimCmdExtra]);
 
         private static Func<int, int, long> CreateEntryFieldReader(
             FieldInfo entriesField,

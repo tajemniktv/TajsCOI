@@ -79,9 +79,9 @@ namespace TajsCOI.Profiler.Core
 
             AppendMetadata(ref first, builder, "process_name", "Captain of Industry", 0);
             eventCount++;
-            AppendMetadata(ref first, builder, "main thread", "GameLoop", 1);
+            AppendMetadata(ref first, builder, "thread_name", "GameLoop", 1);
             eventCount++;
-            AppendMetadata(ref first, builder, "simulation thread", "Simulation", 2);
+            AppendMetadata(ref first, builder, "thread_name", "Simulation", 2);
             eventCount++;
 
             for (int frameIndex = 0; frameIndex < frames.Count; frameIndex++)
@@ -165,6 +165,7 @@ namespace TajsCOI.Profiler.Core
                 {
                     result = Math.Min(result, frames[i].CapturedTimestamp);
                 }
+                IncludeRangeStart(ref result, frames[i].TimingRanges);
             }
             for (int i = 0; i < spans.Count; i++)
             {
@@ -181,6 +182,18 @@ namespace TajsCOI.Profiler.Core
                 }
             }
             return result == long.MaxValue ? Stopwatch.GetTimestamp() : result;
+        }
+
+        private static void IncludeRangeStart(ref long result, GameLoopTimingRanges ranges)
+        {
+            for (int i = 0; i < s_timingEvents.Length; i++)
+            {
+                long start = ranges.Get(s_timingEvents[i]).StartTimestamp;
+                if (start > 0)
+                {
+                    result = Math.Min(result, start);
+                }
+            }
         }
 
         private static void AppendMetadata(ref bool first, StringBuilder builder, string name, string value, int tid)

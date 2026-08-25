@@ -9,6 +9,22 @@ using System.Reflection;
 
 namespace TajsCOI.Profiler.Core
 {
+    internal static class RuntimeTraceMath
+    {
+        internal static long SaturatingAdd(long left, long right)
+        {
+            if (left <= 0)
+            {
+                return Math.Max(0, right);
+            }
+            if (right <= 0)
+            {
+                return left;
+            }
+            return left > long.MaxValue - right ? long.MaxValue : left + right;
+        }
+    }
+
     internal readonly struct GameLoopTimingRange
     {
         internal GameLoopTimingRange(long startTimestamp, long endTimestamp)
