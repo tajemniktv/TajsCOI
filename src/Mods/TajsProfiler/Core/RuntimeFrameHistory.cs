@@ -8,6 +8,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using Mafi;
+using Mafi.Logging;
 
 namespace TajsCOI.Profiler.Core
 {
@@ -219,6 +221,60 @@ namespace TajsCOI.Profiler.Core
 
             double ticks = value.TotalSeconds * Stopwatch.Frequency;
             return ticks >= long.MaxValue ? long.MaxValue : (long)Math.Round(ticks, MidpointRounding.AwayFromZero);
+        }
+    }
+
+    /// <summary>
+    /// Defers optional GameRunner discovery until the resolver has finished constructing global
+    /// dependencies. Mafi's resolver deliberately rejects nested resolution from constructors.
+    /// </summary>
+    internal sealed class DeferredGameRunnerTimingAccess
+    {
+        internal const string PendingReason = "GameRunner discovery deferred until after dependency initialization.";
+
+        private readonly LazyResolve<IGameIdProvider> m_runner;
+        private readonly object m_gate = new object();
+        private bool m_attempted;
+        private GameRunnerTimingAccess? m_access;
+        private string m_reason = PendingReason;
+
+        internal DeferredGameRunnerTimingAccess(LazyResolve<IGameIdProvider> runner)
+        {
+            m_runner = runner ?? throw new ArgumentNullException(nameof(runner));
+        }
+
+        internal bool IsDiscoveryAttempted
+        {
+            get
+            {
+                lock (m_gate)
+                {
+                    return m_attempted;
+                }
+            }
+        }
+
+        internal GameRunnerTimingAccess? TryGet(out string reason)
+        {
+            lock (m_gate)
+            {
+                if (!m_attempted)
+                {
+                    m_attempted = true;
+                    try
+                    {
+                        m_access = GameRunnerTimingAccess.TryCreate(m_runner.Value, out m_reason);
+                    }
+                    catch (Exception exception)
+                    {
+                        m_access = null;
+                        m_reason = "GameRunner discovery failed: " + exception.GetType().Name + ".";
+                    }
+                }
+
+                reason = m_reason;
+                return m_access;
+            }
         }
     }
 

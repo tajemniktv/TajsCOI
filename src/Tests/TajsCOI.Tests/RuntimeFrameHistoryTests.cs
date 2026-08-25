@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Mafi.Logging;
 using TajsCOI.Profiler.Core;
 using Xunit;
 
@@ -329,8 +330,42 @@ namespace TajsCOI.Tests
             Assert.Equal(7, snapshot.SimStepsSinceLoad);
         }
 
-        private sealed class FakeGameRunner
+        [Fact]
+        public void DeferredRunnerTimingAccessDoesNotDiscoverDuringConstruction()
         {
+            var fake = new FakeGameRunner
+            {
+                LatestUpdateDuration = System.TimeSpan.FromMilliseconds(12),
+            };
+            var deferred = new DeferredGameRunnerTimingAccess(new Mafi.LazyResolve<IGameIdProvider>(fake));
+
+            Assert.False(deferred.IsDiscoveryAttempted);
+
+            GameRunnerTimingAccess? access = deferred.TryGet(out string reason);
+
+            Assert.True(deferred.IsDiscoveryAttempted);
+            Assert.NotNull(access);
+            Assert.True(access!.IsAvailable, reason);
+        }
+
+        [Fact]
+        public void DeferredRunnerTimingAccessFailsOpenWhenOptionalRunnerIsUnavailable()
+        {
+            var deferred = new DeferredGameRunnerTimingAccess(
+                new Mafi.LazyResolve<IGameIdProvider>(Mafi.DependencyResolver.CreateEmpty()));
+
+            GameRunnerTimingAccess? access = deferred.TryGet(out string reason);
+
+            Assert.Null(access);
+            Assert.Contains("GameRunner discovery failed", reason);
+        }
+
+        private sealed class FakeGameRunner : IGameIdProvider
+        {
+            public long GameId { get; set; }
+            public long SessionId { get; set; }
+            public DateTime GameStartedAtUtc { get; set; }
+            public string GameStartedAtVersion { get; set; } = "test";
             public System.TimeSpan LatestUpdateDuration { get; set; }
             public System.TimeSpan LatestInputUpdateDuration { get; set; }
             public System.TimeSpan LatestSyncDuration { get; set; }

@@ -14,6 +14,7 @@ using Mafi.Core;
 using Mafi.Core.Console;
 using Mafi.Core.GameLoop;
 using Mafi.Core.Simulation;
+using Mafi.Logging;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
@@ -38,7 +39,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private const int MaximumSpikeCount = 32;
 
         private readonly GameLoopTimingsAccess? m_timings;
-        private readonly GameRunnerTimingAccess? m_runner;
+        private readonly DeferredGameRunnerTimingAccess m_runnerDiscovery;
         private readonly SimLoopEvents m_simLoop;
         private readonly RuntimeFrameHistory m_history = new RuntimeFrameHistory(HistoryCapacity);
         private readonly RuntimeSpikeHistory m_spikes;
@@ -46,6 +47,12 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private readonly RuntimeRollingPercentile m_frameBaseline = new RuntimeRollingPercentile(128);
         private RuntimeSpikePolicy m_spikePolicy = new RuntimeSpikePolicy();
         private readonly ITajsSettings m_settings;
+        private readonly ITajsRuntime m_runtime;
+        private GameRunnerTimingAccess? m_runner;
+        private string m_timingReason = string.Empty;
+        private string m_runnerReason = DeferredGameRunnerTimingAccess.PendingReason;
+        private readonly object m_runnerReportGate = new object();
+        private bool m_runnerCompatibilityReported;
         private DeepTracingPatchSummary m_deepPatchSummary;
         private long m_rollingMedianFrameTicks;
         private int m_baselineSampleCounter;
@@ -55,7 +62,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private int m_callbackFailureLogged;
 
         public GameLoopTimingDiagnosticsService(
-            DependencyResolver resolver,
+            LazyResolve<IGameIdProvider> runner,
             IGameLoopEvents gameLoop,
             SimLoopEvents simLoop,
             ITajsRuntime runtime,
@@ -63,6 +70,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
         {
             m_simLoop = simLoop;
             m_settings = settings;
+            m_runtime = runtime;
+            m_runnerDiscovery = new DeferredGameRunnerTimingAccess(runner);
             m_spikes = new RuntimeSpikeHistory(m_history);
             m_counters = new RuntimeCounterSampler();
             m_log = runtime.GetLogger("TajsProfiler", "GameLoopTimings");
@@ -70,10 +79,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             m_spikePolicy = ProfilerSettingsCatalog.ReadPolicy(settings);
             settings.Changed += OnSettingChanged;
 
-            GameLoopTimingsAccess.TryCreate(out m_timings, out string timingReason);
-            Type? runnerType = typeof(IGameLoopEvents).Assembly.GetType("Mafi.Core.GameLoop.GameRunner", false);
-            object? runner = runnerType is null ? null : resolver.TryResolve(runnerType).ValueOrNull;
-            m_runner = GameRunnerTimingAccess.TryCreate(runner, out string runnerReason);
+            GameLoopTimingsAccess.TryCreate(out m_timings, out m_timingReason);
 
             try
             {
@@ -88,25 +94,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             gameLoop.InputUpdate.AddNonSaveable(this, CaptureFrame);
             gameLoop.Terminate.AddNonSaveable(this, OnTerminate);
 
-            CompatibilityState state = m_timings is null
-                ? m_runner is null || !m_runner.IsAvailable ? CompatibilityState.Disabled : CompatibilityState.Degraded
-                : m_runner is null || !m_runner.IsAvailable ? CompatibilityState.Degraded :
-                CompatibilityState.Compatible;
-            string details = m_timings is null ? "GameLoopTimings unavailable: " + timingReason :
-                m_runner is null ? "GameRunner unavailable." :
-                string.IsNullOrWhiteSpace(runnerReason) ? "All Phase A timing surfaces are available." :
-                "GameRunner degraded: " + runnerReason;
-            runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsProfiler",
-                "GameLoopTimings",
-                state,
-                "0.8.7b GameLoopTimings and GameRunner flight-recorder surfaces",
-                details,
-                state == CompatibilityState.Compatible
-                    ? "Rolling frame, render, wait-for-simulation, and simulation summaries are available."
-                    : state == CompatibilityState.Degraded
-                        ? "Available timing surfaces remain active; unsupported detail is reported as unavailable."
-                        : "No compatible timing surface was found; the probe remains inactive."));
+            ReportTimingCompatibility(discoveryPending: true);
 
             runtime.ReportCompatibility(new CompatibilityReport(
                 "TajsProfiler",
@@ -120,6 +108,67 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 m_deepPatchSummary.IsAvailable
                     ? "Opt-in deep callback spans are available; they remain inactive until explicitly armed."
                     : "Deep callback spans are unavailable; broad timing and counter capture remain independent."));
+        }
+
+        private void ReportTimingCompatibility(bool discoveryPending)
+        {
+            bool runnerAvailable = m_runner is not null && m_runner.IsAvailable;
+            CompatibilityState state = discoveryPending
+                ? CompatibilityState.Degraded
+                : m_timings is null
+                    ? runnerAvailable ? CompatibilityState.Degraded : CompatibilityState.Disabled
+                    : runnerAvailable ? CompatibilityState.Compatible : CompatibilityState.Degraded;
+            string details;
+            if (discoveryPending)
+            {
+                details = m_timings is null
+                    ? "GameLoopTimings unavailable: " + m_timingReason + "; " + m_runnerReason
+                    : m_runnerReason + " GameLoopTimings remains the primary timing source.";
+            }
+            else if (m_timings is null)
+            {
+                details = "GameLoopTimings unavailable: " + m_timingReason +
+                    (m_runner is null ? "; GameRunner unavailable: " : "; GameRunner degraded: ") + m_runnerReason;
+            }
+            else if (m_runner is null)
+            {
+                details = "GameRunner unavailable: " + m_runnerReason;
+            }
+            else if (string.IsNullOrWhiteSpace(m_runnerReason))
+            {
+                details = "All Phase A timing surfaces are available.";
+            }
+            else
+            {
+                details = "GameRunner degraded: " + m_runnerReason;
+            }
+
+            m_runtime.ReportCompatibility(new CompatibilityReport(
+                "TajsProfiler",
+                "GameLoopTimings",
+                state,
+                "0.8.7b GameLoopTimings and GameRunner flight-recorder surfaces",
+                details,
+                state == CompatibilityState.Compatible
+                    ? "Rolling frame, render, wait-for-simulation, and simulation summaries are available."
+                    : state == CompatibilityState.Degraded
+                        ? "Available timing surfaces remain active; unsupported detail is reported as unavailable."
+                        : "No compatible timing surface was found; the probe remains inactive."));
+        }
+
+        private void EnsureRunnerTimingAccess()
+        {
+            lock (m_runnerReportGate)
+            {
+                if (m_runnerCompatibilityReported)
+                {
+                    return;
+                }
+
+                m_runner = m_runnerDiscovery.TryGet(out m_runnerReason);
+                m_runnerCompatibilityReported = true;
+                ReportTimingCompatibility(discoveryPending: false);
+            }
         }
 
         [ConsoleCommand(
@@ -136,7 +185,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 .Append(", GameLoopTimings=")
                 .Append(m_timings is null ? "unavailable" : "available")
                 .Append(", GameRunner=")
-                .Append(m_runner is null ? "unavailable" : m_runner.IsAvailable ? "available" : "unavailable")
+                .Append(!m_runnerDiscovery.IsDiscoveryAttempted
+                    ? "pending"
+                    : m_runner is null ? "unavailable" : m_runner.IsAvailable ? "available" : "unavailable")
                 .Append(", automatic-spikes=").Append(m_spikes.Count)
                 .Append(", deep=").Append(DeepCallbackRecorder.IsActive ? "active" : "idle")
                 .Append(", deep-patches=").Append(m_deepPatchSummary.PatchedMethods)
@@ -496,6 +547,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         {
             try
             {
+                EnsureRunnerTimingAccess();
                 long capturedTimestamp = Stopwatch.GetTimestamp();
                 GameLoopTimingRanges ranges = default;
                 GameLoopTimingSnapshot timings = new GameLoopTimingSnapshot();

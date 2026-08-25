@@ -14,7 +14,10 @@ boundary rather than being presented as an in-flight current-frame snapshot. Eac
 independent producer cursor, so faster simulation phases are not skipped and slower phases are not
 duplicated. `GameLoopTimings.End` advances the writer index before filling the entry, so the newest
 slot may still be in flight; entries that overrun the 2,048-slot retention window are reported as
-drops.
+drops. The optional `GameRunner` surface is injected as a `LazyResolve<IGameIdProvider>` and is
+discovered on the first post-initialization sampling callback, never by resolving from the profiler
+constructor. This keeps GameLoopTimings as the primary source without creating a dependency-resolver
+cycle during save/load startup.
 
 The private timing adapter validates all of the following before it becomes active:
 
