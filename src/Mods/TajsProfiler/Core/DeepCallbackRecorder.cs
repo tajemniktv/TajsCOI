@@ -321,7 +321,7 @@ namespace TajsCOI.Profiler.Core
             }
             lock (s_markerGate)
             {
-                if (s_markers.Count == MarkerCapacity)
+                if (s_markers.Count == MarkerCapacity && s_markers.Count > 0)
                 {
                     s_markers.RemoveAt(0);
                 }

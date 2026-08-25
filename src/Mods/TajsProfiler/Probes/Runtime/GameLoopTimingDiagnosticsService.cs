@@ -424,7 +424,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             long elapsed = DeepCallbackRecorder.MeasureReader(() => m_timings.ReadLatest(), iterations);
             return "Runtime profiler reader overhead: iterations=" + iterations +
                 ", total=" + RuntimeTraceText.Milliseconds(elapsed) +
-                ", avg=" + RuntimeTraceText.Milliseconds(iterations == 0 ? 0 : elapsed / iterations) + ".";
+                ", avg=" + RuntimeTraceText.Milliseconds(elapsed / iterations) + ".";
         }
 
         [ConsoleCommand(
