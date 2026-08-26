@@ -212,7 +212,7 @@ namespace TajsCOI.Core.Settings
         [ConsoleCommand(
             documentation: "Changes a registered TajsCOI setting by stable ID.",
             customCommandName: "tajs_settings_set")]
-        public string SetSetting(string stableId, string value)
+        public string SetSetting(string? stableId, string value)
         {
             string normalizedId = stableId ?? string.Empty;
             int separator = normalizedId.IndexOf('.');
@@ -233,7 +233,7 @@ namespace TajsCOI.Core.Settings
         private void LoadPersistedValues()
         {
             bool primaryLoaded = TryRead(m_filePath, out Dictionary<string, object> values, out Exception? primaryError);
-            Exception? backupError = null;
+            Exception? backupError;
             if (!primaryLoaded && !TryRead(m_backupPath, out values, out backupError))
             {
                 if (primaryError is not null)
@@ -363,7 +363,7 @@ namespace TajsCOI.Core.Settings
             }
             catch (Exception exception)
             {
-                TryDelete(tempPath);
+                _ = TryDelete(tempPath);
                 m_log.Exception(exception, "TajsCOI settings could not be written; the previous file and runtime value were kept.");
                 error = "Settings could not be persisted; the previous value remains active.";
                 return false;
@@ -495,7 +495,7 @@ namespace TajsCOI.Core.Settings
             builder.Append('"');
         }
 
-        private static void TryDelete(string path)
+        private static bool TryDelete(string path)
         {
             try
             {
@@ -503,9 +503,12 @@ namespace TajsCOI.Core.Settings
                 {
                     File.Delete(path);
                 }
+                return true;
             }
-            catch
+            catch (Exception)
             {
+                // Cleanup is best effort and must never replace the original persistence error.
+                return false;
             }
         }
     }

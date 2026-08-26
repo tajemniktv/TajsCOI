@@ -326,7 +326,7 @@ namespace TajsCOI.Tweaks
         [ConsoleCommand(
             documentation: "Queues a confirmed world-map repair or upgrade through the normal input scheduler.",
             customCommandName: "tajs_world_operations_apply")]
-        public string WorldOperationsApply(string operation, string entityId, string confirmation)
+        public string WorldOperationsApply(string? operation, string entityId, string confirmation)
         {
             if (!TajsTweaksRuntimeState.WorldOperations)
             {
@@ -411,7 +411,7 @@ namespace TajsCOI.Tweaks
         [ConsoleCommand(
             documentation: "Creates a bounded, non-destructive fleet operation plan.",
             customCommandName: "tajs_fleet_plan")]
-        public string FleetPlan(string operation)
+        public string FleetPlan(string? operation)
         {
             string normalized = (operation ?? string.Empty).Trim().ToLowerInvariant();
             if (!TajsTweaksRuntimeState.FleetManager)
@@ -429,7 +429,7 @@ namespace TajsCOI.Tweaks
         [ConsoleCommand(
             documentation: "Applies a confirmed bounded fleet operation through normal vehicle input commands.",
             customCommandName: "tajs_fleet_apply")]
-        public string FleetApply(string operation, string vehicleIds, string confirmation, string targetPrototypeId = "")
+        public string FleetApply(string? operation, string vehicleIds, string confirmation, string? targetPrototypeId = "")
         {
             string normalized = (operation ?? string.Empty).Trim().ToLowerInvariant();
             if (!TajsTweaksRuntimeState.FleetManager)
@@ -469,7 +469,7 @@ namespace TajsCOI.Tweaks
                         {
                             return "Replacement requires a target prototype ID; no vehicle changed.";
                         }
-                        scheduler.ScheduleInputCmd(new ReplaceVehicleCmd(vehicle.Id, new DynamicEntityProto.ID(targetPrototypeId.Trim())));
+                        scheduler.ScheduleInputCmd(new ReplaceVehicleCmd(vehicle.Id, new DynamicEntityProto.ID((targetPrototypeId ?? string.Empty).Trim())));
                     }
                     changed++;
                 }
@@ -484,7 +484,7 @@ namespace TajsCOI.Tweaks
         [ConsoleCommand(
             documentation: "Orders a bounded number of an unlocked vehicle type through a vehicle depot build queue.",
             customCommandName: "tajs_fleet_order")]
-        public string FleetOrder(string prototypeId, string count, string confirmation)
+        public string FleetOrder(string? prototypeId, string count, string confirmation)
         {
             if (!TajsTweaksRuntimeState.FleetManager)
             {
@@ -519,7 +519,7 @@ namespace TajsCOI.Tweaks
         [ConsoleCommand(
             documentation: "Requests scrap for up to the bounded number of vehicles of one type.",
             customCommandName: "tajs_fleet_scrap_type")]
-        public string FleetScrapType(string prototypeId, string count, string confirmation, string policy = "unassigned-first")
+        public string FleetScrapType(string? prototypeId, string count, string confirmation, string policy = "unassigned-first")
         {
             if (!TajsTweaksRuntimeState.FleetManager)
             {
@@ -560,7 +560,7 @@ namespace TajsCOI.Tweaks
         [ConsoleCommand(
             documentation: "Requests bounded replacement of vehicles of one type through the normal replacement workflow.",
             customCommandName: "tajs_fleet_replace_type")]
-        public string FleetReplaceType(string sourcePrototypeId, string targetPrototypeId, string count, string confirmation, string policy = "unassigned-first")
+        public string FleetReplaceType(string? sourcePrototypeId, string? targetPrototypeId, string count, string confirmation, string policy = "unassigned-first")
         {
             if (!TajsTweaksRuntimeState.FleetManager)
             {

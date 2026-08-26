@@ -281,7 +281,7 @@ namespace TajsCOI.Tweaks
             s_settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudPositions, value);
         }
 
-        private static Vector2 ParsePosition(string key, string text)
+        private static Vector2 ParsePosition(string key, string? text)
         {
             foreach (string entry in (text ?? string.Empty).Split(new[] { ';', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
             {

@@ -127,7 +127,7 @@ namespace TajsCOI.Tweaks
             return false;
         }
 
-        private static void TrimLinePositions(object __instance, Lyst<Tile3i> results)
+        private static void TrimLinePositions(Lyst<Tile3i> results)
         {
             if (!TajsTweaksRuntimeState.LinePlacement)
             {
@@ -386,7 +386,7 @@ namespace TajsCOI.Tweaks
                 new Color(0.3f, 0.75f, 0.28f, 1f);
         }
 
-        private static VisualElement? FindBar(VisualElement node, int depth)
+        private static VisualElement? FindBar(VisualElement? node, int depth)
         {
             if (node is null || depth > 8)
             {
@@ -594,7 +594,7 @@ namespace TajsCOI.Tweaks
             harmony.Patch(target, prefix: new HarmonyMethod(typeof(TweaksNotificationFeature), nameof(AddPrefix)));
         }
 
-        private static bool AddPrefix(NotificationProto proto)
+        private static bool AddPrefix(NotificationProto? proto)
         {
             if (!TajsTweaksRuntimeState.NotificationFilter || proto is null)
             {
@@ -689,7 +689,7 @@ namespace TajsCOI.Tweaks
                 TajsTweaksRuntimeState.DefaultsWarehouse;
         }
 
-        private static void MineTowerPostfix(MineTower __instance, ProtosDb protosDb)
+        private static void MineTowerPostfix(MineTower? __instance, ProtosDb? protosDb)
         {
             if (__instance is null || protosDb is null)
             {
@@ -716,7 +716,16 @@ namespace TajsCOI.Tweaks
                 ProductProto? product = protosDb.All<ProductProto>().FirstOrDefault(x => x.Id.Value == id);
                 if (product is not null)
                 {
-                    try { add.Invoke(set, new object[] { product }); } catch { }
+                    try
+                    {
+                        add.Invoke(set, new object[] { product });
+                    }
+                    catch (Exception)
+                    {
+                        // A changed private collection shape disables this optional product entry;
+                        // leave the remaining vanilla/default behavior untouched.
+                        break;
+                    }
                 }
             }
         }
@@ -1029,7 +1038,7 @@ namespace TajsCOI.Tweaks
 
         private static void Apply(StorageBaseProto proto, double capacityMultiplier, double throughputMultiplier)
         {
-            if (capacityMultiplier == 1 && throughputMultiplier == 1)
+            if (capacityMultiplier.Equals(1d) && throughputMultiplier.Equals(1d))
             {
                 return;
             }
@@ -1059,18 +1068,11 @@ namespace TajsCOI.Tweaks
 
     internal static class TweaksResourceOverlayFeature
     {
-        private sealed class DepthLabelState
-        {
-            internal int Count;
-            internal readonly List<GameObject> Objects = new List<GameObject>();
-        }
-
         private sealed class TowerLabelState
         {
             internal readonly List<GameObject> Objects = new List<GameObject>();
         }
 
-        private static readonly ConditionalWeakTable<Component, DepthLabelState> s_depthLabels = new ConditionalWeakTable<Component, DepthLabelState>();
         private static readonly ConditionalWeakTable<Component, TowerLabelState> s_towerLabels = new ConditionalWeakTable<Component, TowerLabelState>();
         private static readonly Color[] s_towerColors =
         {
@@ -1110,23 +1112,6 @@ namespace TajsCOI.Tweaks
             // Deposit labels are owned by TweaksResourceDepositFeature. Keeping them outside
             // ResVisBarsMb avoids one label per sampled bar and lets the cluster cache reuse
             // unaffected regions when the native renderer applies dirty chunks.
-        }
-
-        private static void ClearLabelsPrefix(Component __instance)
-        {
-            if (!s_depthLabels.TryGetValue(__instance, out DepthLabelState? state))
-            {
-                return;
-            }
-            foreach (GameObject label in state.Objects)
-            {
-                if (label is not null)
-                {
-                    UnityEngine.Object.Destroy(label);
-                }
-            }
-            state.Objects.Clear();
-            state.Count = 0;
         }
 
         private static void RenderPostfix(object __instance)
@@ -1185,52 +1170,6 @@ namespace TajsCOI.Tweaks
             catch
             {
                 // The native tower overlay remains authoritative if its private list changes.
-            }
-        }
-
-        private static void AppendBarPostfix(Component __instance, Tile2i tile, ThicknessTilesF productThickness, HeightTilesF height)
-        {
-            if (!TajsTweaksRuntimeState.ResourceOverlay || !TajsTweaksRuntimeState.ResourceOverlayDepth || __instance is null)
-            {
-                return;
-            }
-            try
-            {
-                DepthLabelState state = s_depthLabels.GetValue(__instance, _ => new DepthLabelState());
-                if (state.Count >= 128)
-                {
-                    return;
-                }
-                s_textMeshType ??= Type.GetType("UnityEngine.TextMesh, UnityEngine.TextRenderingModule", false);
-                if (s_textMeshType is null)
-                {
-                    return;
-                }
-                state.Count++;
-                GameObject labelObject = new GameObject("Tajs resource depth");
-                state.Objects.Add(labelObject);
-                labelObject.layer = __instance.gameObject.layer;
-                labelObject.transform.SetParent(__instance.transform, true);
-                labelObject.transform.position = tile.CornerTile2f
-                    .ExtendZ((height + productThickness / 2).Value)
-                    .ToVector3() + Vector3.up * (float)TajsTweaksRuntimeState.ResourceOverlayLabelHeight;
-                Camera? camera = Camera.main;
-                if (camera is not null)
-                {
-                    labelObject.transform.rotation = camera.transform.rotation;
-                }
-                Component text = labelObject.AddComponent(s_textMeshType);
-                float top = (height + productThickness).Value.ToFloat();
-                string label = "top " + top.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) +
-                    "\ndepth " + productThickness.Value.ToFloat().ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
-                SetTextProperty(text, "text", label);
-                SetTextProperty(text, "characterSize", 0.08f * Mathf.Clamp(TajsTweaksRuntimeState.ResourceOverlayLabelScale, 50, 200) / 100f);
-                SetTextProperty(text, "fontSize", 24);
-                SetTextProperty(text, "color", WithAlpha(Color.white));
-            }
-            catch
-            {
-                // Labels are optional presentation helpers and must never affect resource bars.
             }
         }
 

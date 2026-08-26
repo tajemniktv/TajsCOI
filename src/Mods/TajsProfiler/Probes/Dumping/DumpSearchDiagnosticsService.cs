@@ -1130,7 +1130,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
             Interlocked.Increment(ref s_pathLatencyBuckets[(int)path * LatencyBucketCount + GetLatencyBucket(elapsedTicks)]);
             Interlocked.Add(ref s_nestedResidualElapsedTicks, residualTicks);
             UpdateMax(ref s_nestedResidualMaxElapsedTicks, residualTicks);
-            UpdateWorstCall(context, elapsedTicks, candidateDesignations, candidateCalls, cacheSummary, residualTicks);
+            UpdateWorstCall(context, elapsedTicks, candidateDesignations, cacheSummary, residualTicks);
             Interlocked.Add(ref s_currentPfSearchElapsedTicks, elapsedTicks);
             UpdateMax(ref s_currentPfMaxIndividualSearchElapsedTicks, elapsedTicks);
             RuntimeTelemetry.Add(PathfindingTimeCounter, elapsedTicks);
@@ -1257,7 +1257,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
         }
 
         private static void AfterTowerEligibleCache(
-            Lyst<TerrainDesignation> __result,
+            Lyst<TerrainDesignation>? __result,
             EligibleCacheCallState __state) =>
             CompleteEligibleCache(__state.Context, __result?.Count ?? 0, true);
 
@@ -1884,7 +1884,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
             SearchDiagnosticContext context,
             long elapsedTicks,
             long candidateDesignations,
-            int candidateCalls,
             CacheSummary cacheSummary,
             long residualTicks)
         {
@@ -1999,8 +1998,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 Read(ref s_totalElapsedTicks),
                 SnapshotCounters(s_pathCalls),
                 SnapshotCounters(s_callerCalls),
-                SnapshotCounters(s_pathCandidateDesignations),
-                SnapshotCounters(s_pathCandidateCalls),
                 SnapshotCounters(s_pathLatencyBuckets),
                 SnapshotCounters(s_latencyBuckets),
                 Read(ref s_totalCandidateDesignations),
@@ -2014,7 +2011,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 Read(ref s_nestedResidualElapsedTicks),
                 Read(ref s_nestedResidualMaxElapsedTicks),
                 Read(ref s_nestedResidualAccountingAnomalies),
-                Read(ref s_lastPfSearchElapsedTicks),
                 Read(ref s_peakPfSearchElapsedTicks),
                 Read(ref s_peakPfSearchCalls),
                 Read(ref s_peakPfMaxIndividualSearchElapsedTicks),
@@ -2169,7 +2165,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
             var builder = new StringBuilder(240);
             for (int i = 0; i < (int)SearchStage.Count && i < s_searchStageNames.Length; i++)
             {
-                var stage = (SearchStage)i;
                 long calls = breakdown.StageCalls[i];
                 if (calls == 0)
                 {
@@ -3107,7 +3102,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
             private readonly long[] m_pathFinalCandidateMax = new long[(int)SearchPath.Count];
             private readonly long[] m_pathNearbyAccepted = new long[(int)SearchPath.Count];
             private readonly long[] m_pathNearbyAdded = new long[(int)SearchPath.Count];
-            private readonly long[] m_pathNearbyExpansionCalls = new long[(int)SearchPath.Count];
             private readonly long[] m_pathNearbyModeCalls = new long[(int)SearchPath.Count * (int)NearbyMode.Count];
             private readonly long[] m_pathNearbyScanned = new long[(int)SearchPath.Count];
             private readonly long[] m_pathStageCalls = new long[(int)SearchPath.Count * (int)SearchStage.Count];
@@ -3121,7 +3115,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
             private long m_finalCandidateMax;
             private long m_nearbyAccepted;
             private long m_nearbyAdded;
-            private long m_nearbyExpansionCalls;
             private long m_nearbyScanned;
 
             public void Record(SearchPath path, SearchBreakdown breakdown)
@@ -3157,11 +3150,9 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 Interlocked.Add(ref m_nearbyScanned, breakdown.NearbyScanned);
                 Interlocked.Add(ref m_nearbyAccepted, breakdown.NearbyAccepted);
                 Interlocked.Add(ref m_nearbyAdded, breakdown.NearbyAdded);
-                Interlocked.Add(ref m_nearbyExpansionCalls, breakdown.NearbyExpansionCalls);
                 Interlocked.Add(ref m_pathNearbyScanned[pathIndex], breakdown.NearbyScanned);
                 Interlocked.Add(ref m_pathNearbyAccepted[pathIndex], breakdown.NearbyAccepted);
                 Interlocked.Add(ref m_pathNearbyAdded[pathIndex], breakdown.NearbyAdded);
-                Interlocked.Add(ref m_pathNearbyExpansionCalls[pathIndex], breakdown.NearbyExpansionCalls);
                 if (breakdown.NearbyExpansionCalls > 0)
                 {
                     Interlocked.Increment(ref m_nearbyModeCalls[(int)breakdown.NearbyMode]);
@@ -3184,7 +3175,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                     Read(ref m_nearbyScanned),
                     Read(ref m_nearbyAccepted),
                     Read(ref m_nearbyAdded),
-                    Read(ref m_nearbyExpansionCalls),
                     SnapshotCounters(m_nearbyModeCalls),
                     SnapshotCounters(m_pathFinalCandidateCount),
                     SnapshotCounters(m_pathFinalCandidateCalls),
@@ -3192,7 +3182,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                     SnapshotCounters(m_pathNearbyScanned),
                     SnapshotCounters(m_pathNearbyAccepted),
                     SnapshotCounters(m_pathNearbyAdded),
-                    SnapshotCounters(m_pathNearbyExpansionCalls),
                     SnapshotCounters(m_pathNearbyModeCalls));
             }
 
@@ -3210,7 +3199,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 ResetCounters(m_pathNearbyScanned);
                 ResetCounters(m_pathNearbyAccepted);
                 ResetCounters(m_pathNearbyAdded);
-                ResetCounters(m_pathNearbyExpansionCalls);
                 ResetCounters(m_pathNearbyModeCalls);
                 Interlocked.Exchange(ref m_finalCandidateCount, 0);
                 Interlocked.Exchange(ref m_finalCandidateCalls, 0);
@@ -3218,7 +3206,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 Interlocked.Exchange(ref m_nearbyScanned, 0);
                 Interlocked.Exchange(ref m_nearbyAccepted, 0);
                 Interlocked.Exchange(ref m_nearbyAdded, 0);
-                Interlocked.Exchange(ref m_nearbyExpansionCalls, 0);
                 ResetCounters(m_nearbyModeCalls);
             }
         }
@@ -3238,7 +3225,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 long nearbyScanned,
                 long nearbyAccepted,
                 long nearbyAdded,
-                long nearbyExpansionCalls,
                 long[] nearbyModeCalls,
                 long[] pathFinalCandidateCount,
                 long[] pathFinalCandidateCalls,
@@ -3246,7 +3232,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 long[] pathNearbyScanned,
                 long[] pathNearbyAccepted,
                 long[] pathNearbyAdded,
-                long[] pathNearbyExpansionCalls,
                 long[] pathNearbyModeCalls)
             {
                 StageElapsedTicks = stageElapsedTicks;
@@ -3261,7 +3246,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 NearbyScanned = nearbyScanned;
                 NearbyAccepted = nearbyAccepted;
                 NearbyAdded = nearbyAdded;
-                NearbyExpansionCalls = nearbyExpansionCalls;
                 NearbyModeCalls = nearbyModeCalls;
                 PathFinalCandidateCount = pathFinalCandidateCount;
                 PathFinalCandidateCalls = pathFinalCandidateCalls;
@@ -3269,7 +3253,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 PathNearbyScanned = pathNearbyScanned;
                 PathNearbyAccepted = pathNearbyAccepted;
                 PathNearbyAdded = pathNearbyAdded;
-                PathNearbyExpansionCalls = pathNearbyExpansionCalls;
                 PathNearbyModeCalls = pathNearbyModeCalls;
             }
 
@@ -3285,7 +3268,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
             public long NearbyScanned { get; }
             public long NearbyAccepted { get; }
             public long NearbyAdded { get; }
-            public long NearbyExpansionCalls { get; }
             public long[] NearbyModeCalls { get; }
             public long[] PathFinalCandidateCount { get; }
             public long[] PathFinalCandidateCalls { get; }
@@ -3293,7 +3275,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
             public long[] PathNearbyScanned { get; }
             public long[] PathNearbyAccepted { get; }
             public long[] PathNearbyAdded { get; }
-            public long[] PathNearbyExpansionCalls { get; }
             public long[] PathNearbyModeCalls { get; }
 
             public long PathStageElapsed(int path, SearchStage stage) => PathStageElapsedTicks[path * (int)SearchStage.Count + (int)stage];
@@ -3363,8 +3344,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 long totalElapsedTicks,
                 long[] pathCalls,
                 long[] callerCalls,
-                long[] pathCandidateDesignations,
-                long[] pathCandidateCalls,
                 long[] pathLatencyBuckets,
                 long[] latencyBuckets,
                 long totalCandidateDesignations,
@@ -3378,7 +3357,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 long residualElapsedTicks,
                 long residualMaxElapsedTicks,
                 long residualAccountingAnomalies,
-                long lastPfSearchElapsedTicks,
                 long peakPfSearchElapsedTicks,
                 long peakPfSearchCalls,
                 long peakPfMaxIndividualSearchElapsedTicks,
@@ -3396,8 +3374,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 TotalElapsedTicks = totalElapsedTicks;
                 PathCalls = (long[])pathCalls.Clone();
                 CallerCalls = (long[])callerCalls.Clone();
-                PathCandidateDesignations = (long[])pathCandidateDesignations.Clone();
-                PathCandidateCalls = (long[])pathCandidateCalls.Clone();
                 PathLatencyBuckets = (long[])pathLatencyBuckets.Clone();
                 LatencyBuckets = (long[])latencyBuckets.Clone();
                 TotalCandidateDesignations = totalCandidateDesignations;
@@ -3411,7 +3387,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 ResidualElapsedTicks = residualElapsedTicks;
                 ResidualMaxElapsedTicks = residualMaxElapsedTicks;
                 ResidualAccountingAnomalies = residualAccountingAnomalies;
-                LastPfSearchElapsedTicks = lastPfSearchElapsedTicks;
                 PeakPfSearchElapsedTicks = peakPfSearchElapsedTicks;
                 PeakPfSearchCalls = peakPfSearchCalls;
                 PeakPfMaxIndividualSearchElapsedTicks = peakPfMaxIndividualSearchElapsedTicks;
@@ -3431,8 +3406,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
             public long TotalElapsedTicks { get; }
             public long[] PathCalls { get; }
             public long[] CallerCalls { get; }
-            public long[] PathCandidateDesignations { get; }
-            public long[] PathCandidateCalls { get; }
             public long[] PathLatencyBuckets { get; }
             public long[] LatencyBuckets { get; }
             public long TotalCandidateDesignations { get; }
@@ -3446,7 +3419,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
             public long ResidualElapsedTicks { get; }
             public long ResidualMaxElapsedTicks { get; }
             public long ResidualAccountingAnomalies { get; }
-            public long LastPfSearchElapsedTicks { get; }
             public long PeakPfSearchElapsedTicks { get; }
             public long PeakPfSearchCalls { get; }
             public long PeakPfMaxIndividualSearchElapsedTicks { get; }
@@ -3523,7 +3495,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
             private long m_globalCacheMaxElapsedTicks;
             private long m_maxElapsedTicks;
             private long m_residualElapsedTicks;
-            private long m_residualMaxElapsedTicks;
             private long m_towerCacheCalls;
             private long m_towerCacheElapsedTicks;
             private long m_towerCacheMaxElapsedTicks;
@@ -3550,7 +3521,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
             public long TowerCacheElapsedTicks => Read(ref m_towerCacheElapsedTicks);
             public long TowerCacheMaxElapsedTicks => Read(ref m_towerCacheMaxElapsedTicks);
             public long ResidualElapsedTicks => Read(ref m_residualElapsedTicks);
-            public long ResidualMaxElapsedTicks => Read(ref m_residualMaxElapsedTicks);
             public SearchBreakdownSnapshot Breakdown => m_breakdown.Snapshot();
             public WorstCallSnapshot? WorstCall => Volatile.Read(ref m_worstCall);
 
@@ -3601,7 +3571,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 Interlocked.Add(ref m_towerCacheElapsedTicks, cacheSummary.TowerElapsedTicks);
                 UpdateMax(ref m_towerCacheMaxElapsedTicks, cacheSummary.TowerMaxElapsedTicks);
                 Interlocked.Add(ref m_residualElapsedTicks, residualTicks);
-                UpdateMax(ref m_residualMaxElapsedTicks, residualTicks);
                 Interlocked.Increment(ref m_latencyBuckets[GetLatencyBucket(elapsedTicks)]);
                 Interlocked.Add(ref m_pathGlobalCacheCalls[pathIndex], cacheSummary.GlobalCalls);
                 Interlocked.Add(ref m_pathGlobalCacheElapsedTicks[pathIndex], cacheSummary.GlobalElapsedTicks);
@@ -3653,7 +3622,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 Interlocked.Exchange(ref m_towerCacheElapsedTicks, 0);
                 Interlocked.Exchange(ref m_towerCacheMaxElapsedTicks, 0);
                 Interlocked.Exchange(ref m_residualElapsedTicks, 0);
-                Interlocked.Exchange(ref m_residualMaxElapsedTicks, 0);
                 Volatile.Write(ref m_worstCall, null);
                 for (int i = 0; i < m_pathCalls.Length; i++)
                 {
@@ -3735,8 +3703,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 TowerCacheElapsedTicks = source.TowerCacheElapsedTicks;
                 TowerCacheMaxElapsedTicks = source.TowerCacheMaxElapsedTicks;
                 ResidualElapsedTicks = source.ResidualElapsedTicks;
-                ResidualMaxElapsedTicks = source.ResidualMaxElapsedTicks;
-                WorstCall = source.WorstCall;
                 PathCalls = counters.PathCalls;
                 CallerCalls = counters.CallerCalls;
                 LatencyBuckets = counters.LatencyBuckets;
@@ -3769,8 +3735,6 @@ namespace TajsCOI.Profiler.Probes.Dumping
             public long TowerCacheElapsedTicks { get; }
             public long TowerCacheMaxElapsedTicks { get; }
             public long ResidualElapsedTicks { get; }
-            public long ResidualMaxElapsedTicks { get; }
-            public WorstCallSnapshot? WorstCall { get; }
             public long[] PathCalls { get; }
             public long[] CallerCalls { get; }
             public long[] LatencyBuckets { get; }

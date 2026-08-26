@@ -177,7 +177,7 @@ namespace TajsCOI.Tweaks
             }
         }
 
-        internal static IReadOnlyList<string> ParseIds(string text) =>
+        internal static IReadOnlyList<string> ParseIds(string? text) =>
             (text ?? string.Empty).Split(new[] { ',', ';', '\r', '\n', ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(x => x.Trim())
                 .Where(x => x.Length > 0 && x.Length <= 96)
@@ -185,7 +185,7 @@ namespace TajsCOI.Tweaks
                 .Take(256)
                 .ToArray();
 
-        internal static IReadOnlyDictionary<string, double> ParseStorageOverrides(string text)
+        internal static IReadOnlyDictionary<string, double> ParseStorageOverrides(string? text)
         {
             var result = new Dictionary<string, double>(StringComparer.Ordinal);
             foreach (string part in (text ?? string.Empty).Split(new[] { ',', ';', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Take(256))

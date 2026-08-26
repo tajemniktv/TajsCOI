@@ -83,7 +83,7 @@ namespace TajsCOI.Tweaks
             {
                 return;
             }
-            foreach (string entry in (TajsTweaksRuntimeState.ShipPreloadData ?? string.Empty)
+            foreach (string entry in TajsTweaksRuntimeState.ShipPreloadData
                 .Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Take(256))
             {
                 string[] pair = entry.Trim().Split(new[] { '=' }, 2);
@@ -133,7 +133,7 @@ namespace TajsCOI.Tweaks
             return result;
         }
 
-        internal static IReadOnlyList<PendingEntry> ReadPending(Shipyard shipyard)
+        internal static IReadOnlyList<PendingEntry> ReadPending(Shipyard? shipyard)
         {
             List<PendingEntry> result = new List<PendingEntry>();
             if (shipyard is null || !s_targets.TryGetValue(shipyard.Id.Value, out Dictionary<string, int>? targets))
@@ -168,12 +168,12 @@ namespace TajsCOI.Tweaks
                 .ToArray();
         }
 
-        internal static bool HasReservation(Shipyard shipyard, ProductProto product) =>
+        internal static bool HasReservation(Shipyard? shipyard, ProductProto? product) =>
             shipyard is not null && product is not null &&
             s_targets.TryGetValue(shipyard.Id.Value, out Dictionary<string, int>? targets) &&
             targets.ContainsKey(product.Id.Value);
 
-        internal static bool RequestDelivery(Shipyard shipyard, ProductProto product, int quantity)
+        internal static bool RequestDelivery(Shipyard? shipyard, ProductProto? product, int quantity)
         {
             if (shipyard is null || product is null || quantity <= 0 || s_getBufferMethod is null)
             {
@@ -205,7 +205,7 @@ namespace TajsCOI.Tweaks
             }
         }
 
-        internal static void Release(Shipyard shipyard, ProductProto product)
+        internal static void Release(Shipyard? shipyard, ProductProto? product)
         {
             if (shipyard is null || product is null || !s_targets.TryGetValue(shipyard.Id.Value, out Dictionary<string, int>? targets))
             {
@@ -222,7 +222,7 @@ namespace TajsCOI.Tweaks
             PersistTargets();
         }
 
-        internal static void CancelOrder(Shipyard shipyard, ProductProto product)
+        internal static void CancelOrder(Shipyard? shipyard, ProductProto? product)
         {
             if (shipyard is null || product is null || !s_targets.TryGetValue(shipyard.Id.Value, out Dictionary<string, int>? targets) ||
                 !targets.ContainsKey(product.Id.Value))

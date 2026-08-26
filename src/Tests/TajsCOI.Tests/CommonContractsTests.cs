@@ -28,7 +28,7 @@ namespace TajsCOI.Tests
             Assert.Equal("observed", report.Observed);
             Assert.Equal("reason", report.Reason);
             var nullText = new CompatibilityReport(
-                "TajsProfiler", "Runtime", CompatibilityState.Disabled, null!, null!, null!);
+                "TajsProfiler", "Runtime", CompatibilityState.Disabled, null, null, null);
             Assert.Equal(string.Empty, nullText.Expected);
             Assert.Equal(string.Empty, nullText.Observed);
             Assert.Equal(string.Empty, nullText.Reason);
@@ -141,12 +141,18 @@ namespace TajsCOI.Tests
             Assert.Throws<ArgumentException>(() => SettingDescriptor.Choice(
                 "TajsCore", "Core", "choice", "Choice", "Choice test.", "same",
                 new[] { new SettingChoice("same", "First"), new SettingChoice("same", "Second") }));
-            Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
+            ArgumentOutOfRangeException minimumException = Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
                 "TajsCore", "Core", "nan", "NaN", "NaN test.", 0, double.NaN, 1, 0.1));
-            Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
+            Assert.Equal("minimum", minimumException.ParamName);
+            ArgumentOutOfRangeException maximumException = Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
                 "TajsCore", "Core", "infinity", "Infinity", "Infinity test.", 0, 0, double.PositiveInfinity, 0.1));
-            Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
+            Assert.Equal("maximum", maximumException.ParamName);
+            ArgumentOutOfRangeException nonFiniteStepException = Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
                 "TajsCore", "Core", "step", "Step", "Step test.", 0, 0, 1, double.NegativeInfinity));
+            Assert.Equal("step", nonFiniteStepException.ParamName);
+            ArgumentOutOfRangeException nonPositiveStepException = Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
+                "TajsCore", "Core", "step_zero", "Step zero", "Step test.", 0, 0, 1, 0));
+            Assert.Equal("step", nonPositiveStepException.ParamName);
         }
 
         [Fact]

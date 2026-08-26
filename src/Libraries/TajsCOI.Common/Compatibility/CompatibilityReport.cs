@@ -12,9 +12,9 @@ namespace TajsCOI.Common.Compatibility
             string modId,
             string componentId,
             CompatibilityState state,
-            string expected,
-            string observed,
-            string reason)
+            string? expected,
+            string? observed,
+            string? reason)
         {
             ModId = RequireId(modId, nameof(modId));
             ComponentId = RequireId(componentId, nameof(componentId));

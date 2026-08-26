@@ -60,7 +60,7 @@ namespace TajsCOI.Tweaks
             s_fleet = null;
         }
 
-        private static void SimUpdatePostfix(Shipyard __instance)
+        private static void SimUpdatePostfix(Shipyard? __instance)
         {
             if (__instance is null || !TajsTweaksRuntimeState.WorldOperations || !TajsTweaksRuntimeState.AutoWorldDelivery ||
                 !TryResolveDependencies(out WorldMapManager? worldMap, out TravelingFleetManager? fleet) || worldMap is null || fleet is null)

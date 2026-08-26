@@ -46,11 +46,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private readonly RuntimeSpikeHistory m_spikes;
         private readonly RuntimeCounterSampler m_counters;
         private readonly RuntimeRollingPercentile m_frameBaseline = new RuntimeRollingPercentile(128);
-        private RuntimeSpikePolicy m_spikePolicy = new RuntimeSpikePolicy();
+        private RuntimeSpikePolicy m_spikePolicy;
         private readonly ITajsSettings m_settings;
         private readonly ITajsRuntime m_runtime;
         private GameRunnerTimingAccess? m_runner;
-        private string m_timingReason = string.Empty;
+        private string m_timingReason;
         private string m_runnerReason = DeferredGameRunnerTimingAccess.PendingReason;
         private readonly object m_runnerReportGate = new object();
         private bool m_runnerCompatibilityReported;

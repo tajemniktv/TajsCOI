@@ -10,17 +10,17 @@ trim_trailing_whitespace = true
 max_line_length = 160
 
 # Microsoft .NET properties
-csharp_preferred_modifier_order = public, internal, protected, override, file, new, private, abstract, virtual, closed, static, readonly, sealed, safe, unsafe, extern, volatile, async, required:suggestion
-csharp_prefer_braces = true:suggestion
-csharp_style_expression_bodied_accessors = true:suggestion
-csharp_style_expression_bodied_constructors = false:suggestion
-csharp_style_expression_bodied_methods = true:suggestion
-csharp_style_expression_bodied_properties = true:suggestion
-csharp_style_namespace_declarations = block_scoped:suggestion
-csharp_style_prefer_utf8_string_literals = true:suggestion
-csharp_style_var_elsewhere = false:suggestion
-csharp_style_var_for_built_in_types = false:suggestion
-csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_preferred_modifier_order = public, internal, protected, override, file, new, private, abstract, virtual, closed, static, readonly, sealed, safe, unsafe, extern, volatile, async, required:silent
+csharp_prefer_braces = true:warning
+csharp_style_expression_bodied_accessors = true:silent
+csharp_style_expression_bodied_constructors = false:silent
+csharp_style_expression_bodied_methods = true:silent
+csharp_style_expression_bodied_properties = true:silent
+csharp_style_namespace_declarations = block_scoped:silent
+csharp_style_prefer_utf8_string_literals = true:silent
+csharp_style_var_elsewhere = false:silent
+csharp_style_var_for_built_in_types = false:silent
+csharp_style_var_when_type_is_apparent = true:silent
 dotnet_naming_rule.interfaces_rule.import_to_resharper = True
 dotnet_naming_rule.interfaces_rule.resharper_description = Interfaces
 dotnet_naming_rule.interfaces_rule.resharper_guid = a7a3339e-4e89-4319-9735-a9dc4cb74cc7
@@ -30,7 +30,7 @@ dotnet_naming_rule.interfaces_rule.symbols = interfaces_symbols
 dotnet_naming_rule.parameters_rule.import_to_resharper = True
 dotnet_naming_rule.parameters_rule.resharper_description = Parameters
 dotnet_naming_rule.parameters_rule.resharper_guid = 8a85b61a-1024-4f87-b9ef-1fdae19930a1
-dotnet_naming_rule.parameters_rule.resharper_style = aaBb, __ + aaBb, ___ + aaBb, ___ + aa_bb
+dotnet_naming_rule.parameters_rule.resharper_style = aaBb, __+aaBb, ___+aaBb, ___+aa_bb
 dotnet_naming_rule.parameters_rule.severity = suggestion
 dotnet_naming_rule.parameters_rule.style = lower_camel_case_style
 dotnet_naming_rule.parameters_rule.symbols = parameters_symbols
@@ -115,17 +115,17 @@ dotnet_naming_symbols.unity_serialized_field_symbols.applicable_accessibilities 
 dotnet_naming_symbols.unity_serialized_field_symbols.applicable_kinds = 
 dotnet_naming_symbols.unity_serialized_field_symbols.resharper_applicable_kinds = unity_serialised_field
 dotnet_naming_symbols.unity_serialized_field_symbols.resharper_required_modifiers = instance
-dotnet_style_parentheses_in_arithmetic_binary_operators = always_for_clarity:suggestion
-dotnet_style_parentheses_in_other_binary_operators = always_for_clarity:suggestion
-dotnet_style_parentheses_in_relational_binary_operators = always_for_clarity:suggestion
-dotnet_style_predefined_type_for_locals_parameters_members = true:suggestion
-dotnet_style_predefined_type_for_member_access = true:suggestion
-dotnet_style_prefer_collection_expression = when_types_exactly_match:suggestion
-dotnet_style_qualification_for_event = false:suggestion
-dotnet_style_qualification_for_field = false:suggestion
-dotnet_style_qualification_for_method = false:suggestion
-dotnet_style_qualification_for_property = false:suggestion
-dotnet_style_require_accessibility_modifiers = for_non_interface_members:suggestion
+dotnet_style_parentheses_in_arithmetic_binary_operators = always_for_clarity:silent
+dotnet_style_parentheses_in_other_binary_operators = always_for_clarity:silent
+dotnet_style_parentheses_in_relational_binary_operators = always_for_clarity:silent
+dotnet_style_predefined_type_for_locals_parameters_members = true:silent
+dotnet_style_predefined_type_for_member_access = true:silent
+dotnet_style_prefer_collection_expression = never:silent
+dotnet_style_qualification_for_event = false:silent
+dotnet_style_qualification_for_field = false:silent
+dotnet_style_qualification_for_method = false:silent
+dotnet_style_qualification_for_property = false:silent
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:silent
 file_header_template = Taj's COI Mods | ${File.FileName}\nCopyright (C) 2026 - ${CurrentDate.Year} Grzegorz Kaczmarski (TajemnikTV)\nAll Rights Reserved.
 
 # ReSharper properties
@@ -134,6 +134,7 @@ resharper_align_multiline_ctor_init = false
 resharper_align_multiline_expression_braces = true
 resharper_align_ternary = align_all
 resharper_apply_auto_detected_rules = false
+resharper_csharp_naming_rule.parameters = aaBb, __+aaBb, ___+aaBb, ___+aa_bb
 resharper_blank_lines_after_block_statements = 0
 resharper_continuous_line_indent = double
 resharper_cpp_align_first_arg_by_paren = true
@@ -177,6 +178,49 @@ resharper_wrap_lines = true
 # Keep correctness/lifecycle/performance findings loud; suppress churn-heavy refactor suggestions.
 # EditorConfig inspection severities override Rider/ReSharper severity settings.
 
+# Batch-inspection noise: preserve code-generation preferences, but don't count these as project problems.
+resharper_suggest_var_or_type_built_in_types_highlighting = none
+resharper_suggest_var_or_type_simple_types_highlighting = none
+resharper_suggest_var_or_type_elsewhere_highlighting = none
+resharper_suggest_var_or_type_deconstruction_declarations_highlighting = none
+resharper_suggest_discard_declaration_var_style_highlighting = none
+resharper_redundant_variable_type_specification_highlighting = none
+resharper_redundant_explicit_array_creation_highlighting = none
+resharper_redundant_type_arguments_of_method_highlighting = none
+resharper_redundant_type_cast_highlighting = none
+resharper_redundant_parentheses_highlighting = none
+resharper_redundant_to_string_call_highlighting = none
+resharper_redundant_using_directive_highlighting = none
+resharper_redundant_using_directive_global_highlighting = none
+resharper_arrange_method_or_operator_body_highlighting = none
+resharper_arrange_property_body_highlighting = none
+resharper_arrange_accessor_owner_body_highlighting = none
+resharper_arrange_constructor_or_destructor_body_highlighting = none
+resharper_arrange_local_function_body_highlighting = none
+resharper_move_local_function_after_jump_statement_highlighting = none
+resharper_convert_type_check_pattern_to_null_check_highlighting = none
+resharper_convert_type_check_to_null_check_highlighting = none
+resharper_merge_into_logical_pattern_highlighting = none
+resharper_merge_into_negated_pattern_highlighting = none
+resharper_merge_into_pattern_highlighting = none
+resharper_simplify_conditional_operator_highlighting = none
+resharper_simplify_conditional_ternary_expression_highlighting = none
+resharper_variable_can_be_moved_to_inner_block_highlighting = none
+resharper_too_wide_local_variable_scope_highlighting = none
+resharper_private_field_can_be_converted_to_local_variable_highlighting = none
+resharper_convert_to_constant_global_highlighting = none
+resharper_convert_to_constant_local_highlighting = none
+resharper_class_never_instantiated_global_highlighting = none
+resharper_class_never_instantiated_local_highlighting = none
+
+# Heap Allocations Viewer is intentionally OFF by default.
+# It reports every allocation with no frequency/context, which swamps whole-solution inspection.
+# It is re-enabled below only in selected runtime/hot-path files.
+resharper_heapview_objectallocation = none
+resharper_heapview_boxingallocation = none
+resharper_heapview_delegateallocation = none
+resharper_heapview_closureallocation = none
+
 # Language-modernization/refactor churn: available manually, not reported as project problems.
 resharper_convert_to_primary_constructor_highlighting = none
 resharper_replace_with_primary_constructor_parameter_highlighting = none
@@ -211,12 +255,11 @@ resharper_convert_to_auto_property_with_private_setter_highlighting = none
 
 # Reflection/DI/Harmony entry points often appear unused to static analysis.
 # Keep local dead-code checks strict, but de-emphasize global reachability guesses.
-resharper_unused_type_global_highlighting = hint
-resharper_unused_member_global_highlighting = hint
-resharper_unused_member_in_super_global_highlighting = hint
-resharper_unused_member_hierarchy_global_highlighting = hint
-resharper_unused_auto_property_accessor_global_highlighting = hint
-
+resharper_unused_type_global_highlighting = none
+resharper_unused_member_global_highlighting = none
+resharper_unused_member_in_super_global_highlighting = none
+resharper_unused_member_hierarchy_global_highlighting = none
+resharper_unused_auto_property_accessor_global_highlighting = none
 # Local dead code still matters.
 resharper_unused_type_local_highlighting = warning
 resharper_unused_member_local_highlighting = warning
@@ -226,6 +269,12 @@ resharper_unused_local_function_highlighting = warning
 resharper_unused_auto_property_accessor_local_highlighting = warning
 
 # Correctness and suspicious semantics stay prominent.
+resharper_assigned_value_is_never_used_highlighting = warning
+resharper_access_to_disposed_closure_highlighting = warning
+resharper_access_to_modified_closure_highlighting = warning
+resharper_conditional_access_qualifier_is_non_nullable_according_to_api_contract_highlighting = warning
+resharper_constant_null_coalescing_condition_highlighting = warning
+resharper_suspicious_parameter_name_in_argument_null_exception_highlighting = warning
 resharper_empty_general_catch_clause_highlighting = warning
 resharper_compare_of_floats_by_equality_operator_highlighting = warning
 resharper_condition_is_always_true_or_false_highlighting = warning
@@ -357,8 +406,13 @@ indent_style = space
 indent_size = 4
 tab_width = 4
 
-# Test code: correctness warnings stay enabled, but cosmetic refactor suggestions are intentionally quiet.
+# Tests are allowed to allocate. Heap Allocation Viewer is not useful in test scaffolding.
 [src/Tests/**/*.cs]
+resharper_heapview_objectallocation = none
+resharper_heapview_boxingallocation = none
+resharper_heapview_delegateallocation = none
+resharper_heapview_closureallocation = none
+resharper_inconsistent_naming_highlighting = none
 resharper_member_can_be_made_static_global_highlighting = none
 resharper_member_can_be_made_static_local_highlighting = none
 resharper_member_can_be_private_global_highlighting = none
@@ -367,4 +421,33 @@ resharper_auto_property_can_be_made_get_only_global_highlighting = none
 resharper_auto_property_can_be_made_get_only_local_highlighting = none
 resharper_unused_method_return_value_global_highlighting = none
 resharper_unused_method_return_value_local_highlighting = none
+resharper_redundant_nullable_warning_suppression_highlighting = none
+resharper_parameter_only_used_for_precondition_check_global_highlighting = none
+resharper_parameter_only_used_for_precondition_check_local_highlighting = none
+resharper_redundant_argument_default_value_highlighting = none
+
+# Heap Allocations Viewer is re-enabled only where allocations can perturb the game/profiler.
+[src/Mods/TajsProfiler/Core/**/*.cs]
+resharper_heapview_objectallocation = warning
+resharper_heapview_boxingallocation = warning
+resharper_heapview_delegateallocation = warning
+resharper_heapview_closureallocation = warning
+
+[src/Mods/TajsProfiler/Probes/**/*.cs]
+resharper_heapview_objectallocation = warning
+resharper_heapview_boxingallocation = warning
+resharper_heapview_delegateallocation = warning
+resharper_heapview_closureallocation = warning
+
+[src/Mods/TajsTweaks/TweaksResourceDepositFeature.cs]
+resharper_heapview_objectallocation = warning
+resharper_heapview_boxingallocation = warning
+resharper_heapview_delegateallocation = warning
+resharper_heapview_closureallocation = warning
+
+[src/Mods/TajsTweaks/TweaksPatchFeatures.cs]
+resharper_heapview_objectallocation = warning
+resharper_heapview_boxingallocation = warning
+resharper_heapview_delegateallocation = warning
+resharper_heapview_closureallocation = warning
 

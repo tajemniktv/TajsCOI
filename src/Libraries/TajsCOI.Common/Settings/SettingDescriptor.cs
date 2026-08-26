@@ -46,7 +46,7 @@ namespace TajsCOI.Common.Settings
             Flags = flags;
             ComponentRequirement = string.IsNullOrWhiteSpace(componentRequirement) ? null : componentRequirement!.Trim();
 
-            ValidateShape();
+            ValidateShape(minimum, maximum, step);
             if (!TryNormalize(defaultValue, out object normalized, out string error))
             {
                 throw new ArgumentException("Invalid setting default: " + error, nameof(defaultValue));
@@ -246,35 +246,42 @@ namespace TajsCOI.Common.Settings
             return true;
         }
 
-        private void ValidateShape()
+        private void ValidateShape(double? minimum, double? maximum, double? step)
         {
-            ValidateNumericShape();
+            ValidateNumericShape(minimum, maximum, step);
             ValidateChoiceShape();
         }
 
-        private void ValidateNumericShape()
+        private void ValidateNumericShape(double? minimum, double? maximum, double? step)
         {
-            if (Minimum.HasValue && !IsFinite(Minimum.Value) ||
-                Maximum.HasValue && !IsFinite(Maximum.Value) ||
-                Step.HasValue && !IsFinite(Step.Value))
+            if (minimum.HasValue && !IsFinite(minimum.Value))
             {
-                throw new ArgumentOutOfRangeException("numericMetadata", "Numeric bounds and step must be finite.");
+                throw new ArgumentOutOfRangeException(nameof(minimum), "Numeric bounds and step must be finite.");
             }
-            if (Minimum.HasValue != Maximum.HasValue)
+            if (maximum.HasValue && !IsFinite(maximum.Value))
             {
-                throw new ArgumentException("Numeric settings require an ordered minimum and maximum.");
+                throw new ArgumentOutOfRangeException(nameof(maximum), "Numeric bounds and step must be finite.");
             }
-            if (Minimum is double minimum && Maximum is double maximum && minimum > maximum)
+            if (step.HasValue && !IsFinite(step.Value))
             {
-                throw new ArgumentException("Numeric settings require an ordered minimum and maximum.");
+                throw new ArgumentOutOfRangeException(nameof(step), "Numeric bounds and step must be finite.");
             }
-            if (Step.HasValue && Step.Value <= 0)
+            if (minimum.HasValue != maximum.HasValue)
             {
-                throw new ArgumentOutOfRangeException("step", "Setting step must be positive.");
+                string missingParameter = minimum.HasValue ? nameof(maximum) : nameof(minimum);
+                throw new ArgumentException("Numeric settings require an ordered minimum and maximum.", missingParameter);
             }
-            if ((ValueType == SettingValueType.Integer || ValueType == SettingValueType.Float) && !Minimum.HasValue)
+            if (minimum is double minimumValue && maximum is double maximumValue && minimumValue > maximumValue)
             {
-                throw new ArgumentException("Numeric settings require bounds.");
+                throw new ArgumentException("Numeric settings require an ordered minimum and maximum.", nameof(minimum));
+            }
+            if (step.HasValue && step.Value <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(step), "Setting step must be positive.");
+            }
+            if ((ValueType == SettingValueType.Integer || ValueType == SettingValueType.Float) && !minimum.HasValue)
+            {
+                throw new ArgumentException("Numeric settings require bounds.", nameof(minimum));
             }
         }
 

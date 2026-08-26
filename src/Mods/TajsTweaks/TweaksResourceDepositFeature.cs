@@ -41,7 +41,8 @@ namespace TajsCOI.Tweaks
 
         private static void NativeChunkDirty(ResVisBarsRenderer __instance, Chunk2i chunk)
         {
-            if (TryGetController(out ResourceDepositLabelController? controller) && controller!.IsForRenderer(__instance))
+            if (TryGetController(out ResourceDepositLabelController? controller) &&
+                controller is not null && controller.IsForRenderer(__instance))
             {
                 controller.MarkDirty(chunk);
             }
@@ -51,9 +52,9 @@ namespace TajsCOI.Tweaks
         {
             if (!TajsTweaksRuntimeState.ResourceOverlay || !TajsTweaksRuntimeState.ResourceOverlayDepth)
             {
-                if (TryGetController(out ResourceDepositLabelController? disabled))
+                if (TryGetController(out ResourceDepositLabelController? disabled) && disabled is not null)
                 {
-                    disabled!.SetFeatureEnabled(false);
+                    disabled.SetFeatureEnabled(false);
                 }
                 return;
             }
@@ -65,9 +66,9 @@ namespace TajsCOI.Tweaks
             }
 
             if (TryGetController(out ResourceDepositLabelController? current) &&
-                current!.IsFor(terrain, renderer))
+                current is not null && current.IsFor(terrain, renderer))
             {
-                current!.SetFeatureEnabled(true);
+                current.SetFeatureEnabled(true);
                 return;
             }
 
@@ -114,7 +115,6 @@ namespace TajsCOI.Tweaks
             internal readonly HashSet<Chunk2i> Chunks = new HashSet<Chunk2i>();
             internal string Key = string.Empty;
             internal Vector3 WorldCenter;
-            internal int SampleCount;
             internal float SurfaceHeight;
             internal float ResourceTop;
             internal float MaxDepth;
@@ -173,15 +173,15 @@ namespace TajsCOI.Tweaks
             }
         }
 
-        internal void SetFeatureEnabled(bool enabled)
+        internal void SetFeatureEnabled(bool featureEnabled)
         {
-            if (m_enabled == enabled)
+            if (m_enabled == featureEnabled)
             {
                 return;
             }
 
-            m_enabled = enabled;
-            if (!enabled)
+            m_enabled = featureEnabled;
+            if (!featureEnabled)
             {
                 HideLabels();
             }
@@ -776,7 +776,6 @@ namespace TajsCOI.Tweaks
                 return false;
             }
 
-            cluster.SampleCount = count;
             cluster.WorldCenter = new Vector3(sumX / count * 2f, 0f, sumY / count * 2f);
             cluster.SurfaceHeight = surface;
             cluster.ResourceTop = top;

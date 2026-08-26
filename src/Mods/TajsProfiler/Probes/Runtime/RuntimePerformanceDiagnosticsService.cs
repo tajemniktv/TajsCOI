@@ -131,7 +131,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         [ConsoleCommand(
             documentation: "Captures a broad process, managed, Mono, Unity, and GC lifecycle checkpoint.",
             customCommandName: "tajs_runtime_lifecycle_checkpoint")]
-        public string CaptureLifecycleCheckpoint(string label)
+        public string CaptureLifecycleCheckpoint(string? label)
         {
             string normalized = (label ?? string.Empty).Trim();
             return normalized.Length == 0
@@ -203,7 +203,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         [ConsoleCommand(
             documentation: "Captures current save/load stage counters and memory telemetry under a unique label.",
             customCommandName: "tajs_runtime_profile_capture")]
-        public string Capture(string label)
+        public string Capture(string? label)
         {
             string normalized = (label ?? string.Empty).Trim();
             if (normalized.Length == 0)
@@ -245,7 +245,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         [ConsoleCommand(
             documentation: "Shows a stored save/load and memory capture.",
             customCommandName: "tajs_runtime_profile_show")]
-        public string Show(string label)
+        public string Show(string? label)
         {
             lock (s_historyGate)
             {
@@ -259,7 +259,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         [ConsoleCommand(
             documentation: "Compares the counter and memory deltas between two stored captures.",
             customCommandName: "tajs_runtime_profile_compare")]
-        public string Compare(string firstLabel, string secondLabel)
+        public string Compare(string? firstLabel, string? secondLabel)
         {
             lock (s_historyGate)
             {

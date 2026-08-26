@@ -760,11 +760,7 @@ namespace TajsCOI.Core.Settings
 
         private void ExportTrace()
         {
-            if (!TryReadCommand("tajs_profiler_trace_export runtime", out string output))
-            {
-                m_headerFeedback.Value(output.AsLoc()).Show();
-                return;
-            }
+            TryReadCommand("tajs_profiler_trace_export runtime", out string output);
             m_headerFeedback.Value(output.AsLoc()).Show();
         }
 
@@ -944,13 +940,18 @@ namespace TajsCOI.Core.Settings
             mode == SettingApplyMode.ReloadSave ? "After save reload" :
             "After game restart";
 
-        private static string Truncate(string text, int maximumLength)
+        private static string Truncate(string? text, int maximumLength)
         {
-            if (string.IsNullOrEmpty(text) || text.Length <= maximumLength)
+            if (text is null)
             {
-                return text ?? string.Empty;
+                return string.Empty;
             }
-            return text.Substring(0, maximumLength) + "...";
+            string nonNullText = text;
+            if (nonNullText.Length == 0 || nonNullText.Length <= maximumLength)
+            {
+                return nonNullText;
+            }
+            return nonNullText.Substring(0, maximumLength) + "...";
         }
 
         private static string PluralSuffix(int count) => count == 1 ? string.Empty : "s";

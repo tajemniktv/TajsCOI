@@ -388,7 +388,6 @@ namespace TajsCOI.Profiler.Core
                 }
 
                 int patched = 0;
-                int replacements = 0;
                 int failures = 0;
                 var harmony = new Harmony(HarmonyId);
                 foreach (Type eventType in eventTypes)
@@ -412,7 +411,7 @@ namespace TajsCOI.Profiler.Core
                     }
                 }
 
-                replacements = Volatile.Read(ref s_transpiledInvocationCount);
+                int replacements = Volatile.Read(ref s_transpiledInvocationCount);
                 s_patchSummary = new DeepTracingPatchSummary(
                     eventTypes.Sum(x => x.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
                         .Count(y => y.Name == "Invoke" || y.Name == "InvokeTraced")),
@@ -708,7 +707,7 @@ namespace TajsCOI.Profiler.Core
             return result.ToArray();
         }
 
-        internal static long MeasureReader(Func<GameLoopTimingSnapshot> reader, int iterations)
+        internal static long MeasureReader(Func<GameLoopTimingSnapshot>? reader, int iterations)
         {
             if (reader is null || iterations <= 0)
             {
