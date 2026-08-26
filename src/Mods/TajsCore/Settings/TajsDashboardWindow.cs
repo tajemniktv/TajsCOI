@@ -588,10 +588,10 @@ namespace TajsCOI.Core.Settings
                     }
                     break;
                 case DashboardPage.Compatibility:
-                    if (m_builtPages.Add(m_selectedPage))
-                    {
-                        AddCompatibilityPage(LoadReports(), LoadMods());
-                    }
+                    // Compatibility contains on-demand Harmony and loader snapshots. Rebuild it
+                    // when the user refreshes or revisits the page, but never from a frame tick.
+                    CurrentPage.Clear();
+                    AddCompatibilityPage(LoadReports(), LoadMods());
                     break;
                 case DashboardPage.Logs:
                     EnsureLogsPage();
@@ -658,7 +658,9 @@ namespace TajsCOI.Core.Settings
             IReadOnlyList<LoadedModSnapshot> mods,
             ProfilerSnapshot profiler)
         {
-            int loadErrors = mods.Count(mod => !mod.LoadSucceeded);
+            int suiteModCount = mods.Count(mod => mod.Id.StartsWith("Tajs", StringComparison.Ordinal));
+            int loadErrors = mods.Count(mod =>
+                mod.Id.StartsWith("Tajs", StringComparison.Ordinal) && !mod.LoadSucceeded);
             int unavailable = reports.Count(report => report.State == CompatibilityState.Disabled);
             int degraded = reports.Count(report => report.State == CompatibilityState.Degraded);
             int activeSettings = settings.Count(snapshot => !Equals(snapshot.Value, snapshot.Descriptor.DefaultValue));
@@ -672,8 +674,8 @@ namespace TajsCOI.Core.Settings
             Row metrics = new Row(4.pt()).Wrap().AlignItemsStretch();
             metrics.Add(
                 TajsDashboardUi.MetricTile(
-                    "Mods loaded",
-                    mods.Count.ToString(CultureInfo.InvariantCulture),
+                    "Suite mods loaded",
+                    suiteModCount.ToString(CultureInfo.InvariantCulture),
                     "Active",
                     TajsDashboardUi.Cyan),
                 TajsDashboardUi.MetricTile(
@@ -1298,14 +1300,17 @@ namespace TajsCOI.Core.Settings
 
         private Panel BuildLoadedModsPanel(IReadOnlyList<LoadedModSnapshot> mods)
         {
+            LoadedModSnapshot[] suiteMods = mods
+                .Where(mod => mod.Id.StartsWith("Tajs", StringComparison.Ordinal))
+                .ToArray();
             Panel panel = TajsDashboardUi.Card("Loaded suite modules", "The dashboard only lists Taj's modules reported by the current gameplay resolver.");
-            if (mods.Count == 0)
+            if (suiteMods.Length == 0)
             {
                 panel.Body.Add(new Label("No TajsCOI mods were reported by the loader.".AsLoc()).FontSize(12));
                 return panel;
             }
 
-            foreach (LoadedModSnapshot mod in mods)
+            foreach (LoadedModSnapshot mod in suiteMods)
             {
                 bool failed = !mod.LoadSucceeded;
                 string version = string.IsNullOrWhiteSpace(mod.Version) ? "unknown" : mod.Version;

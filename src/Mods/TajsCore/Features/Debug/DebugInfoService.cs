@@ -77,7 +77,7 @@ namespace TajsCOI.Core.Features.Debug
             builder.AppendLine($"  packaged: {m_harmony.PackagedVersion}");
             builder.AppendLine($"  loaded:   {m_harmony.LoadedVersion}");
             builder.AppendLine($"  status:   {m_harmony.State}");
-            builder.AppendLine("Tajs mods:");
+            builder.AppendLine("Loaded mods:");
 
             foreach (LoadedModSnapshot mod in m_runtime.GetLoadedModSnapshot())
             {

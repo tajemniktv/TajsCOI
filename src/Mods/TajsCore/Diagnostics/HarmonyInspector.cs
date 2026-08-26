@@ -140,11 +140,21 @@ namespace TajsCOI.Core.Diagnostics
                 reasons.Add("duplicate Tajs registration for the same owner/kind/patch method");
             }
 
-            bool hasTajsTranspiler = entries.Any(entry => entry.IsTajsOwned && entry.Kind == HarmonyPatchKind.Transpiler);
-            bool hasForeignTranspiler = entries.Any(entry => !entry.IsTajsOwned && entry.Kind == HarmonyPatchKind.Transpiler);
-            if (hasTajsTranspiler && hasForeignTranspiler)
+            HarmonyPatchSnapshot[] transpilers = entries
+                .Where(entry => entry.Kind == HarmonyPatchKind.Transpiler)
+                .ToArray();
+            string[] transpilerOwners = transpilers
+                .Select(entry => entry.OwnerId)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            bool hasTajsTranspiler = transpilers.Any(entry => entry.IsTajsOwned);
+            if (hasTajsTranspiler && transpilerOwners.Length > 1)
             {
-                reasons.Add("Tajs and non-Tajs transpilers share the target");
+                bool hasForeignTranspiler = transpilers.Any(entry => !entry.IsTajsOwned);
+                reasons.Add(
+                    hasForeignTranspiler
+                        ? "Tajs and non-Tajs transpilers share the target"
+                        : "multiple Tajs transpiler owners share the target");
             }
 
             HarmonyPatchSnapshot[] prefixes = entries
@@ -155,35 +165,40 @@ namespace TajsCOI.Core.Diagnostics
                 reasons.Add("multiple prefixes include a bool-returning prefix that can suppress the original");
             }
 
-            string[] owners = entries.Select(entry => entry.OwnerId).Distinct(StringComparer.Ordinal).ToArray();
-            var edges = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-            foreach (HarmonyPatchSnapshot entry in entries)
+            foreach (IGrouping<HarmonyPatchKind, HarmonyPatchSnapshot> kindGroup in entries.GroupBy(entry => entry.Kind))
             {
-                foreach (string before in entry.Before)
+                string[] owners = kindGroup.Select(entry => entry.OwnerId).Distinct(StringComparer.Ordinal).ToArray();
+                var edges = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+                foreach (HarmonyPatchSnapshot entry in kindGroup)
                 {
-                    AddOrderingEdge(edges, entry.OwnerId, before);
-                    if (!owners.Contains(before, StringComparer.Ordinal))
+                    foreach (string before in entry.Before)
                     {
-                        reasons.Add("ordering constraint references missing owner " + before);
+                        // Harmony's before/after ordering is scoped to one patch category. A
+                        // reference to an owner that is absent from this category is normally an
+                        // optional integration and must not become a false collision warning.
+                        if (owners.Contains(before, StringComparer.Ordinal))
+                        {
+                            AddOrderingEdge(edges, entry.OwnerId, before);
+                        }
+                    }
+                    foreach (string after in entry.After)
+                    {
+                        if (owners.Contains(after, StringComparer.Ordinal))
+                        {
+                            AddOrderingEdge(edges, after, entry.OwnerId);
+                        }
                     }
                 }
-                foreach (string after in entry.After)
+                if (HasCycle(edges))
                 {
-                    AddOrderingEdge(edges, after, entry.OwnerId);
-                    if (!owners.Contains(after, StringComparer.Ordinal))
-                    {
-                        reasons.Add("ordering constraint references missing owner " + after);
-                    }
+                    reasons.Add("Harmony " + kindGroup.Key.ToString().ToLowerInvariant() + " before/after constraints contain a cycle");
                 }
-            }
-            if (HasCycle(edges))
-            {
-                reasons.Add("Harmony before/after constraints contain a cycle");
             }
 
             string reason = string.Join("; ", reasons.Distinct(StringComparer.Ordinal));
             if (reason.IndexOf("duplicate Tajs", StringComparison.Ordinal) >= 0 ||
-                reason.IndexOf("transpilers share", StringComparison.Ordinal) >= 0)
+                reason.IndexOf("transpilers share", StringComparison.Ordinal) >= 0 ||
+                reason.IndexOf("multiple Tajs transpiler owners", StringComparison.Ordinal) >= 0)
             {
                 return (HarmonyCollisionRisk.High, reason);
             }

@@ -603,6 +603,34 @@ namespace TajsCOI.Tweaks
             }
         }
 
+        internal static bool HasExpectedHarmonyOwner(string ownerId)
+        {
+            try
+            {
+                foreach (MethodBase original in Harmony.GetAllPatchedMethods())
+                {
+                    Patches? patches = Harmony.GetPatchInfo(original);
+                    if (patches is null)
+                    {
+                        continue;
+                    }
+
+                    if (HasExpectedHarmonyOwner(patches.Prefixes, ownerId) ||
+                        HasExpectedHarmonyOwner(patches.Postfixes, ownerId) ||
+                        HasExpectedHarmonyOwner(patches.Transpilers, ownerId) ||
+                        HasExpectedHarmonyOwner(patches.Finalizers, ownerId))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                return false;
+            }
+            return false;
+        }
+
         private static void InstallTweaksPlusPlusCompatibility(Harmony harmony)
         {
             try
@@ -632,6 +660,13 @@ namespace TajsCOI.Tweaks
             AppDomain.CurrentDomain.GetAssemblies()
                 .FirstOrDefault(x => string.Equals(x.GetName().Name, "Tweaks++", StringComparison.Ordinal))
                 ?.GetType("TweaksPP.DesignationVisualPatch", false);
+
+        private static bool HasExpectedHarmonyOwner(IEnumerable<Patch> patches, string ownerId) =>
+            patches.Any(
+                patch => string.Equals(patch.owner, ownerId, StringComparison.Ordinal) &&
+                    patch.PatchMethod?.DeclaringType == typeof(TweaksDesignationFeature) &&
+                    (string.Equals(patch.PatchMethod.Name, nameof(ReplaceLimits), StringComparison.Ordinal) ||
+                     string.Equals(patch.PatchMethod.Name, nameof(RenderPrefix), StringComparison.Ordinal)));
 
         private static bool UsesAreaLimit(MethodInfo method, IReadOnlyCollection<FieldInfo> fields)
         {

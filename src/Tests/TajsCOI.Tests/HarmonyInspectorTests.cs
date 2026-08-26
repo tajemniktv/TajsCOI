@@ -84,8 +84,38 @@ namespace TajsCOI.Tests
                 400,
                 before: new[] { "Missing.Mod" });
             (risk, reason) = HarmonyInspector.ClassifyRisk(new[] { missingOrdering });
-            Assert.Equal(HarmonyCollisionRisk.Medium, risk);
-            Assert.Contains("missing owner", reason);
+            Assert.Equal(HarmonyCollisionRisk.None, risk);
+            Assert.Empty(reason);
+
+            HarmonyPatchSnapshot crossKindPrefix = Patch(
+                HarmonyPatchKind.Prefix,
+                "TajsCOI.Tests.CrossKindA",
+                "TajsCOI.Tests.PrefixA",
+                400,
+                before: new[] { "TajsCOI.Tests.CrossKindB" });
+            HarmonyPatchSnapshot crossKindPostfix = Patch(
+                HarmonyPatchKind.Postfix,
+                "TajsCOI.Tests.CrossKindB",
+                "TajsCOI.Tests.PostfixB",
+                400,
+                before: new[] { "TajsCOI.Tests.CrossKindA" });
+            (risk, reason) = HarmonyInspector.ClassifyRisk(new[] { crossKindPrefix, crossKindPostfix });
+            Assert.Equal(HarmonyCollisionRisk.None, risk);
+            Assert.Empty(reason);
+
+            HarmonyPatchSnapshot firstTajsTranspiler = Patch(
+                HarmonyPatchKind.Transpiler,
+                "TajsCOI.Tests.TranspilerA",
+                "TajsCOI.Tests.TranspileA",
+                400);
+            HarmonyPatchSnapshot secondTajsTranspiler = Patch(
+                HarmonyPatchKind.Transpiler,
+                "TajsCOI.Tests.TranspilerB",
+                "TajsCOI.Tests.TranspileB",
+                400);
+            (risk, reason) = HarmonyInspector.ClassifyRisk(new[] { firstTajsTranspiler, secondTajsTranspiler });
+            Assert.Equal(HarmonyCollisionRisk.High, risk);
+            Assert.Contains("multiple Tajs transpiler owners", reason);
 
             HarmonyPatchSnapshot cycleLeft = Patch(
                 HarmonyPatchKind.Postfix,

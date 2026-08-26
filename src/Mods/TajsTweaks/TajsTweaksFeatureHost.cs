@@ -64,8 +64,8 @@ namespace TajsCOI.Tweaks
             TryInstall(runtime, "ShipCargoPreload", harmony => TweaksShipPreloadFeature.Install(harmony, resolver, settings));
             TryInstall(runtime, "AutoWorldDelivery", harmony => TweaksAutoShipDeliveryFeature.Install(harmony, resolver));
             TryInstall(runtime, "CameraAndHud", TweaksCameraFeature.Install);
-            TryInstall(runtime, "DesignationControls", TweaksDesignationFeature.Install);
-            RegisterDesignationIntegration(runtime);
+            bool designationInstalled = TryInstall(runtime, "DesignationControls", TweaksDesignationFeature.Install);
+            RegisterDesignationIntegration(runtime, designationInstalled);
             TryInstall(runtime, "NotificationFilter", TweaksNotificationFeature.Install);
             TryInstall(runtime, "MineTruckStaging", TweaksMineTruckStagingFeature.Install);
             TweaksMineTruckStagingFeature.SetResolver(resolver);
@@ -84,18 +84,29 @@ namespace TajsCOI.Tweaks
                     "Features are optional and retain vanilla behavior when a target is unavailable."));
         }
 
-        private static void RegisterDesignationIntegration(ITajsRuntime runtime)
+        private static void RegisterDesignationIntegration(ITajsRuntime runtime, bool designationInstalled)
         {
-            bool available = TweaksDesignationFeature.HasTweaksPlusPlusDesignationVisualIntegration();
+            const string capabilityId = "TajsTweaks.TweaksPlusPlusDesignationVisual";
+            const string harmonyOwner = HarmonyId + ".DesignationControls";
+            bool expectedOwnerInstalled = designationInstalled &&
+                TweaksDesignationFeature.HasExpectedHarmonyOwner(harmonyOwner);
+            bool optionalTargetAvailable = TweaksDesignationFeature.HasTweaksPlusPlusDesignationVisualIntegration();
+            bool available = expectedOwnerInstalled && optionalTargetAvailable;
             runtime.RegisterCapability(
                 new RuntimeCapabilityDescriptor(
-                    "TajsTweaks.TweaksPlusPlusDesignationVisual",
+                    capabilityId,
                     TajsTweaksSettingsCatalog.ModId,
                     "DesignationControls",
                     available ? RuntimeCapabilityState.Available : RuntimeCapabilityState.Unavailable,
                     string.Empty,
                     "Optional Tweaks++ designation-renderer compatibility seam.",
-                    available ? string.Empty : "Tweaks++ DesignationVisualPatch.RenderPrefix was not found.",
+                    available
+                        ? string.Empty
+                        : !designationInstalled
+                            ? "DesignationControls failed installation and its Harmony owner was rolled back."
+                            : !expectedOwnerInstalled
+                                ? "DesignationControls completed without an observable Tajs Harmony owner."
+                                : "Tweaks++ DesignationVisualPatch.RenderPrefix was not found.",
                     RuntimeComponentLifetime.GameplayScene));
             runtime.RegisterComponent(
                 new RuntimeComponentDescriptor(
@@ -103,12 +114,12 @@ namespace TajsCOI.Tweaks
                     "DesignationControls",
                     RuntimeComponentLifetime.GameplayScene,
                     "TerrainDesignationsRenderer.renderUpdate and optional Tweaks++ DesignationVisualPatch.RenderPrefix",
-                    new[] { HarmonyId + ".DesignationControls" },
+                    new[] { harmonyOwner },
                     Array.Empty<string>(),
-                    new[] { "TajsTweaks.TweaksPlusPlusDesignationVisual" }));
+                    new[] { capabilityId }));
         }
 
-        private void TryInstall(ITajsRuntime runtime, string id, Action<Harmony> install)
+        private bool TryInstall(ITajsRuntime runtime, string id, Action<Harmony> install)
         {
             var harmony = new Harmony(HarmonyId + "." + id);
             try
@@ -122,6 +133,7 @@ namespace TajsCOI.Tweaks
                         "0.8.7b target or native fallback",
                         "Patch registration completed",
                         "The feature remains disabled unless its own setting is enabled."));
+                return true;
             }
             catch (Exception exception)
             {
@@ -146,6 +158,7 @@ namespace TajsCOI.Tweaks
                         "0.8.7b target or native fallback",
                         exception.GetType().Name,
                         "No behavior was changed for this feature; vanilla behavior remains active."));
+                return false;
             }
         }
 

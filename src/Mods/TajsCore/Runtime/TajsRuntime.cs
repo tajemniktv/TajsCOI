@@ -128,7 +128,6 @@ namespace TajsCOI.Core.Runtime
 
         public IReadOnlyList<LoadedModSnapshot> GetLoadedModSnapshot() =>
             Mafi.Core.Mods.ModsLoader.LoadedAndFailedMods
-                .Where(mod => mod.Manifest.Id.StartsWith("Tajs", StringComparison.Ordinal))
                 .Select(mod => new LoadedModSnapshot(
                     mod.Manifest.Id,
                     Convert.ToString(mod.Manifest.Version, System.Globalization.CultureInfo.InvariantCulture),
