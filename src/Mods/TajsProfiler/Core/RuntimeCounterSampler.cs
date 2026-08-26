@@ -286,7 +286,8 @@ namespace TajsCOI.Profiler.Core
             }
             else if (m_frameTimingGpu is not null)
             {
-                if (sampleFrameTiming && m_frameTimingGpu.TryRead(out long frameTimingTicks))
+                string failureReason = "FrameTimingManager returned no trusted GPU sample";
+                if (sampleFrameTiming && m_frameTimingGpu.TryRead(out long frameTimingTicks, out failureReason))
                 {
                     m_lastFrameTimingGpuTicks = frameTimingTicks;
                     m_lastFrameTimingGpuTrusted = true;
@@ -296,7 +297,7 @@ namespace TajsCOI.Profiler.Core
                 {
                     m_lastFrameTimingGpuTicks = -1;
                     m_lastFrameTimingGpuTrusted = false;
-                    m_gpuTelemetryStatus = "unavailable: FrameTimingManager returned no trusted GPU sample";
+                    m_gpuTelemetryStatus = "unavailable: " + failureReason;
                 }
 
                 if (!gpuTrusted && m_lastFrameTimingGpuTrusted)
@@ -460,7 +461,9 @@ namespace TajsCOI.Profiler.Core
                 .Append(", mono-used=").Append(UnityStatus(m_monoUsed, "Profiler.GetMonoUsedSizeLong"))
                 .Append(", mono-heap=").Append(UnityStatus(m_monoHeap, "Profiler.GetMonoHeapSizeLong"))
                 .Append("; profiler: gpu-frame=").Append(RecorderStatus(m_gpuFrame, "Render/GPU Frame Time"))
-                .Append(", frame-timing-gpu=").Append(m_frameTimingGpu is null ? "unavailable" : "UnityEngine.FrameTimingManager")
+                .Append(", frame-timing-gpu=").Append(m_frameTimingGpu is null
+                    ? "unavailable"
+                    : "UnityEngine.FrameTimingManager (requires player Frame Timing Stats)")
                 .Append(", main-thread=").Append(RecorderStatus(m_mainThread, "Internal/Main Thread"))
                 .Append(", render-thread=").Append(RecorderStatus(m_renderThread, "Internal/Render Thread"))
                 .Append(", draw-calls=").Append(RecorderStatus(m_drawCalls, "Render/Draw Calls Count"))
@@ -632,20 +635,23 @@ namespace TajsCOI.Profiler.Core
                 }
             }
 
-            internal bool TryRead(out long stopwatchTicks)
+            internal bool TryRead(out long stopwatchTicks, out string failureReason)
             {
                 stopwatchTicks = -1;
+                failureReason = "FrameTimingManager returned no trusted GPU sample";
                 try
                 {
                     if (m_isFeatureEnabled is not null &&
                         !Convert.ToBoolean(m_isFeatureEnabled.Invoke(null, null), CultureInfo.InvariantCulture))
                     {
+                        failureReason = "Frame Timing Stats are disabled in this player build";
                         return false;
                     }
 
                     if (m_getGpuTimerFrequency is not null &&
                         Convert.ToDouble(m_getGpuTimerFrequency.Invoke(null, null), CultureInfo.InvariantCulture) <= 0)
                     {
+                        failureReason = "the player GPU timer frequency is unavailable";
                         return false;
                     }
 
@@ -653,12 +659,14 @@ namespace TajsCOI.Profiler.Core
                     object? countValue = m_getLatestTimings.Invoke(null, new object?[] { (uint)1, m_timings });
                     if (countValue is null || Convert.ToUInt32(countValue, CultureInfo.InvariantCulture) == 0)
                     {
+                        failureReason = "no completed FrameTimingManager sample has been published yet";
                         return false;
                     }
 
                     object? first = m_timings.GetValue(0);
                     if (first is null)
                     {
+                        failureReason = "FrameTimingManager returned an empty timing record";
                         return false;
                     }
 
@@ -666,11 +674,17 @@ namespace TajsCOI.Profiler.Core
                         m_gpuFrameTime.GetValue(first),
                         CultureInfo.InvariantCulture);
                     stopwatchTicks = MillisecondsToStopwatchTicks(milliseconds);
-                    return stopwatchTicks > 0;
+                    if (stopwatchTicks <= 0)
+                    {
+                        failureReason = "FrameTimingManager returned zero GPU frame time";
+                        return false;
+                    }
+                    return true;
                 }
                 catch
                 {
                     stopwatchTicks = -1;
+                    failureReason = "FrameTimingManager rejected the player timing request";
                     return false;
                 }
             }
