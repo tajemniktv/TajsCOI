@@ -590,6 +590,7 @@ namespace TajsCOI.Tweaks
                 }
             }
 
+            InstallCanonicalDesignationSupport(harmony);
             InstallUpgradeAreaSupport(harmony);
             InstallPolygonAreaSupport(harmony);
 
@@ -604,6 +605,46 @@ namespace TajsCOI.Tweaks
             }
 
             InstallTweaksPlusPlusCompatibility(harmony);
+        }
+
+        private static void InstallCanonicalDesignationSupport(Harmony harmony)
+        {
+            InstallCanonicalDesignationSupport(
+                harmony,
+                "Mafi.Core.Terrain.Designation.TerrainDesignationsManager, Mafi.Core");
+            InstallCanonicalDesignationSupport(
+                harmony,
+                "Mafi.Core.Terrain.Designation.SurfaceDesignationsManager, Mafi.Core");
+        }
+
+        private static void InstallCanonicalDesignationSupport(Harmony harmony, string typeName)
+        {
+            Type? managerType = Type.GetType(typeName, false);
+            MethodInfo? method = managerType is null
+                ? null
+                : AccessTools.Method(
+                    managerType,
+                    "GetCanonicalDesignationRange",
+                    new[]
+                    {
+                        typeof(Tile2i),
+                        typeof(Tile2i),
+                        typeof(Tile2i).MakeByRefType(),
+                        typeof(Tile2i).MakeByRefType(),
+                    });
+            if (method is null || !method.IsStatic || method.ReturnType != typeof(void) ||
+                method.GetMethodBody() is null)
+            {
+                // This core-side clamp is version-specific. If the manager changes shape,
+                // leave its native safety bound in place and keep the UI patches fail-open.
+                return;
+            }
+
+            harmony.Patch(
+                method,
+                transpiler: new HarmonyMethod(
+                    typeof(TweaksDesignationFeature),
+                    nameof(ReplaceCanonicalDesignationLimits)));
         }
 
         private static void InstallUpgradeAreaSupport(Harmony harmony)
@@ -797,6 +838,7 @@ namespace TajsCOI.Tweaks
             patches.Any(patch => string.Equals(patch.owner, ownerId, StringComparison.Ordinal) &&
                                  patch.PatchMethod?.DeclaringType == typeof(TweaksDesignationFeature) &&
                                  (string.Equals(patch.PatchMethod.Name, nameof(ReplaceLimits), StringComparison.Ordinal) ||
+                                  string.Equals(patch.PatchMethod.Name, nameof(ReplaceCanonicalDesignationLimits), StringComparison.Ordinal) ||
                                   string.Equals(patch.PatchMethod.Name, nameof(RenderPrefix), StringComparison.Ordinal)));
 
         private static bool UsesAreaLimit(MethodInfo method, IReadOnlyCollection<FieldInfo> fields)
@@ -829,6 +871,24 @@ namespace TajsCOI.Tweaks
                     {
                         yield return new CodeInstruction(OpCodes.Call, rel);
                     }
+                }
+                else
+                {
+                    yield return instruction;
+                }
+            }
+        }
+
+        private static IEnumerable<CodeInstruction> ReplaceCanonicalDesignationLimits(
+            IEnumerable<CodeInstruction> instructions)
+        {
+            MethodInfo integer = AccessTools.Method(typeof(TweaksDesignationFeature), nameof(GetIntLimit))!;
+            foreach (CodeInstruction instruction in instructions)
+            {
+                if (instruction.opcode == OpCodes.Ldc_I4 && instruction.operand is int value && value == 192)
+                {
+                    yield return instruction;
+                    yield return new CodeInstruction(OpCodes.Call, integer);
                 }
                 else
                 {
