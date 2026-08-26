@@ -26,8 +26,8 @@ using EntityId = Mafi.Core.EntityId;
 using UiButton = Mafi.Unity.UiToolkit.Library.Button;
 using UiColumn = Mafi.Unity.UiToolkit.Library.Column;
 using UiLabel = Mafi.Unity.UiToolkit.Library.Label;
-using UiSlider = UnityEngine.UIElements.Slider;
-using NativeTextField = UnityEngine.UIElements.TextField;
+using UiSlider = Mafi.Unity.UiToolkit.Library.Slider;
+using UiTextField = Mafi.Unity.UiToolkit.Library.TextField;
 
 namespace TajsCOI.Tweaks.Features.Overclocking
 {
@@ -45,7 +45,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             internal UiLabel Mode = null!;
             internal UiLabel Costs = null!;
             internal UiSlider Slider = null!;
-            internal NativeTextField Input = null!;
+            internal UiTextField Input = null!;
+            internal int? PendingPercent;
         }
 
         private static readonly Dictionary<object, State> s_states = new();
@@ -138,8 +139,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return;
             }
 
-            int current = TajsOverclockingFeature.Current.GetPercent(entity!.Id);
-            TajsOverclockingFeature.Current.QueueSetManual(entity.Id, current + delta, out _);
+            int current = s_states.TryGetValue(inspector, out State? state) && state.PendingPercent.HasValue
+                ? state.PendingPercent.Value
+                : TajsOverclockingFeature.Current.GetPercent(entity!.Id);
+            QueueExact(inspector, current + delta);
         }
 
         private static void Reset(object inspector)
@@ -172,14 +175,19 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             {
                 TajsOverclockingFeature feature = TajsOverclockingFeature.Current;
                 int current = feature.GetPercent(state.Entity.Id);
+                bool pending = state.PendingPercent.HasValue && state.PendingPercent.Value != current;
+                if (!pending)
+                {
+                    state.PendingPercent = null;
+                }
+
+                int displayed = pending ? state.PendingPercent!.Value : current;
                 OverclockEffectivePolicy policy = feature.GetEffectivePolicy(state.Entity.Id.Value);
-                state.Rate.Value((current + "%").AsLoc());
-                state.Slider.lowValue = policy.MinPercent;
-                state.Slider.highValue = policy.MaxPercent;
-                state.Slider.SetValueWithoutNotify(current);
-                state.Input.SetValueWithoutNotify(current.ToString());
+                state.Rate.Value((displayed + "%").AsLoc());
+                state.Slider.Range(policy.MinPercent, policy.MaxPercent).Value(displayed);
+                state.Input.Text(displayed.ToString());
                 string group = policy.GroupId < 0 ? string.Empty : " / group " + policy.GroupId;
-                state.Mode.Value(((policy.Auto ? "Auto" : "Manual") + group).AsLoc());
+                state.Mode.Value((pending ? "Pending" : (policy.Auto ? "Auto" : "Manual") + group).AsLoc());
                 state.Costs.Value(FormatCosts(state.Entity).AsLoc());
             }
             catch
@@ -191,7 +199,21 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         {
             try
             {
-                if (s_states.ContainsKey(inspector) || !TryGetEntity(inspector, out IEntity? entity) ||
+                if (s_states.TryGetValue(inspector, out State? existing))
+                {
+                    IEntity? previous = existing.Entity;
+                    existing.Entity = TryGetEntity(inspector, out IEntity? rebound) &&
+                        TajsOverclockingFeature.Current?.CanControl(rebound!.Id) == true
+                        ? rebound
+                        : null;
+                    if (previous?.Id != existing.Entity?.Id)
+                    {
+                        existing.PendingPercent = null;
+                    }
+                    return;
+                }
+
+                if (!TryGetEntity(inspector, out IEntity? entity) ||
                     TajsOverclockingFeature.Current is null || !TajsOverclockingFeature.Current.CanControl(entity!.Id))
                 {
                     return;
@@ -205,34 +227,22 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 var rate = new UiLabel((current + "%").AsLoc()).FontBold().Width(48.px());
                 var mode = new UiLabel(string.Empty.AsLoc());
                 var costs = new UiLabel(string.Empty.AsLoc());
-                var slider = new UiSlider(policy.MinPercent, policy.MaxPercent)
-                {
-                    value = current,
-                    pageSize = step,
-                };
-                slider.style.flexGrow = 1f;
-                slider.style.flexShrink = 1f;
-                slider.style.minWidth = 80f;
-                slider.style.height = 22f;
-                var sliderHost = new UiComponent();
-                sliderHost.RootElement.style.flexGrow = 1f;
-                sliderHost.RootElement.style.flexShrink = 1f;
-                sliderHost.RootElement.style.minWidth = 80f;
-                sliderHost.RootElement.Add(slider);
+                var slider = new UiSlider()
+                    .Range(policy.MinPercent, policy.MaxPercent)
+                    .ValueFormatter(Option<Func<Percent, LocStrFormatted>>.Create(_ => LocStrFormatted.Empty))
+                    .Value(current);
+                slider.RootElement.style.flexGrow = 1f;
+                slider.RootElement.style.flexShrink = 1f;
+                slider.RootElement.style.minWidth = 120f;
 
-                var input = new NativeTextField
-                {
-                    value = current.ToString(),
-                    maxLength = 5,
-                };
-                input.style.width = 62f;
-                input.style.flexShrink = 0f;
-                input.style.height = 24f;
+                var input = new UiTextField()
+                    .Text(current.ToString())
+                    .CharLimit(5)
+                    .PositiveIntegersOnly();
+                input.RootElement.style.width = 62f;
+                input.RootElement.style.flexShrink = 0f;
                 var rateRow = new Row(3.pt()).AlignItemsCenter();
-                rateRow.Add(new UiLabel("Requested rate".AsLoc()).Width(95.px()));
-                rateRow.Add(rate);
-                rateRow.RootElement.Add(sliderHost.RootElement);
-                rateRow.RootElement.Add(input);
+                rateRow.Add(new UiLabel("Requested rate".AsLoc()).Width(95.px()), rate, slider, input);
 
                 var buttonRow = new Row(3.pt()).Wrap().AlignItemsCenter();
                 buttonRow.Add(new ButtonText(UiButton.General, ("-" + step + "%").AsLoc(), () => QueueRelative(inspector, -step)));
@@ -255,33 +265,42 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     s_addPanelMethods[inspector.GetType()].Invoke(inspector, new object[] { new UiComponent[] { panel } });
                 }
 
-                slider.RegisterValueChangedCallback(change =>
+                slider.OnValueChanged((_, newValue) =>
                 {
-                    int value = Mathf.RoundToInt(change.newValue);
-                    input.SetValueWithoutNotify(value.ToString());
-                    rate.Value((value + "%").AsLoc());
-                });
-                slider.RegisterCallback<MouseUpEvent>(_ => ApplyExact(inspector, Mathf.RoundToInt(slider.value)));
-                input.RegisterCallback<KeyDownEvent>(evt =>
-                {
-                    if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+                    int minimum = policy.MinPercent;
+                    int maximum = policy.MaxPercent;
+                    if (TajsOverclockingFeature.Current is not null &&
+                        TryGetEntity(inspector, out IEntity? currentEntity))
                     {
-                        if (int.TryParse(input.value.Trim().TrimEnd('%'), out int value))
-                        {
-                            ApplyExact(inspector, value);
-                        }
-
-                        evt.StopPropagation();
+                        OverclockEffectivePolicy currentPolicy =
+                            TajsOverclockingFeature.Current.GetEffectivePolicy(currentEntity!.Id.Value);
+                        minimum = currentPolicy.MinPercent;
+                        maximum = currentPolicy.MaxPercent;
                     }
-                }, TrickleDown.TrickleDown);
-                input.RegisterCallback<FocusOutEvent>(_ =>
-                {
-                    if (int.TryParse(input.value.Trim().TrimEnd('%'), out int value))
+
+                    int value = Mathf.Clamp(Mathf.RoundToInt(newValue), minimum, maximum);
+                    if (Mathf.Abs(newValue - value) > 0.001f)
                     {
-                        ApplyExact(inspector, value);
+                        slider.Value(value);
+                    }
+
+                    input.Text(value.ToString());
+                    rate.Value((value + "%").AsLoc());
+                    QueueExact(inspector, value);
+                });
+                input.OnEditEnd(text =>
+                {
+                    if (int.TryParse(text.Trim().TrimEnd('%'), out int value))
+                    {
+                        QueueExact(inspector, value);
+                    }
+                    else
+                    {
+                        Refresh(inspector);
                     }
                 });
                 Refresh(inspector);
+                panel.RootElement.schedule.Execute(() => Refresh(inspector)).Every(250);
             }
             catch
             {
@@ -289,11 +308,29 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
         }
 
-        private static void ApplyExact(object inspector, int percent)
+        private static void QueueExact(object inspector, int percent)
         {
-            if (TajsOverclockingFeature.Current is not null && TryGetEntity(inspector, out IEntity? entity))
+            if (TajsOverclockingFeature.Current is not TajsOverclockingFeature feature ||
+                !TryGetEntity(inspector, out IEntity? entity))
             {
-                TajsOverclockingFeature.Current.QueueSetManual(entity!.Id, percent, out _);
+                return;
+            }
+
+            if (!feature.QueueSetManual(entity!.Id, percent, out _))
+            {
+                Refresh(inspector);
+                return;
+            }
+
+            if (s_states.TryGetValue(inspector, out State? state))
+            {
+                OverclockEffectivePolicy policy = feature.GetEffectivePolicy(entity.Id.Value);
+                int clamped = OverclockingMath.ClampPercent(percent, policy.MinPercent, policy.MaxPercent);
+                state.PendingPercent = clamped;
+                state.Rate.Value((clamped + "%").AsLoc());
+                state.Slider.Range(policy.MinPercent, policy.MaxPercent).Value(clamped);
+                state.Input.Text(clamped.ToString());
+                state.Mode.Value("Pending".AsLoc());
             }
         }
 
@@ -302,12 +339,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             var values = new List<string>();
             if (entity is IElectricityConsumingEntity electricity)
             {
-                values.Add("power " + electricity.PowerRequired.Value + " kW");
+                values.Add("power " + electricity.PowerRequired.Format());
             }
 
             if (entity is IComputingConsumingEntity computing)
             {
-                values.Add("computing " + computing.ComputingRequired.Value);
+                values.Add("computing " + computing.ComputingRequired.FormatShort());
             }
 
             if (entity is IEntityWithWorkers workers)
