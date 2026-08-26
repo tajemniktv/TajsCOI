@@ -239,8 +239,12 @@ namespace TajsCOI.Tweaks
         private const int MaximumLabels = 1024;
         private const float MinimumViewportMargin = 0.05f;
         private const float LabelHeight = 2.25f;
-        private const float MinimumScale = 0.045f;
-        private const float MaximumScale = 0.22f;
+        // TextMesh.characterSize is already expressed in world units. Keep the
+        // transform scale in the same range as the working resource-overlay
+        // labels; the previous 0.045-0.22 range made these labels effectively
+        // microscopic at normal camera distances.
+        private const float MinimumScale = 0.5f;
+        private const float MaximumScale = 2.5f;
 
         private sealed class LabelSlot
         {
@@ -365,7 +369,7 @@ namespace TajsCOI.Tweaks
                 label.Object.transform.position = snapshot.Position;
                 label.Object.transform.rotation = camera.transform.rotation;
                 float distance = delta.magnitude;
-                float scale = Mathf.Clamp(m_labelScale * 0.06f * (1f + distance * 0.0025f), MinimumScale, MaximumScale);
+                float scale = Mathf.Clamp(m_labelScale * (1f + distance * 0.0025f), MinimumScale, MaximumScale);
                 label.Object.transform.localScale = Vector3.one * scale;
             }
 
@@ -453,7 +457,7 @@ namespace TajsCOI.Tweaks
                 labelObject.transform.SetParent(transform, false);
                 Component text = labelObject.AddComponent(m_textMeshType!);
                 SetTextProperty(text, "fontSize", 42);
-                SetTextProperty(text, "characterSize", 0.1f);
+                SetTextProperty(text, "characterSize", 0.12f);
                 SetTextProperty(text, "fontStyle", ParseEnum(text, "fontStyle", "Bold"));
                 SetTextProperty(text, "alignment", ParseEnum(text, "alignment", "Center"));
                 SetTextProperty(text, "anchor", ParseEnum(text, "anchor", "MiddleCenter"));
