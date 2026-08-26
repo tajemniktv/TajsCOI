@@ -80,6 +80,17 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return Math.Max(1, (int)Math.Round(baseCost * CostMultiplier(percent, curvePercent)));
         }
 
+        internal static int ScaleRate(int baseValue, int percent)
+        {
+            if (baseValue <= 0 || percent == 100)
+            {
+                return baseValue;
+            }
+
+            double scaled = Math.Round(baseValue * (percent / 100d), MidpointRounding.AwayFromZero);
+            return scaled >= int.MaxValue ? int.MaxValue : Math.Max(0, (int)scaled);
+        }
+
         /// <summary>
         ///     Keeps the process duration used by COI's ExtendPauseToFit animation state strictly
         ///     longer than the effective animation duration when a Tajs overclock shortens the

@@ -42,6 +42,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             PatchOptionalCostInterfaces(harmony, typeof(WasteSortingPlant));
             PatchOptionalCostInterfaces(harmony, typeof(Transport));
 
+            PatchOfficeFocusPoints(harmony);
+
             PatchSimUpdate(harmony, typeof(Machine), nameof(MachineSimUpdatePostfix), required: true);
             PatchSimUpdate(harmony, typeof(OfficeBuilding), nameof(ExtraWorkSimUpdatePostfix), required: false);
             PatchSimUpdate(harmony, typeof(WasteSortingPlant), nameof(ExtraWorkSimUpdatePostfix), required: false);
@@ -124,6 +126,15 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     __result.MaxMaintenancePerMonth,
                     __result.ExtraBufferDuration,
                     __result.InitialMaintenanceBoost);
+            }
+        }
+
+        internal static void OfficeFocusPointsPostfix(OfficeBuilding __instance, ref int __result)
+        {
+            int percent = TajsOverclockingFeature.GetPercentFor(__instance);
+            if (percent != 100)
+            {
+                __result = OverclockingMath.ScaleRate(__result, percent);
             }
         }
 
@@ -319,6 +330,31 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             PatchInterface(harmony, entityType, typeof(IComputingConsumingEntity), "get_ComputingRequired", nameof(ComputingPostfix), required: false);
             PatchInterface(harmony, entityType, typeof(IEntityWithWorkers), "get_WorkersNeeded", nameof(WorkersPostfix), required: false);
             PatchInterface(harmony, entityType, typeof(IMaintainedEntity), "get_MaintenanceCosts", nameof(MaintenancePostfix), required: false);
+        }
+
+        private static void PatchOfficeFocusPoints(Harmony harmony)
+        {
+            PatchOfficeFocusGetter(harmony, nameof(OfficeBuilding.FocusPointsLastTick));
+            PatchOfficeFocusGetter(harmony, nameof(OfficeBuilding.FocusPointsMaxAvailable));
+        }
+
+        private static void PatchOfficeFocusGetter(Harmony harmony, string propertyName)
+        {
+            try
+            {
+                MethodInfo? getter = AccessTools.PropertyGetter(typeof(OfficeBuilding), propertyName);
+                if (getter is not null)
+                {
+                    harmony.Patch(
+                        getter,
+                        postfix: new HarmonyMethod(typeof(OverclockingPatches), nameof(OfficeFocusPointsPostfix)));
+                }
+            }
+            catch
+            {
+                // Office focus is an optional compatibility seam; a changed getter leaves
+                // office focus vanilla without disabling the rest of overclocking.
+            }
         }
 
         private static void PatchInterface(Harmony harmony, Type entityType, Type interfaceType, string methodName, string postfixName, bool required)

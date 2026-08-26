@@ -18,6 +18,14 @@ namespace TajsCOI.Tests
             Assert.Equal(1f, OverclockingMath.CostMultiplier(100, 124));
         }
 
+        [Theory]
+        [InlineData(10, 100, 10)]
+        [InlineData(10, 150, 15)]
+        [InlineData(10, 200, 20)]
+        [InlineData(1, 150, 2)]
+        public void FocusRateScalesWithOverclockPercent(int baseValue, int percent, int expected) =>
+            Assert.Equal(expected, OverclockingMath.ScaleRate(baseValue, percent));
+
         [Fact]
         public void AutomaticFillCurveUsesMaximumNeutralAndMinimumRegions()
         {
