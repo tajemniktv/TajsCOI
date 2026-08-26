@@ -37,6 +37,10 @@ reported but not changed, and existing/current save files are never overwritten 
 
 Taj's Tweaks contains quality-of-life and simulation changes.
 
+The optional world efficiency overlay adds a dedicated toolbar toggle and compact toolbox. It shows the native
+productivity history of buildings and supported vehicles as a percentage, status, or colored marker. Labels are pooled,
+updated on a bounded cadence, and culled by camera distance; buildings and vehicles can be filtered independently.
+
 The optional Infinite ground water setting refills virtual groundwater deposits to their configured
 capacity at game initialization and at the start of each in-game day. It is implemented with
 non-saveable lifecycle callbacks so loaded saves do not retain stale service references. Disable
@@ -80,6 +84,8 @@ in-game console:
 set_game_speed_unlocked <speed>
 get_game_speed_unlocked
 ```
+
+The current requested multiplier is also shown beside the native calendar speed controls.
 
 #### Transport pillars
 

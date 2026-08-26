@@ -100,6 +100,13 @@ namespace TajsCOI.Tweaks
         internal const string BattleScoreOnMap = "battle_score_on_map";
         internal const string ElectricityComputingTotals = "electricity_computing_totals";
         internal const string StackerDesignationOverlay = "stacker_designation_overlay";
+        internal const string EfficiencyOverlay = "efficiency_overlay";
+        internal const string EfficiencyOverlayMode = "efficiency_overlay_mode";
+        internal const string EfficiencyOverlayBuildings = "efficiency_overlay_buildings";
+        internal const string EfficiencyOverlayVehicles = "efficiency_overlay_vehicles";
+        internal const string EfficiencyOverlayUpdateSeconds = "efficiency_overlay_update_seconds";
+        internal const string EfficiencyOverlayRenderDistance = "efficiency_overlay_render_distance";
+        internal const string EfficiencyOverlayLabelScale = "efficiency_overlay_label_scale";
         internal const string KeepFullEmptyLabelScale = "keep_full_empty_label_scale";
         internal const string ParkingHqOffloadMode = "parking_hq_offload_mode";
         internal const string DumpToShipyard = "dump_to_shipyard";
@@ -188,6 +195,13 @@ namespace TajsCOI.Tweaks
         private static readonly IReadOnlyList<SettingChoice> s_bridgeScaleModes = new[]
         {
             new SettingChoice("off", "Off"), new SettingChoice("instant", "Instant"), new SettingChoice("gradual", "Gradual"),
+        };
+
+        private static readonly IReadOnlyList<SettingChoice> s_efficiencyOverlayModes = new[]
+        {
+            new SettingChoice("percentage", "Percentage"),
+            new SettingChoice("status", "Status"),
+            new SettingChoice("compact", "Compact marker"),
         };
 
         internal static IReadOnlyList<SettingDescriptor> All { get; } = new SettingDescriptor[]
@@ -1075,6 +1089,92 @@ namespace TajsCOI.Tweaks
                 "Overlays",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                EfficiencyOverlay,
+                "World efficiency overlay",
+                "Shows bounded, camera-culled utilization labels above buildings and supported vehicles. The toolbar toggle is reversible and immediate.",
+                false,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Choice(
+                ModId,
+                DisplayName,
+                EfficiencyOverlayMode,
+                "Efficiency overlay display",
+                "Choose percentage, short status text, or a compact colored marker.",
+                "percentage",
+                s_efficiencyOverlayModes,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: EfficiencyOverlay),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                EfficiencyOverlayBuildings,
+                "Efficiency overlay buildings",
+                "Include buildings and fixed production entities in the world overlay.",
+                true,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: EfficiencyOverlay),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                EfficiencyOverlayVehicles,
+                "Efficiency overlay vehicles",
+                "Include trucks, excavators, harvesters, planters, and other supported vehicles with productivity history.",
+                true,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: EfficiencyOverlay),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                EfficiencyOverlayUpdateSeconds,
+                "Efficiency overlay update interval",
+                "Minimum seconds between entity-history refreshes; rendering remains camera-culled every frame.",
+                0.5,
+                0.1,
+                5,
+                0.1,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: EfficiencyOverlay),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                EfficiencyOverlayRenderDistance,
+                "Efficiency overlay render distance",
+                "Maximum world distance for labels. This cap protects large islands from excessive label work.",
+                250,
+                50,
+                1000,
+                25,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: EfficiencyOverlay),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                EfficiencyOverlayLabelScale,
+                "Efficiency overlay label scale",
+                "Base world-space label scale before bounded distance scaling is applied.",
+                1,
+                0.5,
+                2,
+                0.1,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: EfficiencyOverlay),
             SettingDescriptor.Float(
                 ModId,
                 DisplayName,

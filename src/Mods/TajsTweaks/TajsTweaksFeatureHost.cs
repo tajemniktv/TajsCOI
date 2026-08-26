@@ -94,6 +94,7 @@ namespace TajsCOI.Tweaks
             TweaksParkingHqOffloadFeature.SetResolver(resolver);
             TryInstall(runtime, "KeepFullEmptyMarkers", TweaksKeepFullEmptyMarkerFeature.Install);
             TryInstall(runtime, "FullscreenHud", TweaksFullscreenHudFeature.Install);
+            TryInstall(runtime, "SimulationSpeedDisplay", TweaksSimulationSpeedDisplayFeature.Install);
             TryInstallResolved(runtime, "HudLayout", () => TweaksHudLayoutFeature.Install(resolver, settings));
 
             runtime.ReportCompatibility(
@@ -252,6 +253,16 @@ namespace TajsCOI.Tweaks
             {
                 TweaksKeepFullEmptyMarkerFeature.Apply();
             }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.EfficiencyOverlay ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.EfficiencyOverlayMode ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.EfficiencyOverlayBuildings ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.EfficiencyOverlayVehicles ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.EfficiencyOverlayUpdateSeconds ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.EfficiencyOverlayRenderDistance ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.EfficiencyOverlayLabelScale)
+            {
+                TweaksEfficiencyOverlayFeature.ApplySettings();
+            }
             if (change.Descriptor.Key == TajsTweaksSettingsCatalog.Overclocking ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockTransportCapacityCompensation ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockTransportSpacingBonus ||
@@ -284,6 +295,7 @@ namespace TajsCOI.Tweaks
                 TweaksResourceDepositFeature.Tick(m_resolver);
                 TweaksKeepFullEmptyMarkerFeature.Apply();
                 TweaksHudLayoutFeature.Apply(m_resolver, m_settings);
+                TweaksSimulationSpeedDisplayFeature.Apply(m_resolver);
                 m_overclocking?.Tick();
             }
         }
@@ -295,6 +307,7 @@ namespace TajsCOI.Tweaks
             // after InstantiateAllAndLock has completed, otherwise the resolver rejects the
             // nested TryResolve call as a recursive dependency resolution.
             TryInstall(m_runtime, "StackerDesignationOverlay", harmony => TweaksStackerDesignationFeature.Install(harmony, m_resolver));
+            TryInstallResolved(m_runtime, "EfficiencyOverlay", () => TweaksEfficiencyOverlayFeature.Install(m_resolver));
             TryInstall(m_runtime, "SteamAndExhaustStorage", harmony => TweaksSteamStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "StorageOverrides", harmony => TweaksStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "GameplayPlusPlusBridge", harmony => TweaksGameplayPlusPlusFeature.Install(harmony, m_resolver));
@@ -353,6 +366,7 @@ namespace TajsCOI.Tweaks
             m_overclocking?.Dispose();
             TweaksResourceDepositFeature.Dispose();
             TweaksStackerDesignationFeature.Dispose();
+            TweaksEfficiencyOverlayFeature.Dispose();
             TweaksStuckTruckRecoveryFeature.ClearDestinations();
             TweaksKeepFullEmptyMarkerFeature.Reset();
             TweaksHudLayoutFeature.ClearFullscreenState();

@@ -95,6 +95,13 @@ namespace TajsCOI.Tweaks
         internal static bool BattleScoreOnMap;
         internal static bool ElectricityComputingTotals;
         internal static bool StackerDesignationOverlay;
+        internal static bool EfficiencyOverlay;
+        internal static string EfficiencyOverlayMode = "percentage";
+        internal static bool EfficiencyOverlayBuildings;
+        internal static bool EfficiencyOverlayVehicles;
+        internal static double EfficiencyOverlayUpdateSeconds;
+        internal static double EfficiencyOverlayRenderDistance;
+        internal static double EfficiencyOverlayLabelScale;
         internal static double KeepFullEmptyLabelScale;
         internal static string ParkingHqOffloadMode = "vanilla";
         internal static bool BridgeTrussEnabled;
@@ -208,6 +215,13 @@ namespace TajsCOI.Tweaks
             BattleScoreOnMap = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.BattleScoreOnMap);
             ElectricityComputingTotals = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ElectricityComputingTotals);
             StackerDesignationOverlay = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StackerDesignationOverlay);
+            EfficiencyOverlay = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlay);
+            EfficiencyOverlayMode = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlayMode);
+            EfficiencyOverlayBuildings = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlayBuildings);
+            EfficiencyOverlayVehicles = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlayVehicles);
+            EfficiencyOverlayUpdateSeconds = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlayUpdateSeconds);
+            EfficiencyOverlayRenderDistance = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlayRenderDistance);
+            EfficiencyOverlayLabelScale = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlayLabelScale);
             KeepFullEmptyLabelScale = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.KeepFullEmptyLabelScale);
             ParkingHqOffloadMode = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ParkingHqOffloadMode);
             BridgeTrussEnabled = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.BridgeTrussEnabled);
@@ -358,6 +372,9 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.ResourceOverlayTowerLabels: ResourceOverlayTowerLabels = value; break;
                 case TajsTweaksSettingsCatalog.ElectricityComputingTotals: ElectricityComputingTotals = value; break;
                 case TajsTweaksSettingsCatalog.StackerDesignationOverlay: StackerDesignationOverlay = value; break;
+                case TajsTweaksSettingsCatalog.EfficiencyOverlay: EfficiencyOverlay = value; break;
+                case TajsTweaksSettingsCatalog.EfficiencyOverlayBuildings: EfficiencyOverlayBuildings = value; break;
+                case TajsTweaksSettingsCatalog.EfficiencyOverlayVehicles: EfficiencyOverlayVehicles = value; break;
                 case TajsTweaksSettingsCatalog.BridgeTrussEnabled: BridgeTrussEnabled = value; break;
                 case TajsTweaksSettingsCatalog.BridgeCableEnabled: BridgeCableEnabled = value; break;
                 case TajsTweaksSettingsCatalog.CenterDriving: CenterDriving = value; break;
@@ -485,6 +502,18 @@ namespace TajsCOI.Tweaks
             {
                 TrainSoundRange = value;
             }
+            if (key == TajsTweaksSettingsCatalog.EfficiencyOverlayUpdateSeconds)
+            {
+                EfficiencyOverlayUpdateSeconds = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.EfficiencyOverlayRenderDistance)
+            {
+                EfficiencyOverlayRenderDistance = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.EfficiencyOverlayLabelScale)
+            {
+                EfficiencyOverlayLabelScale = value;
+            }
         }
 
         private static void SetText(string key, string value)
@@ -512,6 +541,7 @@ namespace TajsCOI.Tweaks
                     break;
                 case TajsTweaksSettingsCatalog.ParkingHqOffloadMode: ParkingHqOffloadMode = value; break;
                 case TajsTweaksSettingsCatalog.BridgeScaleMode: BridgeScaleMode = value; break;
+                case TajsTweaksSettingsCatalog.EfficiencyOverlayMode: EfficiencyOverlayMode = value; break;
                 case TajsTweaksSettingsCatalog.MutedNotifications:
                     s_mutedNotificationData = value;
                     RebuildParsedValues();

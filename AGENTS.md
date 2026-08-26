@@ -5,9 +5,6 @@ Repository-specific architecture, compatibility, validation, and contributor rul
 Global `~/.codex/AGENTS.md` execution discipline also applies. This file overrides it where TajsCOI needs stricter or
 more specific behavior.
 
-If global guidance is unavailable, still use exact-symbol searches, bounded reads, evidence reuse, narrow tool output,
-distinct investigation/implementation/validation phases, and stop after the completion gate.
-
 ## Documentation boundary
 
 `README.md` is public/user-facing. Keep it short and practical: available mods, user-visible features, and in-game use.
@@ -263,9 +260,6 @@ save/gameplay semantics, and document compatibility assumptions.
 Do not promote a profiler observation directly into a workaround. If another mod may be the root cause, identify the
 interaction first.
 
-Build/test success is not a substitute for issue-specific in-game A/B evidence when runtime performance is the
-acceptance criterion.
-
 ## Source/reference policy
 
 The main repository must not contain Captain of Industry binaries, decompiled MaFi source, proprietary third-party
@@ -275,7 +269,7 @@ compiled/decompiled code, or private reference repositories/submodules containin
 historical behavior while keeping TajsCOI implementation original and clean.
 
 Do not paste large proprietary/decompiled source into comments, docs, tests, issues, or PR descriptions. Avoid
-mentioning other mods in public/user-facing material.
+mentioning other mods in public/user-facing/PRs/issues/commits material.
 
 Record important reference conclusions so they do not need to be repeatedly rediscovered.
 
@@ -288,8 +282,6 @@ When private behavior matters:
 - do not infer current signatures solely from older decompiled source;
 - treat older compatibility notes as stale when the seam changed.
 
-Latest recorded working baseline is CoI `0.8.7b`; tasks targeting another version must use that version's exact refs.
-
 ## Build and repository hygiene
 
 Rider-first, but normal `dotnet`/MSBuild workflows must remain supported where applicable.
@@ -300,9 +292,7 @@ Before completion:
 - run relevant Debug tests;
 - build Release;
 - run relevant Release tests;
-- use exact configured CoI refs;
 - inspect focused final diff/hygiene;
-- ensure no unintended build/deploy output remains.
 
 Do not commit local game paths, Rider user settings, build output, game DLLs, or recovered/decompiled artifacts.
 
@@ -320,19 +310,7 @@ Normal helpers:
 .\tail-log.ps1 -Pattern "Tajs|Path|Simulation"
 ```
 
-Exact-ref direct validation for the recorded `0.8.7b` baseline:
-
-```powershell
-$env:COI_ROOT = "E:\dev\CaptainOfIndustry\TajsCOI-Refs\refs\0.8.7b"
-
-dotnet build TajsCOI.slnx --configuration Debug --no-restore -m:1 -nr:false
-dotnet test  TajsCOI.slnx --configuration Debug --no-build --no-restore
-
-dotnet build TajsCOI.slnx --configuration Release --no-restore -m:1 -nr:false
-dotnet test  TajsCOI.slnx --configuration Release --no-build --no-restore
-```
-
-Adjust `COI_ROOT` for another target version.
+`$env:COI_ROOT` is always set to latest version of the game.
 
 Test project references must disable deployment, Unity copying, and release packaging. Per-mod project properties are
 authoritative for identity, version, compatibility, manifests, and build metadata.
@@ -382,8 +360,6 @@ Do not introduce:
 - giant global `Managers`, `Services`, `Patches`, or `Interop` buckets;
 - speculative frameworks without concrete ownership/lifecycle need.
 
-Prefer the smallest local implementation with a clean boundary. Extract only after real reuse or real cross-mod need.
-
 ## Completion gate
 
 A TajsCOI code-change task is complete when:
@@ -396,5 +372,3 @@ A TajsCOI code-change task is complete when:
 6. no local game paths, binaries, decompiled artifacts, generated junk, or accidental refs were introduced;
 7. architecture/ownership boundaries remain intact;
 8. no concrete unresolved correctness issue remains.
-
-Then stop. Do not begin another speculative audit or adjacent refactor.

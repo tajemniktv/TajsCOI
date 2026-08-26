@@ -13,6 +13,9 @@ Current feature:
 - Optional world operations, ship preload/auto-delivery, and native management windows for
   repairs, mines/rigs, settlements, ship cargo, and fleet status/order/scrap/replacement.
   All world, vehicle, and depot mutations use normal game commands/jobs.
+- The optional world efficiency overlay adds a toolbar toggle and toolbox for percentage, status,
+  or compact colored-marker labels above buildings and supported vehicles. Labels use native
+  productivity history, bounded refresh cadence, pooling, camera culling, and independent filters.
 - Line placement uses the native placement controller. Hold the configured `LeftAlt` shortcut
   while anchoring a single building to start a straight row; the row cap is configurable and
   invalid previews remain native-invalid. The controller cleans up on cancel/deactivate.
