@@ -45,6 +45,7 @@ namespace TajsCOI.Tweaks
         internal static int ResourceOverlayLabelScale;
         internal static int ResourceOverlayLabelAlpha;
         internal static double ResourceOverlayLabelHeight;
+        internal static bool InfiniteGroundwater;
         internal static bool WorldOperations;
         internal static bool AutoWorldDelivery;
         internal static bool ShipPreload;
@@ -103,6 +104,7 @@ namespace TajsCOI.Tweaks
             ResourceOverlayLabelScale = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceOverlayLabelScale);
             ResourceOverlayLabelAlpha = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceOverlayLabelAlpha);
             ResourceOverlayLabelHeight = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceOverlayLabelHeight);
+            InfiniteGroundwater = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.InfiniteGroundwater);
             WorldOperations = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.WorldOperations);
             AutoWorldDelivery = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AutoWorldDelivery);
             ShipPreload = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShipPreload);
@@ -216,6 +218,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.ResourceOverlayDepth: ResourceOverlayDepth = value; break;
                 case TajsTweaksSettingsCatalog.ResourceOverlayTowerAreas: ResourceOverlayTowerAreas = value; break;
                 case TajsTweaksSettingsCatalog.ResourceOverlayTowerLabels: ResourceOverlayTowerLabels = value; break;
+                case TajsTweaksSettingsCatalog.InfiniteGroundwater: InfiniteGroundwater = value; break;
                 case TajsTweaksSettingsCatalog.WorldOperations: WorldOperations = value; break;
                 case TajsTweaksSettingsCatalog.AutoWorldDelivery: AutoWorldDelivery = value; break;
                 case TajsTweaksSettingsCatalog.ShipPreload: ShipPreload = value; break;

@@ -14,6 +14,7 @@ file or in the relevant `docs/` document. Do not duplicate those details in the 
 
 ## Project intent
 
+Captain of Industry is a highly complex supply chain and factory automation simulator. It operates as a directed acyclic graph (DAG) where nodes are factories with strict input/output throughput specifications, and edges are belts or pipes. It's made in Unity.
 TajsCOI is a monorepo containing multiple Captain of Industry mods plus shared libraries. Preserve architectural boundaries even when a shortcut would make one task locally easier.
 
 Target projects:

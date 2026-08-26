@@ -44,6 +44,7 @@ namespace TajsCOI.Tweaks
         internal const string ResourceOverlayLabelScale = "resource_overlay_label_scale_percent";
         internal const string ResourceOverlayLabelAlpha = "resource_overlay_label_alpha_percent";
         internal const string ResourceOverlayLabelHeight = "resource_overlay_label_height";
+        internal const string InfiniteGroundwater = "infinite_groundwater";
 
         internal const string WorldOperations = "world_operations";
         internal const string AutoWorldDelivery = "auto_world_delivery";
@@ -323,7 +324,7 @@ namespace TajsCOI.Tweaks
                 DisplayName,
                 ResourceOverlay,
                 "Resource overlay helpers",
-                "Enables bounded resource-depth and mining-area overlay helpers while the vanilla resource visualization is active.",
+                "Enables bounded resource-depth and mining-area overlay helpers while the vanilla resource visualization is active. Open the native resource visualization and select products to see them; this setting does not activate it automatically.",
                 false,
                 "Overlays",
                 applyMode: SettingApplyMode.Immediate,
@@ -403,6 +404,16 @@ namespace TajsCOI.Tweaks
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced,
                 componentRequirement: ResourceOverlay),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                InfiniteGroundwater,
+                "Infinite ground water",
+                "Refills virtual ground-water deposits to their configured capacity at game initialization and at the start of each in-game day. Uses non-saveable lifecycle callbacks and is disabled by default.",
+                false,
+                "Simulation",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,

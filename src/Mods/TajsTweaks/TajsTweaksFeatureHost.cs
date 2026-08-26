@@ -37,6 +37,7 @@ namespace TajsCOI.Tweaks
         private readonly DependencyResolver m_resolver;
         private readonly ITajsSettings m_settings;
         private readonly ITajsLogger m_log;
+        private readonly TweaksInfiniteGroundwaterFeature m_infiniteGroundwater;
         private Option<TajsWorldOperationsWindow> m_worldOperationsWindow;
         private Option<TajsFleetManagementWindow> m_fleetManagementWindow;
         private int m_renderTick;
@@ -46,6 +47,7 @@ namespace TajsCOI.Tweaks
             m_resolver = resolver;
             m_settings = settings;
             m_log = runtime.GetLogger(TajsTweaksSettingsCatalog.ModId, "FeatureHost");
+            m_infiniteGroundwater = new TweaksInfiniteGroundwaterFeature(resolver, gameLoop, m_log);
             TajsTweaksSettingsCatalog.RegisterAll(settings);
             TajsTweaksRuntimeState.Load(settings);
             settings.Changed += OnSettingChanged;
@@ -57,6 +59,7 @@ namespace TajsCOI.Tweaks
             TryInstall(runtime, "BuildDefaults", TweaksBuildDefaultsFeature.Install);
             TryInstall(runtime, "ResourceOverlays", TweaksResourceOverlayFeature.Install);
             TryInstall(runtime, "ResourceDepositClusters", TweaksResourceDepositFeature.Install);
+            TryInstallResolved(runtime, "InfiniteGroundwater", m_infiniteGroundwater.Install);
             TryInstall(runtime, "ShipCargoPreload", harmony => TweaksShipPreloadFeature.Install(harmony, resolver, settings));
             TryInstall(runtime, "AutoWorldDelivery", harmony => TweaksAutoShipDeliveryFeature.Install(harmony, resolver));
             TryInstall(runtime, "CameraAndHud", TweaksCameraFeature.Install);
@@ -178,6 +181,10 @@ namespace TajsCOI.Tweaks
             {
                 TweaksAutoShipDeliveryFeature.Reset();
             }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.InfiniteGroundwater)
+            {
+                m_infiniteGroundwater.RefreshFromSettings();
+            }
         }
 
         private void OnRenderUpdateEnd(GameTime _)
@@ -195,6 +202,7 @@ namespace TajsCOI.Tweaks
         {
             m_settings.Changed -= OnSettingChanged;
             TweaksAutoShipDeliveryFeature.Reset();
+            m_infiniteGroundwater.Dispose();
             TweaksResourceDepositFeature.Dispose();
             CloseWorldOperationsWindow();
             CloseFleetManagementWindow();
@@ -259,6 +267,11 @@ namespace TajsCOI.Tweaks
                 return "Fleet management window is unavailable in this scene.";
             }
         }
+
+        [ConsoleCommand(
+            documentation: "Detaches the legacy standalone InfiniteGroundwater save callback. Run after loading with that mod enabled, save a new copy, then disable the standalone mod.",
+            customCommandName: "tajs_infinite_groundwater_migrate")]
+        public string MigrateLegacyInfiniteGroundwaterSave() => m_infiniteGroundwater.DetachLegacyStandaloneMod();
 
         private void OnWorldOperationsWindowClose(Window window)
         {

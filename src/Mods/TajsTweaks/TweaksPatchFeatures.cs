@@ -577,11 +577,42 @@ namespace TajsCOI.Tweaks
             }
 
             var renderer = Type.GetType("Mafi.Unity.Terrain.Designation.TerrainDesignationsRenderer, Mafi.Unity", false);
-            Type? chunk = renderer?.GetNestedType("TerrainDesignationsChunk", BindingFlags.NonPublic);
-            MethodInfo? render = chunk is null ? null : AccessTools.Method(chunk, "RenderDesignations");
+            // Gate the renderer's single per-frame update rather than each private chunk. This
+            // leaves the native draw path untouched when hiding is off and avoids depending on
+            // the private nested chunk type, which changed shape between game builds.
+            MethodInfo? render = renderer is null ? null : AccessTools.Method(renderer, "renderUpdate");
             if (render is not null)
             {
                 harmony.Patch(render, prefix: new HarmonyMethod(typeof(TweaksDesignationFeature), nameof(RenderPrefix)));
+            }
+
+            InstallTweaksPlusPlusCompatibility(harmony);
+        }
+
+        private static void InstallTweaksPlusPlusCompatibility(Harmony harmony)
+        {
+            try
+            {
+                // Tweaks++ installs its own prefix on the same renderer and its persisted
+                // DesignationsVisualEnabled value can otherwise veto this method entirely.
+                // Patch that prefix's result instead of depending on Harmony prefix ordering:
+                // any false prefix skips the original, regardless of which prefix runs first.
+                Type? patchType = Type.GetType("TweaksPP.DesignationVisualPatch, Tweaks++", false) ??
+                    AppDomain.CurrentDomain.GetAssemblies()
+                        .FirstOrDefault(x => string.Equals(x.GetName().Name, "Tweaks++", StringComparison.Ordinal))
+                        ?.GetType("TweaksPP.DesignationVisualPatch", false);
+                MethodInfo? renderPrefix = patchType is null ? null : AccessTools.Method(patchType, "RenderPrefix");
+                if (renderPrefix is not null)
+                {
+                    harmony.Patch(
+                        renderPrefix,
+                        postfix: new HarmonyMethod(typeof(TweaksDesignationFeature), nameof(TweaksPlusPlusRenderPostfix)));
+                }
+            }
+            catch
+            {
+                // Tweaks++ is an optional compatibility seam. A missing or changed type must
+                // not prevent the independent designation-area patches from installing.
             }
         }
 
@@ -629,7 +660,18 @@ namespace TajsCOI.Tweaks
         private static int GetIntLimit(int vanilla) =>
             TajsTweaksRuntimeState.DesignationControls ? TajsTweaksRuntimeState.DesignationLimit : vanilla;
 
-        private static bool RenderPrefix() => !(TajsTweaksRuntimeState.DesignationControls && TajsTweaksRuntimeState.HideDesignations);
+        private static bool ShouldHideDesignations() =>
+            TajsTweaksRuntimeState.DesignationControls && TajsTweaksRuntimeState.HideDesignations;
+
+        private static bool RenderPrefix() => !ShouldHideDesignations();
+
+        private static void TweaksPlusPlusRenderPostfix(ref bool __result)
+        {
+            if (!ShouldHideDesignations())
+            {
+                __result = true;
+            }
+        }
     }
 
     internal static class TweaksNotificationFeature
