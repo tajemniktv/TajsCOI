@@ -255,9 +255,9 @@ namespace TajsCOI.Profiler.Core
     }
 
     /// <summary>
-    /// Reads the private 0.8.7b GameLoopTimings ring without reflection on the frame path.
-    /// The dynamic accessors are built only after the expected enum, fields, and buffer shape
-    /// have been validated. A missing or changed game surface disables only this reader.
+    ///     Reads the private 0.8.7b GameLoopTimings ring without reflection on the frame path.
+    ///     The dynamic accessors are built only after the expected enum, fields, and buffer shape
+    ///     have been validated. A missing or changed game surface disables only this reader.
     /// </summary>
     internal sealed class GameLoopTimingsAccess
     {
@@ -369,7 +369,7 @@ namespace TajsCOI.Profiler.Core
                     return false;
                 }
 
-                Array? entries = entriesField.GetValue(null) as Array;
+                var entries = entriesField.GetValue(null) as Array;
                 int[]? writeIndices = writeIndexField.GetValue(null) as int[];
                 if (entries is null || writeIndices is null || entries.Length != s_expectedEventNames.Length ||
                     writeIndices.Length != s_expectedEventNames.Length)
@@ -429,10 +429,7 @@ namespace TajsCOI.Profiler.Core
             }
         }
 
-        internal GameLoopTimingSnapshot ReadLatest()
-        {
-            return ReadLatest(out _);
-        }
+        internal GameLoopTimingSnapshot ReadLatest() => ReadLatest(out _);
 
         internal GameLoopTimingSnapshot ReadLatest(out GameLoopTimingRanges ranges)
         {
@@ -477,7 +474,7 @@ namespace TajsCOI.Profiler.Core
                     int physicalIndex = logicalIndex & m_bufferMask;
                     long start = m_readStart(eventIndex, physicalIndex);
                     long end = m_readEnd(eventIndex, physicalIndex);
-                    GameLoopTimingRange range = new GameLoopTimingRange(start, end);
+                    var range = new GameLoopTimingRange(start, end);
                     if (!range.IsValid)
                     {
                         continue;
@@ -564,7 +561,7 @@ namespace TajsCOI.Profiler.Core
             int bufferMask,
             string name)
         {
-            DynamicMethod method = new DynamicMethod(
+            var method = new DynamicMethod(
                 name,
                 typeof(long),
                 new[] { typeof(int), typeof(int) },

@@ -10,10 +10,10 @@ namespace TajsCOI.Common.Runtime
 {
     public interface ITajsRuntime
     {
-        ITajsLogger GetLogger(string modId, string componentId);
+        public ITajsLogger GetLogger(string modId, string componentId);
 
-        void ReportCompatibility(CompatibilityReport report);
+        public void ReportCompatibility(CompatibilityReport report);
 
-        IReadOnlyList<CompatibilityReport> GetCompatibilitySnapshot();
+        public IReadOnlyList<CompatibilityReport> GetCompatibilitySnapshot();
     }
 }

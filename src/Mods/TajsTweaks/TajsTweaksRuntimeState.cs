@@ -4,16 +4,15 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Threading;
 using TajsCOI.Common.Settings;
 
 namespace TajsCOI.Tweaks
 {
     internal static class TajsTweaksRuntimeState
     {
-        private static readonly object s_gate = new object();
-        private static HashSet<string> s_mutedNotifications = new HashSet<string>(StringComparer.Ordinal);
-        private static Dictionary<string, double> s_storageOverrides = new Dictionary<string, double>(StringComparer.Ordinal);
+        private static readonly object s_gate = new();
+        private static HashSet<string> s_mutedNotifications = new(StringComparer.Ordinal);
+        private static Dictionary<string, double> s_storageOverrides = new(StringComparer.Ordinal);
         private static string s_mutedNotificationData = string.Empty;
 
         internal static bool LinePlacement;
@@ -162,10 +161,10 @@ namespace TajsCOI.Tweaks
                     return false;
                 }
                 return s_mutedNotifications.Contains(id) ||
-                    (FarmWarnings && (id.IndexOf("CropCouldNotBeStored", StringComparison.Ordinal) >= 0 ||
-                        id.IndexOf("CropDiedNoMaintenance", StringComparison.Ordinal) >= 0 ||
-                        id.IndexOf("CropDiedNoWater", StringComparison.Ordinal) >= 0 ||
-                        id.IndexOf("CropDiedNoFertility", StringComparison.Ordinal) >= 0));
+                       FarmWarnings && (id.IndexOf("CropCouldNotBeStored", StringComparison.Ordinal) >= 0 ||
+                                        id.IndexOf("CropDiedNoMaintenance", StringComparison.Ordinal) >= 0 ||
+                                        id.IndexOf("CropDiedNoWater", StringComparison.Ordinal) >= 0 ||
+                                        id.IndexOf("CropDiedNoFertility", StringComparison.Ordinal) >= 0);
             }
         }
 
@@ -179,11 +178,11 @@ namespace TajsCOI.Tweaks
 
         internal static IReadOnlyList<string> ParseIds(string? text) =>
             (text ?? string.Empty).Split(new[] { ',', ';', '\r', '\n', ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(x => x.Trim())
-                .Where(x => x.Length > 0 && x.Length <= 96)
-                .Distinct(StringComparer.Ordinal)
-                .Take(256)
-                .ToArray();
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0 && x.Length <= 96)
+            .Distinct(StringComparer.Ordinal)
+            .Take(256)
+            .ToArray();
 
         internal static IReadOnlyDictionary<string, double> ParseStorageOverrides(string? text)
         {
@@ -218,7 +217,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.WorldOperations: WorldOperations = value; break;
                 case TajsTweaksSettingsCatalog.AutoWorldDelivery: AutoWorldDelivery = value; break;
                 case TajsTweaksSettingsCatalog.ShipPreload: ShipPreload = value; break;
-                case TajsCOI.Tweaks.TajsTweaksSettingsCatalog.RecoverTrucks: RecoverTrucks = value; break;
+                case TajsTweaksSettingsCatalog.RecoverTrucks: RecoverTrucks = value; break;
                 case TajsTweaksSettingsCatalog.StageMineTrucks: StageMineTrucks = value; break;
                 case TajsTweaksSettingsCatalog.FreeCamera: FreeCamera = value; break;
                 case TajsTweaksSettingsCatalog.UnlimitedZoom: UnlimitedZoom = value; break;
@@ -254,10 +253,22 @@ namespace TajsCOI.Tweaks
 
         private static void SetNumber(string key, double value)
         {
-            if (key == TajsTweaksSettingsCatalog.PinnedHysteresis) PinnedHysteresisPercent = value;
-            if (key == TajsTweaksSettingsCatalog.StorageMultiplier) StorageMultiplier = value;
-            if (key == TajsTweaksSettingsCatalog.StorageThroughputMultiplier) StorageThroughputMultiplier = value;
-            if (key == TajsTweaksSettingsCatalog.ResourceOverlayLabelHeight) ResourceOverlayLabelHeight = value;
+            if (key == TajsTweaksSettingsCatalog.PinnedHysteresis)
+            {
+                PinnedHysteresisPercent = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.StorageMultiplier)
+            {
+                StorageMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.StorageThroughputMultiplier)
+            {
+                StorageThroughputMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.ResourceOverlayLabelHeight)
+            {
+                ResourceOverlayLabelHeight = value;
+            }
         }
 
         private static void SetText(string key, string value)
@@ -276,8 +287,14 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.ShipPreloadData: ShipPreloadData = value; break;
                 case TajsTweaksSettingsCatalog.HudHidden: HudHidden = value; break;
                 case TajsTweaksSettingsCatalog.HudPositions: HudPositions = value; break;
-                case TajsTweaksSettingsCatalog.StorageOverrideData: StorageOverrideData = value; RebuildParsedValues(); break;
-                case TajsTweaksSettingsCatalog.MutedNotifications: s_mutedNotificationData = value; RebuildParsedValues(); break;
+                case TajsTweaksSettingsCatalog.StorageOverrideData:
+                    StorageOverrideData = value;
+                    RebuildParsedValues();
+                    break;
+                case TajsTweaksSettingsCatalog.MutedNotifications:
+                    s_mutedNotificationData = value;
+                    RebuildParsedValues();
+                    break;
             }
         }
 

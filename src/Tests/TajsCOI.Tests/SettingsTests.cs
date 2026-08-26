@@ -21,28 +21,36 @@ namespace TajsCOI.Tests
         {
             Assert.Equal(18, PerformanceSettingsCatalog.All.Count);
             Assert.Equal(18, PerformanceSettingsCatalog.All.Select(x => x.Key).Distinct(StringComparer.Ordinal).Count());
-            Assert.All(PerformanceSettingsCatalog.All, descriptor =>
-            {
-                Assert.Equal(PerformanceSettingsCatalog.ModId, descriptor.ModId);
-                Assert.Equal(SettingScope.Global, descriptor.Scope);
-                Assert.True((descriptor.Flags & SettingFlags.Experimental) != 0);
-            });
+            Assert.All(
+                PerformanceSettingsCatalog.All,
+                descriptor =>
+                {
+                    Assert.Equal(PerformanceSettingsCatalog.ModId, descriptor.ModId);
+                    Assert.Equal(SettingScope.Global, descriptor.Scope);
+                    Assert.True((descriptor.Flags & SettingFlags.Experimental) != 0);
+                });
 
             SettingDescriptor immediate = Assert.Single(
-                PerformanceSettingsCatalog.All, x => x.Key == "enable_manual_asset_trim");
+                PerformanceSettingsCatalog.All,
+                x => x.Key == "enable_manual_asset_trim");
             Assert.Equal(SettingApplyMode.Immediate, immediate.ApplyMode);
             string[] liveRenderingKeys =
             {
-                "render_load_shedding", "render_disable_smoke", "render_disable_dust",
-                "render_disable_weather", "render_disable_clouds", "render_disable_fog",
-                "render_disable_shadows", "render_shadow_distance",
+                "render_load_shedding",
+                "render_disable_smoke",
+                "render_disable_dust",
+                "render_disable_weather",
+                "render_disable_clouds",
+                "render_disable_fog",
+                "render_disable_shadows",
+                "render_shadow_distance",
             };
             Assert.All(
                 PerformanceSettingsCatalog.All.Where(x => liveRenderingKeys.Contains(x.Key, StringComparer.Ordinal)),
                 descriptor => Assert.Equal(SettingApplyMode.Immediate, descriptor.ApplyMode));
             Assert.All(
                 PerformanceSettingsCatalog.All.Where(x => x.Key != "enable_manual_asset_trim" &&
-                    !liveRenderingKeys.Contains(x.Key, StringComparer.Ordinal)),
+                                                          !liveRenderingKeys.Contains(x.Key, StringComparer.Ordinal)),
                 descriptor => Assert.Equal(SettingApplyMode.RestartGame, descriptor.ApplyMode));
         }
 
@@ -123,9 +131,15 @@ namespace TajsCOI.Tests
             try
             {
                 var settings = new TajsSettings(path, new NullLogger());
-                Assert.Throws<NotSupportedException>(() => settings.Register(SettingDescriptor.Boolean(
-                    "TajsTweaks", "Tweaks", "island_option", "Island option",
-                    "Test per-save setting.", false, scope: SettingScope.PerSave)));
+                Assert.Throws<NotSupportedException>(() => settings.Register(
+                    SettingDescriptor.Boolean(
+                        "TajsTweaks",
+                        "Tweaks",
+                        "island_option",
+                        "Island option",
+                        "Test per-save setting.",
+                        false,
+                        scope: SettingScope.PerSave)));
                 Assert.False(File.Exists(path));
             }
             finally
@@ -173,12 +187,29 @@ namespace TajsCOI.Tests
 
         private sealed class NullLogger : ITajsLogger
         {
-            public void Info(string message) { }
-            public void Warning(string message) { }
-            public void WarningOnce(string message) { }
-            public void Error(string message) { }
-            public void ErrorOnce(string message) { }
-            public void Exception(Exception exception, string? message = null) { }
+            public void Info(string message)
+            {
+            }
+
+            public void Warning(string message)
+            {
+            }
+
+            public void WarningOnce(string message)
+            {
+            }
+
+            public void Error(string message)
+            {
+            }
+
+            public void ErrorOnce(string message)
+            {
+            }
+
+            public void Exception(Exception exception, string? message = null)
+            {
+            }
         }
     }
 }

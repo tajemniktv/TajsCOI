@@ -11,12 +11,12 @@ using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
-using TajsCOI.Performance.Features.SaveLoadReadBuffer;
-using TajsCOI.Performance.Features.StreamingSaveCompression;
-using TajsCOI.Performance.Features.LowProductTextures;
 using TajsCOI.Performance.Features.LazyResourceVisualization;
+using TajsCOI.Performance.Features.LowProductTextures;
 using TajsCOI.Performance.Features.ProductBufferShrink;
 using TajsCOI.Performance.Features.RenderingLoadShedding;
+using TajsCOI.Performance.Features.SaveLoadReadBuffer;
+using TajsCOI.Performance.Features.StreamingSaveCompression;
 
 namespace TajsCOI.Performance
 {
@@ -62,13 +62,14 @@ namespace TajsCOI.Performance
             {
                 runtime.GetLogger(PerformanceSettingsCatalog.ModId, "RenderingLoadShedding")
                     .Exception(exception, "Live rendering controls failed open during installation.");
-                runtime.ReportCompatibility(new CompatibilityReport(
-                    PerformanceSettingsCatalog.ModId,
-                    "RenderingLoadShedding",
-                    CompatibilityState.Disabled,
-                    "Unity QualitySettings and optional scene particle controls",
-                    exception.GetType().Name,
-                    "Vanilla rendering remains active."));
+                runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        PerformanceSettingsCatalog.ModId,
+                        "RenderingLoadShedding",
+                        CompatibilityState.Disabled,
+                        "Unity QualitySettings and optional scene particle controls",
+                        exception.GetType().Name,
+                        "Vanilla rendering remains active."));
             }
 
             foreach (IPerformanceFeature feature in features)
@@ -78,23 +79,25 @@ namespace TajsCOI.Performance
                 {
                     if (TryIsProcessPatchInstalled(feature))
                     {
-                        runtime.ReportCompatibility(new CompatibilityReport(
-                            PerformanceSettingsCatalog.ModId,
-                            feature.Id,
-                            CompatibilityState.Compatible,
-                            "Feature configuration is snapshotted for the process lifetime",
-                            "Existing process patch is still installed",
-                            "This feature is disabled for the next process; restart the game to remove the current patch."));
+                        runtime.ReportCompatibility(
+                            new CompatibilityReport(
+                                PerformanceSettingsCatalog.ModId,
+                                feature.Id,
+                                CompatibilityState.Compatible,
+                                "Feature configuration is snapshotted for the process lifetime",
+                                "Existing process patch is still installed",
+                                "This feature is disabled for the next process; restart the game to remove the current patch."));
                         continue;
                     }
 
-                    runtime.ReportCompatibility(new CompatibilityReport(
-                        PerformanceSettingsCatalog.ModId,
-                        feature.Id,
-                        CompatibilityState.Disabled,
-                        "Feature explicitly enabled after a supporting profiler capture",
-                        "Disabled by configuration",
-                        "No Harmony patches were installed."));
+                    runtime.ReportCompatibility(
+                        new CompatibilityReport(
+                            PerformanceSettingsCatalog.ModId,
+                            feature.Id,
+                            CompatibilityState.Disabled,
+                            "Feature explicitly enabled after a supporting profiler capture",
+                            "Disabled by configuration",
+                            "No Harmony patches were installed."));
                     continue;
                 }
 
@@ -109,23 +112,25 @@ namespace TajsCOI.Performance
                         ? "an existing compatible process patch remains active"
                         : "vanilla behavior remains active";
                     log.Exception(exception, $"Feature '{feature.Id}' could not be installed; {status}.");
-                    runtime.ReportCompatibility(new CompatibilityReport(
-                        PerformanceSettingsCatalog.ModId,
-                        feature.Id,
-                        CompatibilityState.Disabled,
-                        "Compatible 0.8.7a targets and a successful patch installation",
-                        exception.GetType().Name,
-                        $"Installation failed open; {status}."));
+                    runtime.ReportCompatibility(
+                        new CompatibilityReport(
+                            PerformanceSettingsCatalog.ModId,
+                            feature.Id,
+                            CompatibilityState.Disabled,
+                            "Compatible 0.8.7a targets and a successful patch installation",
+                            exception.GetType().Name,
+                            $"Installation failed open; {status}."));
                 }
             }
 
-            runtime.ReportCompatibility(new CompatibilityReport(
-                PerformanceSettingsCatalog.ModId,
-                "FeatureHost",
-                CompatibilityState.Compatible,
-                "Only individually switchable patch features are registered",
-                $"{features.Length} patch feature(s) registered",
-                "Registered patch features were evaluated independently; manual command features report separately."));
+            runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    PerformanceSettingsCatalog.ModId,
+                    "FeatureHost",
+                    CompatibilityState.Compatible,
+                    "Only individually switchable patch features are registered",
+                    $"{features.Length} patch feature(s) registered",
+                    "Registered patch features were evaluated independently; manual command features report separately."));
         }
 
         private static IReadOnlyDictionary<string, bool> GetProcessConfiguration(

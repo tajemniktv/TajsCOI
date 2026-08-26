@@ -43,7 +43,7 @@ namespace TajsCOI.Core.Settings
                 return "TajsCOI dashboard: hidden";
             }
 
-            TajsDashboardWindow window = m_resolver.Instantiate<TajsDashboardWindow>();
+            var window = m_resolver.Instantiate<TajsDashboardWindow>();
             window.OnCloseStart += OnWindowCloseStart;
             m_window = window;
             return "TajsCOI dashboard: shown";

@@ -11,15 +11,13 @@ using HarmonyLib;
 using Mafi;
 using Mafi.Collections;
 using Mafi.Core;
-using Mafi.Core.Buildings.Storages;
 using Mafi.Core.Buildings.Mine;
-using Mafi.Core.Buildings.Shipyard;
 using Mafi.Core.Buildings.OreSorting;
+using Mafi.Core.Buildings.Shipyard;
+using Mafi.Core.Buildings.Storages;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Dynamic;
 using Mafi.Core.Entities.Static;
-using Mafi.Core.Entities.Static.Layout;
-using Mafi.Core.GameLoop;
 using Mafi.Core.Notifications;
 using Mafi.Core.PathFinding.Goals;
 using Mafi.Core.Products;
@@ -28,7 +26,6 @@ using Mafi.Core.Terrain.Designation;
 using Mafi.Core.Vehicles;
 using Mafi.Core.Vehicles.Jobs;
 using Mafi.Core.Vehicles.Trucks;
-using Mafi.Unity;
 using Mafi.Unity.Camera;
 using Mafi.Unity.InputControl;
 using Mafi.Unity.Ui.Controllers.LayoutEntityPlacing;
@@ -47,7 +44,7 @@ namespace TajsCOI.Tweaks
         internal static void Install(Harmony harmony)
         {
             Type helper = typeof(StaticEntityMassPlacer).GetNestedType("DragPlacementHelper", BindingFlags.NonPublic)
-                ?? throw new MissingMemberException(typeof(StaticEntityMassPlacer).FullName, "DragPlacementHelper");
+                          ?? throw new MissingMemberException(typeof(StaticEntityMassPlacer).FullName, "DragPlacementHelper");
             s_parentField = AccessTools.Field(helper, "m_parent");
             s_shortcutsField = AccessTools.Field(typeof(StaticEntityMassPlacer), "m_shortcutsManager");
             if (s_parentField is null || s_shortcutsField is null)
@@ -55,9 +52,9 @@ namespace TajsCOI.Tweaks
                 throw new MissingMemberException(helper.FullName, "placement shortcut fields");
             }
             MethodInfo allowed = AccessTools.Method(helper, "isDragStartAllowed")
-                ?? throw new MissingMethodException(helper.FullName, "isDragStartAllowed");
+                                 ?? throw new MissingMethodException(helper.FullName, "isDragStartAllowed");
             MethodInfo target = AccessTools.Method(helper, "computeAxisAlignedPositions")
-                ?? throw new MissingMethodException(helper.FullName, "computeAxisAlignedPositions");
+                                ?? throw new MissingMethodException(helper.FullName, "computeAxisAlignedPositions");
             s_axisMethod = target;
             harmony.Patch(allowed, prefix: new HarmonyMethod(typeof(TweaksLinePlacementFeature), nameof(AllowConfiguredShortcut)));
             harmony.Patch(target, postfix: new HarmonyMethod(typeof(TweaksLinePlacementFeature), nameof(TrimLinePositions)));
@@ -68,8 +65,9 @@ namespace TajsCOI.Tweaks
         private static void PatchAlternatePlacementPath(Harmony harmony, Type helper, string name)
         {
             MethodInfo alternate = AccessTools.Method(helper, name)
-                ?? throw new MissingMethodException(helper.FullName, name);
-            harmony.Patch(alternate,
+                                   ?? throw new MissingMethodException(helper.FullName, name);
+            harmony.Patch(
+                alternate,
                 prefix: new HarmonyMethod(typeof(TweaksLinePlacementFeature), nameof(ForceAxisAlignedPath)),
                 postfix: new HarmonyMethod(typeof(TweaksLinePlacementFeature), nameof(TrimLinePositions)));
         }
@@ -143,8 +141,8 @@ namespace TajsCOI.Tweaks
 
     internal static class TweaksPinnedProductsFeature
     {
-        private static readonly object s_gate = new object();
-        private static readonly List<WeakReference<object>> s_huds = new List<WeakReference<object>>();
+        private static readonly object s_gate = new();
+        private static readonly List<WeakReference<object>> s_huds = new();
         private static FieldInfo? s_rowsField;
         private static FieldInfo? s_columnField;
         private static FieldInfo? s_childrenField;
@@ -154,13 +152,14 @@ namespace TajsCOI.Tweaks
         private static MethodInfo? s_alternateBackgroundMethod;
         private static MethodInfo? s_getStoredMethod;
         private static MethodInfo? s_getCapacityMethod;
+
         private sealed class BarColorState
         {
             internal StyleColor Original;
             internal bool Captured;
         }
 
-        private static readonly ConditionalWeakTable<VisualElement, BarColorState> s_barColors = new ConditionalWeakTable<VisualElement, BarColorState>();
+        private static readonly ConditionalWeakTable<VisualElement, BarColorState> s_barColors = new();
         private static bool s_wasBarColorsEnabled;
 
         internal static void Install(Harmony harmony)
@@ -180,8 +179,8 @@ namespace TajsCOI.Tweaks
                 s_setColumnsMethod = AccessTools.Method(columnType, "SetColumns", new[] { typeof(int) });
                 s_addMethod = columnType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
                     .FirstOrDefault(x => x.Name == "Add" && x.GetParameters().Length == 1 &&
-                        x.GetParameters()[0].ParameterType.IsGenericType &&
-                        x.GetParameters()[0].ParameterType.GetGenericTypeDefinition() == typeof(IEnumerable<>));
+                                         x.GetParameters()[0].ParameterType.IsGenericType &&
+                                         x.GetParameters()[0].ParameterType.GetGenericTypeDefinition() == typeof(IEnumerable<>));
             }
             if (s_rowsField is null || s_columnField is null || s_childrenField is null || s_clearMethod is null ||
                 s_addMethod is null || s_getStoredMethod is null || s_getCapacityMethod is null)
@@ -332,9 +331,24 @@ namespace TajsCOI.Tweaks
             {
                 return 0;
             }
-            PropertyInfo? property = quantity.GetType().GetProperty("Value", BindingFlags.Instance | BindingFlags.Public);
+            if (quantity is IConvertible convertible)
+            {
+                return convertible.ToInt64(System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            Type type = quantity.GetType();
+            PropertyInfo? property = type.GetProperty("Value", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             object? value = property?.GetValue(quantity);
-            return value is null ? 0 : Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
+            if (value is null)
+            {
+                FieldInfo? field = type.GetField("Value", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                value = field?.GetValue(quantity);
+            }
+            if (value is IConvertible direct)
+            {
+                return direct.ToInt64(System.Globalization.CultureInfo.InvariantCulture);
+            }
+            return value is null || ReferenceEquals(value, quantity) ? 0 : ReadQuantityValue(value);
         }
 
         private static void ApplyCompactStyle(object row)
@@ -346,8 +360,11 @@ namespace TajsCOI.Tweaks
             }
             if (TajsTweaksRuntimeState.PinnedCompact)
             {
-                root.style.paddingTop = 0f;
-                root.style.paddingBottom = 0f;
+                // PinnedRowBase has 1 px top and 2 px bottom padding. Removing both
+                // completely clips the chart/text on the compact layout in 0.8.7b;
+                // retain a bounded five-pixel breathing room for the row content.
+                root.style.paddingTop = 2f;
+                root.style.paddingBottom = 3f;
             }
             else
             {
@@ -415,12 +432,14 @@ namespace TajsCOI.Tweaks
         private static WeakReference<OrbitalCameraModel>? s_lastCamera;
         private static FieldInfo? s_minPivotField;
         private static FieldInfo? s_maxPivotField;
+        private static MethodInfo? s_recomputePivotHeightMethod;
 
         internal static void Install(Harmony harmony)
         {
             Patch(harmony, AccessTools.Method(typeof(OrbitalCameraModel), "GetMinGroundClearance"), nameof(MinGroundClearancePostfix));
             Patch(harmony, AccessTools.Method(typeof(OrbitalCameraModel), "computePivotHeight"), nameof(PivotHeightPostfix));
             Patch(harmony, AccessTools.Method(typeof(OrbitalCameraModel), "SetMode"), nameof(SetModePostfix));
+            Patch(harmony, AccessTools.Method(typeof(CameraController), "adjustEyePositionToAvoidTerrainClipping"), nameof(TerrainClipPostfix));
         }
 
         private static void Patch(Harmony harmony, MethodInfo? target, string postfix)
@@ -448,6 +467,16 @@ namespace TajsCOI.Tweaks
             if (TajsTweaksRuntimeState.GroundClipping)
             {
                 __result = new HeightTilesF(__result.Value - 15);
+            }
+        }
+
+        private static void TerrainClipPostfix(ref Vector3 __result, Vector3 eyePosition)
+        {
+            if (TajsTweaksRuntimeState.GroundClipping || TajsTweaksRuntimeState.FreeCamera)
+            {
+                // CameraController applies Mathf.Max(clearance, nearClip * 1.25f), so a
+                // negative GetMinGroundClearance result alone can never permit clipping.
+                __result = eyePosition;
             }
         }
 
@@ -479,6 +508,24 @@ namespace TajsCOI.Tweaks
                 // Camera state is restored by vanilla when this private seam is unavailable.
             }
         }
+
+        internal static void RefreshGroundClipping()
+        {
+            if (s_lastCamera is null || !s_lastCamera.TryGetTarget(out OrbitalCameraModel? camera))
+            {
+                return;
+            }
+
+            try
+            {
+                s_recomputePivotHeightMethod ??= AccessTools.Method(typeof(OrbitalCameraModel), "recomputePivotHeight");
+                s_recomputePivotHeightMethod?.Invoke(camera, null);
+            }
+            catch
+            {
+                // The camera will recompute its pivot on the next movement/mode change.
+            }
+        }
     }
 
     internal static class TweaksDesignationFeature
@@ -499,7 +546,7 @@ namespace TajsCOI.Tweaks
         {
             foreach (string typeName in s_types)
             {
-                Type? type = Type.GetType(typeName, false);
+                var type = Type.GetType(typeName, false);
                 if (type is null)
                 {
                     continue;
@@ -514,7 +561,7 @@ namespace TajsCOI.Tweaks
                 }
 
                 foreach (MethodInfo method in type.GetMethods(
-                    BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                             BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
                 {
                     if (method.IsAbstract || method.ContainsGenericParameters || method.GetMethodBody() is null)
                     {
@@ -527,8 +574,9 @@ namespace TajsCOI.Tweaks
                 }
             }
 
-            Type? renderer = Type.GetType("Mafi.Unity.Terrain.Designation.TerrainDesignationsRenderer, Mafi.Unity", false);
-            MethodInfo? render = renderer is null ? null : AccessTools.Method(renderer, "renderUpdate");
+            var renderer = Type.GetType("Mafi.Unity.Terrain.Designation.TerrainDesignationsRenderer, Mafi.Unity", false);
+            Type? chunk = renderer?.GetNestedType("TerrainDesignationsChunk", BindingFlags.NonPublic);
+            MethodInfo? render = chunk is null ? null : AccessTools.Method(chunk, "RenderDesignations");
             if (render is not null)
             {
                 harmony.Patch(render, prefix: new HarmonyMethod(typeof(TweaksDesignationFeature), nameof(RenderPrefix)));
@@ -585,12 +633,12 @@ namespace TajsCOI.Tweaks
     {
         internal static void Install(Harmony harmony)
         {
-            MethodInfo target = AccessTools.Method(typeof(NotificationsManager), "AddNotification", new[]
-            {
-                typeof(NotificationProto),
-                typeof(Option<IObjectWithTitle>),
-                typeof(Option<object>),
-            }) ?? throw new MissingMethodException(typeof(NotificationsManager).FullName, "AddNotification");
+            MethodInfo target =
+                AccessTools.Method(
+                    typeof(NotificationsManager),
+                    "AddNotification",
+                    new[] { typeof(NotificationProto), typeof(Option<IObjectWithTitle>), typeof(Option<object>) }) ??
+                throw new MissingMethodException(typeof(NotificationsManager).FullName, "AddNotification");
             harmony.Patch(target, prefix: new HarmonyMethod(typeof(TweaksNotificationFeature), nameof(AddPrefix)));
         }
 
@@ -613,7 +661,10 @@ namespace TajsCOI.Tweaks
         internal static void Install(Harmony harmony)
         {
             MethodInfo? setDefault = AccessTools.Method(typeof(DefaultLogisticsModeManager), "SetDefault", new[] { typeof(IEntity) });
-            MethodInfo? setIfMissing = AccessTools.Method(typeof(DefaultLogisticsModeManager), "SetDefaultIfNotSetInConfig", new[] { typeof(IEntity), typeof(EntityConfigData) });
+            MethodInfo? setIfMissing = AccessTools.Method(
+                typeof(DefaultLogisticsModeManager),
+                "SetDefaultIfNotSetInConfig",
+                new[] { typeof(IEntity), typeof(EntityConfigData) });
             if (setDefault is null || setIfMissing is null)
             {
                 throw new MissingMethodException(typeof(DefaultLogisticsModeManager).FullName, "SetDefault methods");
@@ -631,20 +682,14 @@ namespace TajsCOI.Tweaks
             s_warningField = typeof(MineTower).GetField("m_productsToNotifyIfCannotGetRidOf", BindingFlags.Instance | BindingFlags.NonPublic);
         }
 
-        private static void DefaultPostfix(IEntity entity)
-        {
-            ApplyStorageMode(entity, null, isConfigAware: false);
-        }
+        private static void DefaultPostfix(IEntity entity) => ApplyStorageMode(entity, null, isConfigAware: false);
 
-        private static void DefaultIfMissingPostfix(IEntity entity, EntityConfigData configData)
-        {
-            ApplyStorageMode(entity, configData, isConfigAware: true);
-        }
+        private static void DefaultIfMissingPostfix(IEntity entity, EntityConfigData configData) => ApplyStorageMode(entity, configData, isConfigAware: true);
 
         private static void ApplyStorageMode(IEntity entity, EntityConfigData? config, bool isConfigAware)
         {
-            IEntityWithSimpleLogisticsControl? simple = entity as IEntityWithSimpleLogisticsControl;
-            IEntityWithLogisticsControl? advanced = entity as IEntityWithLogisticsControl;
+            var simple = entity as IEntityWithSimpleLogisticsControl;
+            var advanced = entity as IEntityWithLogisticsControl;
             if (simple is null && advanced is null)
             {
                 return;
@@ -672,8 +717,14 @@ namespace TajsCOI.Tweaks
             }
             else if (simple is not null)
             {
-                if (setInput) simple.SetLogisticsInputDisabled(!importEnabled);
-                if (setOutput) simple.SetLogisticsOutputDisabled(!exportEnabled);
+                if (setInput)
+                {
+                    simple.SetLogisticsInputDisabled(!importEnabled);
+                }
+                if (setOutput)
+                {
+                    simple.SetLogisticsOutputDisabled(!exportEnabled);
+                }
             }
         }
 
@@ -734,17 +785,14 @@ namespace TajsCOI.Tweaks
     internal static class TweaksMineTruckStagingFeature
     {
         private static WeakReference<DependencyResolver>? s_resolver;
-        private static readonly Dictionary<int, float> s_nextChecks = new Dictionary<int, float>();
+        private static readonly Dictionary<int, float> s_nextChecks = new();
 
-        internal static void SetResolver(DependencyResolver resolver)
-        {
-            s_resolver = new WeakReference<DependencyResolver>(resolver);
-        }
+        internal static void SetResolver(DependencyResolver resolver) => s_resolver = new WeakReference<DependencyResolver>(resolver);
 
         internal static void Install(Harmony harmony)
         {
             MethodInfo target = AccessTools.Method(typeof(ParkAndWaitJobFactory), "TryEnqueueParkingJobIfNeeded")
-                ?? throw new MissingMethodException(typeof(ParkAndWaitJobFactory).FullName, "TryEnqueueParkingJobIfNeeded");
+                                ?? throw new MissingMethodException(typeof(ParkAndWaitJobFactory).FullName, "TryEnqueueParkingJobIfNeeded");
             harmony.Patch(target, prefix: new HarmonyMethod(typeof(TweaksMineTruckStagingFeature), nameof(Prefix)));
         }
 
@@ -758,7 +806,7 @@ namespace TajsCOI.Tweaks
             try
             {
                 OreSortingPlant? best = null;
-                Fix64 bestDistance = Fix64.MaxValue;
+                var bestDistance = Fix64.MaxValue;
                 foreach (OreSortingPlant plant in mine.AssignedInputOreSorters)
                 {
                     if (!IsReachable(truck, plant) || !plant.CanAcceptTruck(truck, out bool hadMatchingProducts, out _) || !hadMatchingProducts)
@@ -815,21 +863,18 @@ namespace TajsCOI.Tweaks
     internal static class TweaksStuckTruckRecoveryFeature
     {
         private static WeakReference<DependencyResolver>? s_resolver;
-        private static readonly Dictionary<int, float> s_nextChecks = new Dictionary<int, float>();
-        private static readonly Dictionary<int, int> s_observations = new Dictionary<int, int>();
-        private static readonly Dictionary<int, int> s_failures = new Dictionary<int, int>();
+        private static readonly Dictionary<int, float> s_nextChecks = new();
+        private static readonly Dictionary<int, int> s_observations = new();
+        private static readonly Dictionary<int, int> s_failures = new();
 
         internal static void Install(Harmony harmony)
         {
             MethodInfo target = AccessTools.Method(typeof(ParkAndWaitJobFactory), "TryEnqueueParkingJobIfNeeded")
-                ?? throw new MissingMethodException(typeof(ParkAndWaitJobFactory).FullName, "TryEnqueueParkingJobIfNeeded");
+                                ?? throw new MissingMethodException(typeof(ParkAndWaitJobFactory).FullName, "TryEnqueueParkingJobIfNeeded");
             harmony.Patch(target, prefix: new HarmonyMethod(typeof(TweaksStuckTruckRecoveryFeature), nameof(Prefix)));
         }
 
-        internal static void SetResolver(DependencyResolver resolver)
-        {
-            s_resolver = new WeakReference<DependencyResolver>(resolver);
-        }
+        internal static void SetResolver(DependencyResolver resolver) => s_resolver = new WeakReference<DependencyResolver>(resolver);
 
         private static bool Prefix(Vehicle vehicle, ref ILayoutEntity staticEntity, ref bool __result)
         {
@@ -911,7 +956,7 @@ namespace TajsCOI.Tweaks
             {
                 StorageBase? bestStorage = null;
                 RegisteredInputBuffer? bestBuffer = null;
-                Fix64 bestDistance = Fix64.MaxValue;
+                var bestDistance = Fix64.MaxValue;
                 foreach (StorageBase storage in entities.GetAllEntitiesOfType<StorageBase>())
                 {
                     if (storage.IsDestroyed || unreachables.HasUnreachableEntity(truck, storage))
@@ -1016,7 +1061,7 @@ namespace TajsCOI.Tweaks
 
     internal static class TweaksStorageFeature
     {
-        private static readonly object s_gate = new object();
+        private static readonly object s_gate = new();
         private static bool s_applied;
 
         internal static void Install(Harmony harmony, DependencyResolver resolver)
@@ -1033,7 +1078,10 @@ namespace TajsCOI.Tweaks
                     : TajsTweaksRuntimeState.StorageMultiplier;
                 Apply(proto, capacityMultiplier, TajsTweaksRuntimeState.StorageThroughputMultiplier);
             }
-            lock (s_gate) s_applied = true;
+            lock (s_gate)
+            {
+                s_applied = true;
+            }
         }
 
         private static void Apply(StorageBaseProto proto, double capacityMultiplier, double throughputMultiplier)
@@ -1070,18 +1118,20 @@ namespace TajsCOI.Tweaks
     {
         private sealed class TowerLabelState
         {
-            internal readonly List<GameObject> Objects = new List<GameObject>();
+            internal readonly List<GameObject> Objects = new();
         }
 
-        private static readonly ConditionalWeakTable<Component, TowerLabelState> s_towerLabels = new ConditionalWeakTable<Component, TowerLabelState>();
+        private static readonly ConditionalWeakTable<Component, TowerLabelState> s_towerLabels = new();
+
         private static readonly Color[] s_towerColors =
         {
-            new Color(0.25f, 0.75f, 1f, 0.85f),
-            new Color(1f, 0.75f, 0.2f, 0.85f),
-            new Color(0.55f, 1f, 0.35f, 0.85f),
-            new Color(1f, 0.35f, 0.35f, 0.85f),
-            new Color(0.8f, 0.45f, 1f, 0.85f),
+            new(0.25f, 0.75f, 1f, 0.85f),
+            new(1f, 0.75f, 0.2f, 0.85f),
+            new(0.55f, 1f, 0.35f, 0.85f),
+            new(1f, 0.35f, 0.35f, 0.85f),
+            new(0.8f, 0.45f, 1f, 0.85f),
         };
+
         private static FieldInfo? s_overlayDataField;
         private static PropertyInfo? s_overlayDataCount;
         private static PropertyInfo? s_overlayDataItem;
@@ -1092,7 +1142,7 @@ namespace TajsCOI.Tweaks
 
         internal static void Install(Harmony harmony)
         {
-            Type? overlay = Type.GetType("Mafi.Unity.Mine.TowerAreaStatusOverlay, Mafi.Unity", false);
+            var overlay = Type.GetType("Mafi.Unity.Mine.TowerAreaStatusOverlay, Mafi.Unity", false);
             MethodInfo? render = overlay is null ? null : AccessTools.Method(overlay, "renderUpdate");
             if (render is not null)
             {
@@ -1151,7 +1201,8 @@ namespace TajsCOI.Tweaks
                         ? entityId.Value
                         : index;
                     s_lineSetColor.Invoke(line, new object[] { s_towerColors[Math.Abs(id) % s_towerColors.Length] });
-                    if (TajsTweaksRuntimeState.ResourceOverlayTowerLabels && labels is not null && s_textMeshType is not null && line is Component lineComponent)
+                    if (TajsTweaksRuntimeState.ResourceOverlayTowerLabels && labels is not null && s_textMeshType is not null &&
+                        line is Component lineComponent)
                     {
                         GameObject label = GetOrCreateLabel(labels, labelIndex++);
                         if (__instance is Component parent)
@@ -1195,7 +1246,7 @@ namespace TajsCOI.Tweaks
         {
             while (state.Objects.Count <= index)
             {
-                GameObject label = new GameObject("Tajs mining tower label");
+                var label = new GameObject("Tajs mining tower label");
                 label.transform.localScale = Vector3.one;
                 Component text = label.AddComponent(s_textMeshType ??= Type.GetType("UnityEngine.TextMesh, UnityEngine.TextRenderingModule", false)!);
                 SetTextProperty(text, "characterSize", 0.08f * Mathf.Clamp(TajsTweaksRuntimeState.ResourceOverlayLabelScale, 50, 200) / 100f);

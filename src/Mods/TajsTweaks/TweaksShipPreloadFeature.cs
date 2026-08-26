@@ -35,7 +35,10 @@ namespace TajsCOI.Tweaks
         {
             private readonly int m_target;
 
-            internal PreloadPriority(int target) => m_target = target;
+            internal PreloadPriority(int target)
+            {
+                m_target = target;
+            }
 
             public BufferStrategy GetInputPriority(IProductBuffer buffer, Quantity pendingQuantity)
             {
@@ -49,9 +52,9 @@ namespace TajsCOI.Tweaks
             internal int Target;
         }
 
-        private static readonly List<WeakReference<Shipyard>> s_shipyards = new List<WeakReference<Shipyard>>();
-        private static readonly Dictionary<int, Dictionary<string, int>> s_targets = new Dictionary<int, Dictionary<string, int>>();
-        private static readonly ConditionalWeakTable<IProductBuffer, PromotionMarker> s_promotedBuffers = new ConditionalWeakTable<IProductBuffer, PromotionMarker>();
+        private static readonly List<WeakReference<Shipyard>> s_shipyards = new();
+        private static readonly Dictionary<int, Dictionary<string, int>> s_targets = new();
+        private static readonly ConditionalWeakTable<IProductBuffer, PromotionMarker> s_promotedBuffers = new();
         private static WeakReference<DependencyResolver>? s_resolver;
         private static WeakReference<ITajsSettings>? s_settings;
         private static FieldInfo? s_registryField;
@@ -84,7 +87,7 @@ namespace TajsCOI.Tweaks
                 return;
             }
             foreach (string entry in TajsTweaksRuntimeState.ShipPreloadData
-                .Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Take(256))
+                         .Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Take(256))
             {
                 string[] pair = entry.Trim().Split(new[] { '=' }, 2);
                 if (pair.Length != 2 || !int.TryParse(pair[1].Trim(), out int target) || target <= 0)
@@ -119,7 +122,7 @@ namespace TajsCOI.Tweaks
 
         internal static IReadOnlyList<Shipyard> GetShipyards()
         {
-            List<Shipyard> result = new List<Shipyard>();
+            var result = new List<Shipyard>();
             s_shipyards.RemoveAll(x => !x.TryGetTarget(out _));
             foreach (WeakReference<Shipyard> reference in s_shipyards.ToArray())
             {
@@ -135,7 +138,7 @@ namespace TajsCOI.Tweaks
 
         internal static IReadOnlyList<PendingEntry> ReadPending(Shipyard? shipyard)
         {
-            List<PendingEntry> result = new List<PendingEntry>();
+            var result = new List<PendingEntry>();
             if (shipyard is null || !s_targets.TryGetValue(shipyard.Id.Value, out Dictionary<string, int>? targets))
             {
                 return result;
@@ -148,12 +151,7 @@ namespace TajsCOI.Tweaks
             {
                 if (buffers.TryGetValue(target.Key, out IProductBuffer? buffer))
                 {
-                    result.Add(new PendingEntry
-                    {
-                        Product = buffer.Product,
-                        Delivered = buffer.Quantity.Value,
-                        Target = target.Value,
-                    });
+                    result.Add(new PendingEntry { Product = buffer.Product, Delivered = buffer.Quantity.Value, Target = target.Value });
                 }
             }
 
@@ -384,7 +382,7 @@ namespace TajsCOI.Tweaks
         {
             Type type = value.GetType();
             return type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(value) ??
-                type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(value);
+                   type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(value);
         }
 
         private static IEnumerable<IProductBuffer> GetCargoBuffers(Shipyard shipyard)
@@ -394,9 +392,10 @@ namespace TajsCOI.Tweaks
                 return Array.Empty<IProductBuffer>();
             }
 
-            IEnumerable? values = cargo.GetType().GetProperty("Values", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(cargo) as IEnumerable;
-            IEnumerable entries = values ?? (cargo as IEnumerable ?? Array.Empty<object>());
-            List<IProductBuffer> result = new List<IProductBuffer>();
+            var values =
+                cargo.GetType().GetProperty("Values", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(cargo) as IEnumerable;
+            IEnumerable entries = values ?? cargo as IEnumerable ?? Array.Empty<object>();
+            var result = new List<IProductBuffer>();
             foreach (object entry in entries)
             {
                 if (entry is IProductBuffer direct)
@@ -419,10 +418,12 @@ namespace TajsCOI.Tweaks
                 return;
             }
 
-            string value = string.Join(",", s_targets
-                .OrderBy(x => x.Key)
-                .SelectMany(x => x.Value.OrderBy(y => y.Key)
-                    .Select(y => x.Key + "|" + y.Key + "=" + y.Value)));
+            string value = string.Join(
+                ",",
+                s_targets
+                    .OrderBy(x => x.Key)
+                    .SelectMany(x => x.Value.OrderBy(y => y.Key)
+                        .Select(y => x.Key + "|" + y.Key + "=" + y.Value)));
             settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShipPreloadData, value);
         }
     }

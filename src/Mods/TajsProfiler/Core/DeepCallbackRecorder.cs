@@ -12,7 +12,6 @@ using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using HarmonyLib;
-using Mafi;
 using Mafi.Core.GameLoop;
 using Mafi.Core.Simulation;
 
@@ -172,10 +171,7 @@ namespace TajsCOI.Profiler.Core
                 m_previousPhase = previousPhase;
             }
 
-            public void Dispose()
-            {
-                s_currentPhase = m_previousPhase;
-            }
+            public void Dispose() => s_currentPhase = m_previousPhase;
         }
     }
 
@@ -201,8 +197,9 @@ namespace TajsCOI.Profiler.Core
         internal int Failures { get; }
         internal int PhaseConflicts { get; }
         internal bool IsAvailable => PatchedMethods > 0 && ReplacedInvocations > 0;
+
         internal bool IsComplete => ExpectedMethods > 0 && PatchedMethods == ExpectedMethods &&
-            Failures == 0 && PhaseConflicts == 0;
+                                    Failures == 0 && PhaseConflicts == 0;
     }
 
     internal readonly struct DeepCaptureWindow
@@ -303,26 +300,38 @@ namespace TajsCOI.Profiler.Core
         private const int MaximumTraceThreads = 64;
         private static readonly long SlowCallbackTicks = Stopwatch.Frequency * 2 / 1000;
 
-        private static readonly object s_patchGate = new object();
-        private static readonly object s_metadataGate = new object();
-        private static readonly object s_markerGate = new object();
+        private static readonly object s_patchGate = new();
+        private static readonly object s_metadataGate = new();
+        private static readonly object s_markerGate = new();
         private static readonly ConcurrentDictionary<int, TraceSpanRing> s_rings = new();
         private static readonly Dictionary<CallbackMetadataKey, CallbackMetadataSnapshot> s_metadataByKey = new();
         private static readonly List<CallbackMetadataSnapshot> s_metadata = new();
         private static readonly List<RuntimeTraceMarker> s_markers = new(MarkerCapacity);
         private static readonly ConditionalWeakTable<object, OwnerMetadata> s_ownerMetadata = new();
         private static readonly ConditionalWeakTable<Delegate, CallbackMetadataCache> s_delegateMetadata = new();
+
         [ThreadStatic]
         private static TraceSpanRing? s_threadRing;
+
         [ThreadStatic]
         private static int s_threadRingId;
+
         private static int s_metadataCount;
+
         private static readonly MethodInfo s_invokeAction = typeof(DeepCallbackRecorder).GetMethod(
-            nameof(InvokeWithOwner), BindingFlags.Static | BindingFlags.NonPublic, null,
-            new[] { typeof(object), typeof(Action), typeof(int), typeof(object) }, null)!;
+            nameof(InvokeWithOwner),
+            BindingFlags.Static | BindingFlags.NonPublic,
+            null,
+            new[] { typeof(object), typeof(Action), typeof(int), typeof(object) },
+            null)!;
+
         private static readonly MethodInfo s_invokeActionWithoutOwner = typeof(DeepCallbackRecorder).GetMethod(
-            nameof(InvokeWithoutOwner), BindingFlags.Static | BindingFlags.NonPublic, null,
-            new[] { typeof(Action), typeof(int), typeof(object) }, null)!;
+            nameof(InvokeWithoutOwner),
+            BindingFlags.Static | BindingFlags.NonPublic,
+            null,
+            new[] { typeof(Action), typeof(int), typeof(object) },
+            null)!;
+
         private static readonly MethodInfo s_invokeAction1 = GetGenericWrapper(nameof(InvokeWithOwner), 1);
         private static readonly MethodInfo s_invokeAction1WithoutOwner = GetGenericWrapper(nameof(InvokeWithoutOwner), 1);
         private static readonly MethodInfo s_invokeAction2 = GetGenericWrapper(nameof(InvokeWithOwner), 2);
@@ -506,8 +515,8 @@ namespace TajsCOI.Profiler.Core
             }
 
             Action callback = NoOpCallback;
-            object benchmarkOwner = new object();
-            object eventSource = new object();
+            object benchmarkOwner = new();
+            object eventSource = new();
             RuntimeTracePhaseContext.RegisterEvent(eventSource, RuntimeTracePhase.SimUpdate);
             const int WarmupIterations = 256;
             for (int index = 0; index < WarmupIterations; index++)
@@ -636,10 +645,7 @@ namespace TajsCOI.Profiler.Core
             }
         }
 
-        internal static CallbackMetricSnapshot[] SnapshotCallbackMetrics(int count)
-        {
-            return AggregateCallbackMetrics(SnapshotSpans(), SnapshotMetadata(), count);
-        }
+        internal static CallbackMetricSnapshot[] SnapshotCallbackMetrics(int count) => AggregateCallbackMetrics(SnapshotSpans(), SnapshotMetadata(), count);
 
         internal static CallbackMetricSnapshot[] AggregateCallbackMetrics(
             IReadOnlyList<RuntimeTraceSpan> spans,
@@ -666,7 +672,7 @@ namespace TajsCOI.Profiler.Core
                 builder.Add(duration, span.StartTimestamp);
             }
 
-            var byId = metadata.ToDictionary(x => x.Id);
+            Dictionary<int, CallbackMetadataSnapshot> byId = metadata.ToDictionary(x => x.Id);
             return metrics
                 .Where(x => byId.ContainsKey(x.Key.CallbackId))
                 .Select(x => x.Value.ToSnapshot(byId[x.Key.CallbackId], x.Key.PhaseId, capturedCallbackTicks))
@@ -676,33 +682,32 @@ namespace TajsCOI.Profiler.Core
                 .ToArray();
         }
 
-        internal static CallbackInvocationSnapshot[] SnapshotWorstCallbackInvocations(int count)
-        {
-            return RankWorstCallbackInvocations(SnapshotSpans(), SnapshotMetadata(), count);
-        }
+        internal static CallbackInvocationSnapshot[] SnapshotWorstCallbackInvocations(int count) =>
+            RankWorstCallbackInvocations(SnapshotSpans(), SnapshotMetadata(), count);
 
         internal static CallbackInvocationSnapshot[] RankWorstCallbackInvocations(
             IReadOnlyList<RuntimeTraceSpan> spans,
             IReadOnlyList<CallbackMetadataSnapshot> metadata,
             int count)
         {
-            var byId = metadata.ToDictionary(x => x.Id);
+            Dictionary<int, CallbackMetadataSnapshot> byId = metadata.ToDictionary(x => x.Id);
             var result = new List<CallbackInvocationSnapshot>();
             foreach (RuntimeTraceSpan span in spans
-                .Where(x => x.DurationTicks > 0 && byId.ContainsKey(x.CallbackId))
-                .OrderByDescending(x => x.DurationTicks)
-                .ThenBy(x => x.StartTimestamp)
-                .ThenBy(x => x.Sequence)
-                .Take(Math.Max(1, Math.Min(64, count))))
+                         .Where(x => x.DurationTicks > 0 && byId.ContainsKey(x.CallbackId))
+                         .OrderByDescending(x => x.DurationTicks)
+                         .ThenBy(x => x.StartTimestamp)
+                         .ThenBy(x => x.Sequence)
+                         .Take(Math.Max(1, Math.Min(64, count))))
             {
-                result.Add(new CallbackInvocationSnapshot(
-                    byId[span.CallbackId],
-                    span.PhaseId,
-                    span.DurationTicks,
-                    span.StartTimestamp,
-                    span.EndTimestamp,
-                    span.ThreadId,
-                    span.Sequence));
+                result.Add(
+                    new CallbackInvocationSnapshot(
+                        byId[span.CallbackId],
+                        span.PhaseId,
+                        span.DurationTicks,
+                        span.StartTimestamp,
+                        span.EndTimestamp,
+                        span.ThreadId,
+                        span.Sequence));
             }
             return result.ToArray();
         }
@@ -768,8 +773,9 @@ namespace TajsCOI.Profiler.Core
                             result.Add(new CodeInstruction(callbackLoad));
                         }
                         result.Add(new CodeInstruction(OpCodes.Ldc_I4, phaseId));
-                        result.Add(new CodeInstruction(
-                            __originalMethod.IsStatic ? OpCodes.Ldnull : OpCodes.Ldarg_0));
+                        result.Add(
+                            new CodeInstruction(
+                                __originalMethod.IsStatic ? OpCodes.Ldnull : OpCodes.Ldarg_0));
                         instruction = new CodeInstruction(OpCodes.Call, wrapper);
                         Interlocked.Increment(ref s_transpiledInvocationCount);
                     }
@@ -783,8 +789,8 @@ namespace TajsCOI.Profiler.Core
         {
             field = instruction.operand as FieldInfo;
             return instruction.opcode == OpCodes.Ldfld &&
-                field is not null &&
-                (field.Name == "Callback" || field.Name == "Action");
+                   field is not null &&
+                   (field.Name == "Callback" || field.Name == "Action");
         }
 
         private static bool TryGetOwnerField(CodeInstruction valueLoad, FieldInfo callbackField, out FieldInfo? ownerField)
@@ -854,8 +860,14 @@ namespace TajsCOI.Profiler.Core
             {
                 token = Begin(owner, action, RuntimeTracePhaseContext.CurrentPhase);
                 callbackStart = Stopwatch.GetTimestamp();
-                try { action(); }
-                finally { callbackEnd = End(token); }
+                try
+                {
+                    action();
+                }
+                finally
+                {
+                    callbackEnd = End(token);
+                }
             }
             finally
             {
@@ -891,8 +903,14 @@ namespace TajsCOI.Profiler.Core
             {
                 token = Begin(owner, action, RuntimeTracePhaseContext.CurrentPhase);
                 callbackStart = Stopwatch.GetTimestamp();
-                try { action(arg); }
-                finally { callbackEnd = End(token); }
+                try
+                {
+                    action(arg);
+                }
+                finally
+                {
+                    callbackEnd = End(token);
+                }
             }
             finally
             {
@@ -934,8 +952,14 @@ namespace TajsCOI.Profiler.Core
             {
                 token = Begin(owner, action, RuntimeTracePhaseContext.CurrentPhase);
                 callbackStart = Stopwatch.GetTimestamp();
-                try { action(arg1, arg2); }
-                finally { callbackEnd = End(token); }
+                try
+                {
+                    action(arg1, arg2);
+                }
+                finally
+                {
+                    callbackEnd = End(token);
+                }
             }
             finally
             {
@@ -985,14 +1009,15 @@ namespace TajsCOI.Profiler.Core
                 return end;
             }
             TraceSpanRing? ring = GetRing(token.ThreadId);
-            ring?.Add(new RuntimeTraceSpan(
-                token.StartTimestamp,
-                end,
-                token.CallbackId,
-                token.PhaseId,
-                token.ThreadId,
-                token.Sequence,
-                0));
+            ring?.Add(
+                new RuntimeTraceSpan(
+                    token.StartTimestamp,
+                    end,
+                    token.CallbackId,
+                    token.PhaseId,
+                    token.ThreadId,
+                    token.Sequence,
+                    0));
             return end;
         }
 
@@ -1008,7 +1033,7 @@ namespace TajsCOI.Profiler.Core
                 return;
             }
             long overheadTicks = Math.Max(0, callbackStart - wrapperStart) +
-                Math.Max(0, wrapperEnd - callbackEnd);
+                                 Math.Max(0, wrapperEnd - callbackEnd);
             long accountingStart = Stopwatch.GetTimestamp();
             Interlocked.Increment(ref s_deepCallbackCount);
             Interlocked.Add(ref s_deepOverheadTicks, overheadTicks);
@@ -1029,8 +1054,8 @@ namespace TajsCOI.Profiler.Core
             MethodInfo method = callback.Method;
             OwnerMetadata? ownerMetadata = owner is null ? null : s_ownerMetadata.GetValue(owner, CreateOwnerMetadata);
             string ownerType = ownerMetadata?.TypeName ??
-                callback.Target?.GetType().FullName ??
-                method.DeclaringType?.FullName ?? "<static>";
+                               callback.Target?.GetType().FullName ??
+                               method.DeclaringType?.FullName ?? "<static>";
             string assembly = ownerMetadata?.AssemblyName ?? RuntimeTraceText.AssemblyName(method);
             var key = new CallbackMetadataKey(ownerType, method.Name, assembly);
             lock (s_metadataGate)
@@ -1172,8 +1197,8 @@ namespace TajsCOI.Profiler.Core
             internal void Add(long ticks, long startTimestamp)
             {
                 TotalTicks = RuntimeTraceMath.SaturatingAdd(TotalTicks, ticks);
-                if (ticks > MaxTicks || (ticks == MaxTicks &&
-                    (WorstStartTimestamp <= 0 || startTimestamp < WorstStartTimestamp)))
+                if (ticks > MaxTicks || ticks == MaxTicks &&
+                    (WorstStartTimestamp <= 0 || startTimestamp < WorstStartTimestamp))
                 {
                     MaxTicks = ticks;
                     WorstStartTimestamp = startTimestamp;

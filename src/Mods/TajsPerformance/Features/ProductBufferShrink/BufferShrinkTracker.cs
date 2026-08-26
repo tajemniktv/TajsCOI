@@ -45,7 +45,7 @@ namespace TajsCOI.Performance.Features.ProductBufferShrink
 
             int vanillaTarget = NextPowerOfTwo(Math.Max(used, 256));
             bool worthShrinking = used >= 0 && capacity >= m_minimumCapacity &&
-                vanillaTarget > 0 && vanillaTarget <= capacity / 4;
+                                  vanillaTarget > 0 && vanillaTarget <= capacity / 4;
             if (!worthShrinking)
             {
                 ResetObservation(capacity);

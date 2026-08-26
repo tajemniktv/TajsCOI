@@ -28,14 +28,29 @@ namespace TajsCOI.Tests
             Assert.Equal("observed", report.Observed);
             Assert.Equal("reason", report.Reason);
             var nullText = new CompatibilityReport(
-                "TajsProfiler", "Runtime", CompatibilityState.Disabled, null, null, null);
+                "TajsProfiler",
+                "Runtime",
+                CompatibilityState.Disabled,
+                null,
+                null,
+                null);
             Assert.Equal(string.Empty, nullText.Expected);
             Assert.Equal(string.Empty, nullText.Observed);
             Assert.Equal(string.Empty, nullText.Reason);
             Assert.Throws<ArgumentException>(() => new CompatibilityReport(
-                " ", "Dumping", CompatibilityState.Disabled, "", "", ""));
+                " ",
+                "Dumping",
+                CompatibilityState.Disabled,
+                "",
+                "",
+                ""));
             Assert.Throws<ArgumentException>(() => new CompatibilityReport(
-                "TajsProfiler", "", CompatibilityState.Disabled, "", "", ""));
+                "TajsProfiler",
+                "",
+                CompatibilityState.Disabled,
+                "",
+                "",
+                ""));
         }
 
         [Fact]
@@ -99,11 +114,7 @@ namespace TajsCOI.Tests
                 "Quality",
                 "Example choice.",
                 "low",
-                new[]
-                {
-                    new SettingChoice("low", "Low"),
-                    new SettingChoice("very_low", "Very low"),
-                },
+                new[] { new SettingChoice("low", "Low"), new SettingChoice("very_low", "Very low") },
                 applyMode: SettingApplyMode.ReloadSave,
                 flags: SettingFlags.Experimental);
 
@@ -116,12 +127,25 @@ namespace TajsCOI.Tests
         public void SettingDescriptorNormalizesBooleanFloatAndStringBranches()
         {
             SettingDescriptor boolean = SettingDescriptor.Boolean(
-                "TajsCore", "Core", "enabled", "Enabled", "Boolean test.", false);
+                "TajsCore",
+                "Core",
+                "enabled",
+                "Enabled",
+                "Boolean test.",
+                false);
             Assert.True(boolean.TryNormalize("true", out object normalizedBoolean, out _));
             Assert.True(Assert.IsType<bool>(normalizedBoolean));
 
             SettingDescriptor floating = SettingDescriptor.Float(
-                "TajsCore", "Core", "ratio", "Ratio", "Float test.", 0.5, 0, 1, 0.1);
+                "TajsCore",
+                "Core",
+                "ratio",
+                "Ratio",
+                "Float test.",
+                0.5,
+                0,
+                1,
+                0.1);
             Assert.True(floating.TryNormalize("0.7", out object normalizedFloat, out _));
             Assert.Equal(0.7, normalizedFloat);
             Assert.False(floating.TryNormalize("not-a-number", out _, out string conversionError));
@@ -129,7 +153,12 @@ namespace TajsCOI.Tests
             Assert.False(floating.TryNormalize(null, out _, out _));
 
             SettingDescriptor text = SettingDescriptor.String(
-                "TajsCore", "Core", "label", "Label", "String test.", "default");
+                "TajsCore",
+                "Core",
+                "label",
+                "Label",
+                "String test.",
+                "default");
             Assert.True(text.TryNormalize("custom", out object normalizedText, out _));
             Assert.Equal("custom", normalizedText);
             Assert.False(text.TryNormalize(42, out _, out _));
@@ -139,19 +168,56 @@ namespace TajsCOI.Tests
         public void SettingDescriptorRejectsDuplicateChoicesAndNonFiniteNumericMetadata()
         {
             Assert.Throws<ArgumentException>(() => SettingDescriptor.Choice(
-                "TajsCore", "Core", "choice", "Choice", "Choice test.", "same",
+                "TajsCore",
+                "Core",
+                "choice",
+                "Choice",
+                "Choice test.",
+                "same",
                 new[] { new SettingChoice("same", "First"), new SettingChoice("same", "Second") }));
-            ArgumentOutOfRangeException minimumException = Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
-                "TajsCore", "Core", "nan", "NaN", "NaN test.", 0, double.NaN, 1, 0.1));
+            var minimumException = Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
+                "TajsCore",
+                "Core",
+                "nan",
+                "NaN",
+                "NaN test.",
+                0,
+                double.NaN,
+                1,
+                0.1));
             Assert.Equal("minimum", minimumException.ParamName);
-            ArgumentOutOfRangeException maximumException = Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
-                "TajsCore", "Core", "infinity", "Infinity", "Infinity test.", 0, 0, double.PositiveInfinity, 0.1));
+            var maximumException = Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
+                "TajsCore",
+                "Core",
+                "infinity",
+                "Infinity",
+                "Infinity test.",
+                0,
+                0,
+                double.PositiveInfinity,
+                0.1));
             Assert.Equal("maximum", maximumException.ParamName);
-            ArgumentOutOfRangeException nonFiniteStepException = Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
-                "TajsCore", "Core", "step", "Step", "Step test.", 0, 0, 1, double.NegativeInfinity));
+            var nonFiniteStepException = Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
+                "TajsCore",
+                "Core",
+                "step",
+                "Step",
+                "Step test.",
+                0,
+                0,
+                1,
+                double.NegativeInfinity));
             Assert.Equal("step", nonFiniteStepException.ParamName);
-            ArgumentOutOfRangeException nonPositiveStepException = Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
-                "TajsCore", "Core", "step_zero", "Step zero", "Step test.", 0, 0, 1, 0));
+            var nonPositiveStepException = Assert.Throws<ArgumentOutOfRangeException>(() => SettingDescriptor.Float(
+                "TajsCore",
+                "Core",
+                "step_zero",
+                "Step zero",
+                "Step test.",
+                0,
+                0,
+                1,
+                0));
             Assert.Equal("step", nonPositiveStepException.ParamName);
         }
 
@@ -159,9 +225,19 @@ namespace TajsCOI.Tests
         public void SettingDescriptorRejectsDotsInStableIdComponents()
         {
             Assert.Throws<ArgumentException>(() => SettingDescriptor.Boolean(
-                "Tajs.Core", "Core", "enabled", "Enabled", "Dot in mod ID.", false));
+                "Tajs.Core",
+                "Core",
+                "enabled",
+                "Enabled",
+                "Dot in mod ID.",
+                false));
             Assert.Throws<ArgumentException>(() => SettingDescriptor.Boolean(
-                "TajsCore", "Core", "feature.enabled", "Enabled", "Dot in setting key.", false));
+                "TajsCore",
+                "Core",
+                "feature.enabled",
+                "Enabled",
+                "Dot in setting key.",
+                false));
         }
     }
 }

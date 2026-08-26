@@ -40,11 +40,11 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
             MethodInfo? skip = AccessTools.Method(typeof(LazyResourceVisualizationFeature), nameof(SkipInitialBuild));
             MethodInfo? ensure = AccessTools.Method(typeof(LazyResourceVisualizationFeature), nameof(EnsureInitialized));
             return targets is not null && skip is not null && ensure is not null &&
-                ProcessHarmonyPatchOwnership.HasExpected(Harmony.GetPatchInfo(targets.InitState)?.Prefixes, HarmonyId, skip) &&
-                targets.Activators.All(x => ProcessHarmonyPatchOwnership.HasExpected(
-                    Harmony.GetPatchInfo(x)?.Prefixes,
-                    HarmonyId,
-                    ensure));
+                   ProcessHarmonyPatchOwnership.HasExpected(Harmony.GetPatchInfo(targets.InitState)?.Prefixes, HarmonyId, skip) &&
+                   targets.Activators.All(x => ProcessHarmonyPatchOwnership.HasExpected(
+                       Harmony.GetPatchInfo(x)?.Prefixes,
+                       HarmonyId,
+                       ensure));
         }
 
         public void Install(ITajsRuntime runtime, ITajsLogger log)
@@ -60,11 +60,14 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                 if (IsProcessPatchInstalled())
                 {
                     log.Info("Already installed / compatible; lazy resource visualization was not patched again.");
-                    runtime.ReportCompatibility(new CompatibilityReport(
-                        "TajsPerformance", Id, CompatibilityState.Compatible,
-                        "Existing process-lifetime Harmony owner on the 0.8.7a resource overlay targets",
-                        "Already installed / compatible",
-                        "The validated lazy-build patch remains active; no duplicate prefixes were registered."));
+                    runtime.ReportCompatibility(
+                        new CompatibilityReport(
+                            "TajsPerformance",
+                            Id,
+                            CompatibilityState.Compatible,
+                            "Existing process-lifetime Harmony owner on the 0.8.7a resource overlay targets",
+                            "Already installed / compatible",
+                            "The validated lazy-build patch remains active; no duplicate prefixes were registered."));
                     return;
                 }
 
@@ -90,13 +93,14 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                 }
             }
 
-            runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsPerformance",
-                Id,
-                CompatibilityState.Compatible,
-                "Exact 0.8.7a ResVisBarsRenderer initState and Activator.Show* targets",
-                "Lazy initial resource-bar build installed",
-                "The hidden initial build is deferred until first overlay activation; the exact vanilla init method runs before that activation."));
+            runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    "TajsPerformance",
+                    Id,
+                    CompatibilityState.Compatible,
+                    "Exact 0.8.7a ResVisBarsRenderer initState and Activator.Show* targets",
+                    "Lazy initial resource-bar build installed",
+                    "The hidden initial build is deferred until first overlay activation; the exact vanilla init method runs before that activation."));
         }
 
         private static bool SkipInitialBuild(object __instance)
@@ -206,9 +210,9 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
             Type productArray = typeof(Mafi.Collections.ImmutableCollections.ImmutableArray<>).MakeGenericType(typeof(Mafi.Core.Products.ProductProto));
             MethodInfo[] showExactly = activator?.GetMethods(activatorFlags)
                 .Where(x => x.DeclaringType == activator && !x.IsStatic && x.Name == "ShowExactly" &&
-                    x.GetParameters().Length == 1 &&
-                    (x.GetParameters()[0].ParameterType == productSequence ||
-                     x.GetParameters()[0].ParameterType == productArray))
+                            x.GetParameters().Length == 1 &&
+                            (x.GetParameters()[0].ParameterType == productSequence ||
+                             x.GetParameters()[0].ParameterType == productArray))
                 .OrderBy(x => x.GetParameters()[0].ParameterType == productSequence ? 0 : 1)
                 .ToArray() ?? Array.Empty<MethodInfo>();
 

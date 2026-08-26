@@ -28,10 +28,10 @@ namespace TajsCOI.Performance.Features.ProductBufferShrink
             MethodInfo? target = FindTarget();
             MethodInfo? patchMethod = AccessTools.Method(typeof(ProductBufferShrinkFeature), nameof(BeforeUploadFrame));
             return target is not null && patchMethod is not null &&
-                ProcessHarmonyPatchOwnership.HasExpected(
-                    Harmony.GetPatchInfo(target)?.Prefixes,
-                    HarmonyId,
-                    patchMethod);
+                   ProcessHarmonyPatchOwnership.HasExpected(
+                       Harmony.GetPatchInfo(target)?.Prefixes,
+                       HarmonyId,
+                       patchMethod);
         }
 
         public void Install(ITajsRuntime runtime, ITajsLogger log)
@@ -57,11 +57,14 @@ namespace TajsCOI.Performance.Features.ProductBufferShrink
                 if (ProcessHarmonyPatchOwnership.HasExpected(patches?.Prefixes, HarmonyId, patchMethod))
                 {
                     log.Info("Already installed / compatible; the process-lifetime buffer patch was not applied again.");
-                    runtime.ReportCompatibility(new CompatibilityReport(
-                        "TajsPerformance", Id, CompatibilityState.Compatible,
-                        "Existing process-lifetime Harmony owner and prefix method",
-                        "Already installed / compatible",
-                        "The validated 0.8.7a buffer patch remains active; no duplicate prefix was registered."));
+                    runtime.ReportCompatibility(
+                        new CompatibilityReport(
+                            "TajsPerformance",
+                            Id,
+                            CompatibilityState.Compatible,
+                            "Existing process-lifetime Harmony owner and prefix method",
+                            "Already installed / compatible",
+                            "The validated 0.8.7a buffer patch remains active; no duplicate prefix was registered."));
                     return;
                 }
 
@@ -83,13 +86,14 @@ namespace TajsCOI.Performance.Features.ProductBufferShrink
                 }
             }
 
-            runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsPerformance",
-                Id,
-                CompatibilityState.Compatible,
-                "0.8.7a ProductsRenderer live/reserve buffers and dirty upload path",
-                $"Sustained under-utilization observer installed ({ProductBufferShrinkSettings.ObservationFrames} frames)",
-                "Only remappable instance buffers can shrink; owner and persistent-slot identity buffers are untouched."));
+            runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    "TajsPerformance",
+                    Id,
+                    CompatibilityState.Compatible,
+                    "0.8.7a ProductsRenderer live/reserve buffers and dirty upload path",
+                    $"Sustained under-utilization observer installed ({ProductBufferShrinkSettings.ObservationFrames} frames)",
+                    "Only remappable instance buffers can shrink; owner and persistent-slot identity buffers are untouched."));
         }
 
         private static readonly object s_installGate = new();

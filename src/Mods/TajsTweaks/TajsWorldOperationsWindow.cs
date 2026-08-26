@@ -1,6 +1,5 @@
 // Taj's COI Mods | TajsWorldOperationsWindow.cs
 
-using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -13,9 +12,8 @@ using Mafi.Core.Products;
 using Mafi.Core.World;
 using Mafi.Core.World.Entities;
 using Mafi.Localization;
-using Mafi.Unity;
-using Mafi.Unity.UiToolkit;
 using Mafi.Unity.Ui.Library;
+using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
 using UnityEngine;
@@ -57,8 +55,8 @@ namespace TajsCOI.Tweaks
         private ProductProto? m_selectedProduct;
         private int m_activeTab;
 
-        private static readonly Color EvenRow = new Color(10f / 51f, 11f / 51f, 0.23529412f, 0.7058824f);
-        private static readonly Color OddRow = new Color(13f / 51f, 24f / 85f, 26f / 85f, 0.7058824f);
+        private static readonly Color EvenRow = new(10f / 51f, 11f / 51f, 0.23529412f, 0.7058824f);
+        private static readonly Color OddRow = new(13f / 51f, 24f / 85f, 26f / 85f, 0.7058824f);
 
         internal TajsWorldOperationsWindow(
             WorldMapManager worldMap,
@@ -73,7 +71,7 @@ namespace TajsCOI.Tweaks
 
             WindowSize(new Px(900f), new Px(620f));
             Panel panel = new Panel().BodyGap(new Px(4f));
-            Row tabs = new Row(new Px(4f));
+            var tabs = new Row(new Px(4f));
             m_repairsTab = MakeTab("Repairs", 0, "Unrepaired world-map entities.");
             m_minesTab = MakeTab("Mines & rigs", 1, "Repaired mines and oil rigs.");
             m_settlementsTab = MakeTab("Settlements", 2, "Settlements and reputation upgrades.");
@@ -116,7 +114,7 @@ namespace TajsCOI.Tweaks
 
         private ButtonText MakeTab(string text, int tab, string tooltip)
         {
-            ButtonText button = new ButtonText(Button.General, text.AsLoc(), () => SwitchTab(tab));
+            var button = new ButtonText(Button.General, text.AsLoc(), () => SwitchTab(tab));
             button.Width(new Px(215f));
             button.Tooltip(tooltip.AsLoc());
             button.RootElement.style.flexShrink = 0f;
@@ -125,7 +123,7 @@ namespace TajsCOI.Tweaks
 
         private static ScrollColumn MakeScroll(Column content)
         {
-            ScrollColumn scroll = new ScrollColumn();
+            var scroll = new ScrollColumn();
             scroll.Add(content);
             return scroll;
         }
@@ -190,9 +188,10 @@ namespace TajsCOI.Tweaks
                 AddEmpty(m_repairsContent, repairs == 0, "All discovered entities are repaired.");
                 AddEmpty(m_minesContent, mines == 0, "No repaired mines or rigs are available.");
                 AddEmpty(m_settlementsContent, settlements == 0, "No settlements discovered.");
-                m_status.Value((m_activeTab == 0 ? repairs + " entities need repair" :
-                    m_activeTab == 1 ? mines + " mines & rigs available" :
-                    m_activeTab == 2 ? settlements + " settlements discovered" : "Ship preload status").AsLoc());
+                m_status.Value(
+                    (m_activeTab == 0 ? repairs + " entities need repair" :
+                        m_activeTab == 1 ? mines + " mines & rigs available" :
+                        m_activeTab == 2 ? settlements + " settlements discovered" : "Ship preload status").AsLoc());
                 RefreshPreload();
             }
             catch
@@ -215,18 +214,21 @@ namespace TajsCOI.Tweaks
             row.Add(new Label(entity.DefaultTitle).Width(new Px(260f)));
             row.Add(new Label(entity.IsUnderConstruction ? "Repairing...".AsLoc() : "Not repaired".AsLoc()).Width(new Px(150f)));
             row.Add(new Label(FormatCost(entity.CostToRepair).AsLoc()).Width(new Px(250f)));
-            ButtonText action = new ButtonText(Mafi.Unity.UiToolkit.Library.Button.General, (entity.IsUnderConstruction ? "Cancel" : "Repair").AsLoc(), () =>
-            {
-                if (entity.IsUnderConstruction)
+            var action = new ButtonText(
+                Button.General,
+                (entity.IsUnderConstruction ? "Cancel" : "Repair").AsLoc(),
+                () =>
                 {
-                    m_inputScheduler.ScheduleInputCmd(new WorldMapEntityCancelRepairCmd(entity.Id));
-                }
-                else
-                {
-                    m_inputScheduler.ScheduleInputCmd(new WorldMapEntityStartRepairCmd(entity.Id));
-                }
-                RefreshAll();
-            });
+                    if (entity.IsUnderConstruction)
+                    {
+                        m_inputScheduler.ScheduleInputCmd(new WorldMapEntityCancelRepairCmd(entity.Id));
+                    }
+                    else
+                    {
+                        m_inputScheduler.ScheduleInputCmd(new WorldMapEntityStartRepairCmd(entity.Id));
+                    }
+                    RefreshAll();
+                });
             action.Width(new Px(105f));
             row.Add(action);
             return row;
@@ -236,22 +238,27 @@ namespace TajsCOI.Tweaks
         {
             Row row = MakeRow(index);
             row.Add(new Label(mine.DefaultTitle).Width(new Px(260f)));
-            row.Add(new Label(mine.IsUnderConstruction ? "Upgrading...".AsLoc() :
-                (!mine.UpgradeExists ? "Max level".AsLoc() : ("Level " + mine.Level).AsLoc())).Width(new Px(150f)));
+            row.Add(
+                new Label(
+                    mine.IsUnderConstruction ? "Upgrading...".AsLoc() :
+                    !mine.UpgradeExists ? "Max level".AsLoc() : ("Level " + mine.Level).AsLoc()).Width(new Px(150f)));
             row.Add(new Label(mine.UpgradeExists ? FormatCost(mine.PriceToUpgrade).AsLoc() : "--".AsLoc()).Width(new Px(250f)));
-            ButtonText action = new ButtonText(Button.General, (mine.IsUnderConstruction ? "Cancel" :
-                (!mine.UpgradeExists ? "Max level" : "Upgrade")).AsLoc(), () =>
-            {
-                if (mine.IsUnderConstruction)
+            var action = new ButtonText(
+                Button.General,
+                (mine.IsUnderConstruction ? "Cancel" :
+                    !mine.UpgradeExists ? "Max level" : "Upgrade").AsLoc(),
+                () =>
                 {
-                    m_inputScheduler.ScheduleInputCmd(new WorldMapEntityCancelRepairCmd(mine.Id));
-                }
-                else if (mine.UpgradeExists)
-                {
-                    m_inputScheduler.ScheduleInputCmd(new WorldMapEntityUpgradeCmd(mine.Id));
-                }
-                RefreshAll();
-            });
+                    if (mine.IsUnderConstruction)
+                    {
+                        m_inputScheduler.ScheduleInputCmd(new WorldMapEntityCancelRepairCmd(mine.Id));
+                    }
+                    else if (mine.UpgradeExists)
+                    {
+                        m_inputScheduler.ScheduleInputCmd(new WorldMapEntityUpgradeCmd(mine.Id));
+                    }
+                    RefreshAll();
+                });
             action.Width(new Px(105f));
             row.Add(action);
             return row;
@@ -261,26 +268,32 @@ namespace TajsCOI.Tweaks
         {
             Row row = MakeRow(index);
             row.Add(new Label(village.DefaultTitle).Width(new Px(260f)));
-            row.Add(new Label(!village.IsRepaired ? "Not repaired".AsLoc() :
-                village.IsUnderConstruction ? "Upgrading...".AsLoc() : ("Reputation " + village.Reputation).AsLoc()).Width(new Px(150f)));
+            row.Add(
+                new Label(
+                    !village.IsRepaired ? "Not repaired".AsLoc() :
+                    village.IsUnderConstruction ? "Upgrading...".AsLoc() : ("Reputation " + village.Reputation).AsLoc()).Width(new Px(150f)));
             row.Add(new Label(village.IsRepaired && village.UpgradeExists ? FormatCost(village.PriceToUpgrade).AsLoc() : "--".AsLoc()).Width(new Px(250f)));
-            ButtonText action = new ButtonText(Button.General, (!village.IsRepaired ? "Repair" :
-                village.IsUnderConstruction ? "Cancel" : !village.UpgradeExists ? "Max level" : "Upgrade").AsLoc(), () =>
-            {
-                if (!village.IsRepaired)
+            var action = new ButtonText(
+                Button.General,
+                (!village.IsRepaired ? "Repair" :
+                    village.IsUnderConstruction ? "Cancel" :
+                    !village.UpgradeExists ? "Max level" : "Upgrade").AsLoc(),
+                () =>
                 {
-                    m_inputScheduler.ScheduleInputCmd(new WorldMapEntityStartRepairCmd(village.Id));
-                }
-                else if (village.IsUnderConstruction)
-                {
-                    m_inputScheduler.ScheduleInputCmd(new WorldMapEntityCancelRepairCmd(village.Id));
-                }
-                else if (village.UpgradeExists)
-                {
-                    m_inputScheduler.ScheduleInputCmd(new WorldMapEntityUpgradeCmd(village.Id));
-                }
-                RefreshAll();
-            });
+                    if (!village.IsRepaired)
+                    {
+                        m_inputScheduler.ScheduleInputCmd(new WorldMapEntityStartRepairCmd(village.Id));
+                    }
+                    else if (village.IsUnderConstruction)
+                    {
+                        m_inputScheduler.ScheduleInputCmd(new WorldMapEntityCancelRepairCmd(village.Id));
+                    }
+                    else if (village.UpgradeExists)
+                    {
+                        m_inputScheduler.ScheduleInputCmd(new WorldMapEntityUpgradeCmd(village.Id));
+                    }
+                    RefreshAll();
+                });
             action.Width(new Px(105f));
             row.Add(action);
             return row;
@@ -308,7 +321,7 @@ namespace TajsCOI.Tweaks
                 compact: false,
                 primaryButtonIfNoProtoSet: true);
             m_quantity = new TextField().Placeholder("Amount".AsLoc()).Text("100").MaxWidth(new Px(120f));
-            ButtonText queue = new ButtonText(Button.General, "Queue delivery".AsLoc(), QueuePreload);
+            var queue = new ButtonText(Button.General, "Queue delivery".AsLoc(), QueuePreload);
             queue.Width(new Px(130f));
             Row controls = new Row(6.pt()).AlignItemsCenter();
             controls.Add(m_productPicker);
@@ -336,15 +349,17 @@ namespace TajsCOI.Tweaks
                 m_preloadFeedback.Value("No shipyard has been created in this scene.".AsLoc());
                 return;
             }
-            if (m_selectedProduct is null || !int.TryParse(m_quantity?.GetText(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int quantity) || quantity <= 0)
+            if (m_selectedProduct is null || !int.TryParse(m_quantity?.GetText(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int quantity) ||
+                quantity <= 0)
             {
                 m_preloadFeedback.Value("Choose a product and an amount above zero.".AsLoc());
                 return;
             }
 
-            m_preloadFeedback.Value((TweaksShipPreloadFeature.RequestDelivery(shipyard, m_selectedProduct, quantity)
-                ? "Delivery queued through the normal shipyard buffer flow."
-                : "The delivery could not be queued in this scene.").AsLoc());
+            m_preloadFeedback.Value(
+                (TweaksShipPreloadFeature.RequestDelivery(shipyard, m_selectedProduct, quantity)
+                    ? "Delivery queued through the normal shipyard buffer flow."
+                    : "The delivery could not be queued in this scene.").AsLoc());
             RefreshPreload();
         }
 
@@ -373,11 +388,14 @@ namespace TajsCOI.Tweaks
                     pending++;
                     Row row = new Row(4.pt()).AlignItemsCenter();
                     row.Add(new Label((item.Product.Strings.Name + "  " + item.Delivered + " / " + item.Target).AsLoc()));
-                    ButtonText cancel = new ButtonText(Button.General, "Cancel".AsLoc(), () =>
-                    {
-                        TweaksShipPreloadFeature.CancelOrder(shipyard, item.Product);
-                        RefreshPreload();
-                    });
+                    var cancel = new ButtonText(
+                        Button.General,
+                        "Cancel".AsLoc(),
+                        () =>
+                        {
+                            TweaksShipPreloadFeature.CancelOrder(shipyard, item.Product);
+                            RefreshPreload();
+                        });
                     cancel.Width(new Px(90f));
                     row.Add(cancel);
                     m_preloadPending.Add(row);
@@ -396,11 +414,14 @@ namespace TajsCOI.Tweaks
                     cargoCount++;
                     Row row = new Row(4.pt()).AlignItemsCenter();
                     row.Add(new Label(("Shipyard " + shipyard.Id.Value + ": " + item.Key.Strings.Name + "  " + item.Value).AsLoc()));
-                    ButtonText release = new ButtonText(Button.General, "Release".AsLoc(), () =>
-                    {
-                        TweaksShipPreloadFeature.Release(shipyard, item.Key);
-                        RefreshPreload();
-                    });
+                    var release = new ButtonText(
+                        Button.General,
+                        "Release".AsLoc(),
+                        () =>
+                        {
+                            TweaksShipPreloadFeature.Release(shipyard, item.Key);
+                            RefreshPreload();
+                        });
                     release.Width(new Px(90f));
                     row.Add(release);
                     m_preloadCargo.Add(row);
@@ -428,7 +449,7 @@ namespace TajsCOI.Tweaks
                 return "Free";
             }
 
-            List<string> products = new List<string>();
+            var products = new List<string>();
             foreach (ProductQuantity product in cost.Products)
             {
                 products.Add(product.Quantity + " " + product.Product.Strings.Name);

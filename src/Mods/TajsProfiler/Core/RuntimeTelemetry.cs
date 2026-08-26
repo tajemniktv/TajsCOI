@@ -167,7 +167,7 @@ namespace TajsCOI.Profiler.Core
     {
         private const int MaximumEvents = 128;
 
-        private static readonly object s_registryGate = new object();
+        private static readonly object s_registryGate = new();
         private static readonly string[] s_counterNames = new string[RuntimeTelemetrySnapshot.MaximumCounters];
         private static readonly string[] s_counterOwners = new string[RuntimeTelemetrySnapshot.MaximumCounters];
         private static readonly long[] s_counterValues = new long[RuntimeTelemetrySnapshot.MaximumCounters];
@@ -366,18 +366,19 @@ namespace TajsCOI.Profiler.Core
                 }
 
                 long timestamp = Volatile.Read(ref slot.Timestamp);
-                if ((startTimestamp > 0 && timestamp < startTimestamp) ||
-                    (endTimestamp > 0 && timestamp > endTimestamp))
+                if (startTimestamp > 0 && timestamp < startTimestamp ||
+                    endTimestamp > 0 && timestamp > endTimestamp)
                 {
                     continue;
                 }
 
-                result.Add(new RuntimeTelemetryEventSnapshot(
-                    sequence,
-                    s_eventNames[eventIndex],
-                    timestamp,
-                    Volatile.Read(ref slot.ThreadId),
-                    Volatile.Read(ref slot.PhaseId)));
+                result.Add(
+                    new RuntimeTelemetryEventSnapshot(
+                        sequence,
+                        s_eventNames[eventIndex],
+                        timestamp,
+                        Volatile.Read(ref slot.ThreadId),
+                        Volatile.Read(ref slot.PhaseId)));
             }
 
             return result.ToArray();

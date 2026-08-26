@@ -58,13 +58,14 @@ namespace TajsCOI.Performance.Features.RenderingLoadShedding
                 SubscribeToSceneLifecycle();
                 EnsureQualityStateForActiveScene();
                 Apply();
-                runtime.ReportCompatibility(new CompatibilityReport(
-                    ModId,
-                    Id,
-                    CompatibilityState.Compatible,
-                    "Unity QualitySettings and opt-in scene particle controls",
-                    "Live renderer control installed",
-                    "Controls are disabled by default, reversible, and intended for profiler A/B comparisons."));
+                runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        ModId,
+                        Id,
+                        CompatibilityState.Compatible,
+                        "Unity QualitySettings and opt-in scene particle controls",
+                        "Live renderer control installed",
+                        "Controls are disabled by default, reversible, and intended for profiler A/B comparisons."));
             }
             catch
             {
@@ -151,7 +152,18 @@ namespace TajsCOI.Performance.Features.RenderingLoadShedding
             {
                 QualitySettings.shadowDistance = s_originalShadowDistance;
             }
-            ApplyParticles();
+            if (RenderingLoadSheddingRuntime.DisableWeather || RenderingLoadSheddingRuntime.DisableClouds ||
+                RenderingLoadSheddingRuntime.DisableSmoke || RenderingLoadSheddingRuntime.DisableDust)
+            {
+                ApplyParticles();
+            }
+            else
+            {
+                // Do not enumerate every ParticleSystem merely because the parent toggle is on.
+                // This keeps the feature useful as a fog/shadow-only switch and avoids a needless
+                // scene-wide scan when the dependent particle controls are all off.
+                RestoreParticles();
+            }
         }
 
         internal static void RefreshFromSettings(ITajsSettings settings)
@@ -319,7 +331,10 @@ namespace TajsCOI.Performance.Features.RenderingLoadShedding
 
         private static void RestoreQuality()
         {
-            if (s_originalFogCaptured) RenderSettings.fog = s_originalFog;
+            if (s_originalFogCaptured)
+            {
+                RenderSettings.fog = s_originalFog;
+            }
             if (s_originalQualityCaptured)
             {
                 QualitySettings.shadows = s_originalShadows;
@@ -337,9 +352,9 @@ namespace TajsCOI.Performance.Features.RenderingLoadShedding
             {
                 string normalizedName = ParticleNameMatcher.Normalize(particle.gameObject.name);
                 bool match = RenderingLoadSheddingRuntime.DisableWeather && ParticleNameMatcher.MatchesAnyToken(normalizedName, s_weatherParticleTokens) ||
-                    RenderingLoadSheddingRuntime.DisableClouds && ParticleNameMatcher.MatchesAnyToken(normalizedName, s_cloudParticleTokens) ||
-                    RenderingLoadSheddingRuntime.DisableSmoke && ParticleNameMatcher.MatchesAnyToken(normalizedName, s_smokeParticleTokens) ||
-                    RenderingLoadSheddingRuntime.DisableDust && ParticleNameMatcher.MatchesAnyToken(normalizedName, s_dustParticleTokens);
+                             RenderingLoadSheddingRuntime.DisableClouds && ParticleNameMatcher.MatchesAnyToken(normalizedName, s_cloudParticleTokens) ||
+                             RenderingLoadSheddingRuntime.DisableSmoke && ParticleNameMatcher.MatchesAnyToken(normalizedName, s_smokeParticleTokens) ||
+                             RenderingLoadSheddingRuntime.DisableDust && ParticleNameMatcher.MatchesAnyToken(normalizedName, s_dustParticleTokens);
                 ParticleSystem.EmissionModule emission = particle.emission;
                 ParticleState state = s_particles.GetValue(particle, CreateParticleState);
                 emission.enabled = match ? false : state.EmissionEnabled;

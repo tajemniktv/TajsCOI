@@ -4,22 +4,22 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection.Emit;
-using System.Reflection;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
+using System.Reflection;
+using System.Reflection.Emit;
 using System.Text;
 using HarmonyLib;
 using Mafi.Core.SaveGame;
 using Mafi.Serialization;
-using TajsCOI.Performance.Features.SaveLoadReadBuffer;
-using TajsCOI.Performance.Features.StreamingSaveCompression;
+using TajsCOI.Common.Compatibility;
+using TajsCOI.Core.Runtime;
 using TajsCOI.Performance.Features.LowProductTextures;
 using TajsCOI.Performance.Features.ProductBufferShrink;
 using TajsCOI.Performance.Features.RenderingLoadShedding;
-using TajsCOI.Core.Runtime;
-using TajsCOI.Common.Compatibility;
+using TajsCOI.Performance.Features.SaveLoadReadBuffer;
+using TajsCOI.Performance.Features.StreamingSaveCompression;
 using Xunit;
 
 namespace TajsCOI.Tests
@@ -67,9 +67,7 @@ namespace TajsCOI.Tests
                 .GetConstructor(new[] { typeof(Stream), typeof(int), typeof(bool) })!;
             var input = new List<CodeInstruction>
             {
-                new(OpCodes.Ldc_I4, SaveLoadReadBufferSettings.VanillaBufferBytes),
-                new(OpCodes.Ldc_I4_1),
-                new(OpCodes.Newobj, bufferedReader),
+                new(OpCodes.Ldc_I4, SaveLoadReadBufferSettings.VanillaBufferBytes), new(OpCodes.Ldc_I4_1), new(OpCodes.Newobj, bufferedReader),
             };
 
             List<CodeInstruction> output = SaveLoadReadBufferFeature.ReplaceBufferSize(input).ToList();
@@ -98,15 +96,16 @@ namespace TajsCOI.Tests
                 .GetType("Mafi.Serialization.BufferedReadStream")!
                 .GetConstructor(new[] { typeof(Stream), typeof(int), typeof(bool) })!;
             Assert.Throws<InvalidOperationException>(() =>
-                SaveLoadReadBufferFeature.ReplaceBufferSize(new[]
-                {
-                    new CodeInstruction(OpCodes.Ldc_I4, SaveLoadReadBufferSettings.VanillaBufferBytes),
-                    new CodeInstruction(OpCodes.Ldc_I4_1),
-                    new CodeInstruction(OpCodes.Newobj, bufferedReader),
-                    new CodeInstruction(OpCodes.Ldc_I4, SaveLoadReadBufferSettings.VanillaBufferBytes),
-                    new CodeInstruction(OpCodes.Ldc_I4_1),
-                    new CodeInstruction(OpCodes.Newobj, bufferedReader),
-                }).ToList());
+                SaveLoadReadBufferFeature.ReplaceBufferSize(
+                    new[]
+                    {
+                        new CodeInstruction(OpCodes.Ldc_I4, SaveLoadReadBufferSettings.VanillaBufferBytes),
+                        new CodeInstruction(OpCodes.Ldc_I4_1),
+                        new CodeInstruction(OpCodes.Newobj, bufferedReader),
+                        new CodeInstruction(OpCodes.Ldc_I4, SaveLoadReadBufferSettings.VanillaBufferBytes),
+                        new CodeInstruction(OpCodes.Ldc_I4_1),
+                        new CodeInstruction(OpCodes.Newobj, bufferedReader),
+                    }).ToList());
         }
 
         [Fact]
@@ -117,12 +116,13 @@ namespace TajsCOI.Tests
                 .GetConstructor(new[] { typeof(Stream), typeof(int), typeof(bool) })!;
 
             Assert.Throws<InvalidOperationException>(() =>
-                SaveLoadReadBufferFeature.ReplaceBufferSize(new[]
-                {
-                    new CodeInstruction(OpCodes.Ldc_I4, 8192),
-                    new CodeInstruction(OpCodes.Ldc_I4_1),
-                    new CodeInstruction(OpCodes.Newobj, bufferedReader),
-                }).ToList());
+                SaveLoadReadBufferFeature.ReplaceBufferSize(
+                    new[]
+                    {
+                        new CodeInstruction(OpCodes.Ldc_I4, 8192),
+                        new CodeInstruction(OpCodes.Ldc_I4_1),
+                        new CodeInstruction(OpCodes.Newobj, bufferedReader),
+                    }).ToList());
         }
 
         [Fact]
@@ -139,12 +139,8 @@ namespace TajsCOI.Tests
                 CompatibilityReport report = Assert.Single(runtime.GetCompatibilitySnapshot());
                 Assert.Equal(CompatibilityState.Compatible, report.State);
                 Assert.Equal("SaveLoadReadBuffer", report.ComponentId);
-                ConstructorInfo target = typeof(BlobReader).GetConstructor(new[]
-                {
-                    typeof(Stream),
-                    typeof(int),
-                    typeof(Mafi.Collections.ImmutableCollections.ImmutableArray<ISpecialSerializerFactory>),
-                })!;
+                ConstructorInfo target = typeof(BlobReader).GetConstructor(
+                    new[] { typeof(Stream), typeof(int), typeof(Mafi.Collections.ImmutableCollections.ImmutableArray<ISpecialSerializerFactory>) })!;
                 Assert.Single(
                     Harmony.GetPatchInfo(target)!.Transpilers,
                     x => x.owner == "TajsCOI.Performance.SaveLoadReadBuffer");
@@ -181,7 +177,7 @@ namespace TajsCOI.Tests
             SaveChecksumValidationResults validation = SaveLoadFileUtils.ValidateChecksum(
                 output,
                 out SaveHeader _,
-                out Mafi.Option<System.Exception> validationException);
+                out Mafi.Option<Exception> validationException);
             Assert.Equal(SaveChecksumValidationResults.Success, validation);
             Assert.False(validationException.HasValue);
 
@@ -217,7 +213,7 @@ namespace TajsCOI.Tests
             output.Position = 0;
             Assert.Equal(
                 SaveChecksumValidationResults.Success,
-                SaveLoadFileUtils.ValidateChecksum(output, out SaveHeader _, out Mafi.Option<System.Exception> _));
+                SaveLoadFileUtils.ValidateChecksum(output, out SaveHeader _, out Mafi.Option<Exception> _));
         }
 
         [Fact]
@@ -258,7 +254,7 @@ namespace TajsCOI.Tests
             output.Position = 0;
             Assert.Equal(
                 SaveChecksumValidationResults.Success,
-                SaveLoadFileUtils.ValidateChecksum(output, out SaveHeader _, out Mafi.Option<System.Exception> _));
+                SaveLoadFileUtils.ValidateChecksum(output, out SaveHeader _, out Mafi.Option<Exception> _));
 
             output.Position = StreamingSaveWriter.HeaderSize;
             using var gzip = new GZipStream(output, CompressionMode.Decompress, leaveOpen: true);

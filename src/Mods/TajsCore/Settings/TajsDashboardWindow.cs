@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Mafi;
-using Mafi.Core;
 using Mafi.Core.Console;
 using Mafi.Core.Mods;
 using Mafi.Localization;
@@ -151,7 +150,7 @@ namespace TajsCOI.Core.Settings
         {
             ButtonText button = new ButtonText(
                 Button.Area,
-                ($"{category} ({count})").AsLoc(),
+                $"{category} ({count})".AsLoc(),
                 () => SelectCategory(category)).Compact();
             container.Add(button);
             return button;
@@ -248,31 +247,56 @@ namespace TajsCOI.Core.Settings
                 case DashboardPage.Performance:
                     if (m_builtPages.Add(m_selectedPage))
                     {
-                        AddDomainPage("Performance", "Behavior-neutral runtime diagnostics and explicitly opt-in maintenance operations.", LoadSettings(), new[] { "Performance", "Diagnostics" }, includeMaintenance: true);
+                        AddDomainPage(
+                            "Performance",
+                            "Behavior-neutral runtime diagnostics and explicitly opt-in maintenance operations.",
+                            LoadSettings(),
+                            new[] { "Performance", "Diagnostics" },
+                            includeMaintenance: true);
                     }
                     break;
                 case DashboardPage.Tweaks:
                     if (m_builtPages.Add(m_selectedPage))
                     {
-                        AddDomainPage("Tweaks", "Settings registered by gameplay and quality-of-life features.", LoadSettings(), new[] { "Tweak" }, includeMaintenance: false);
+                        AddDomainPage(
+                            "Tweaks",
+                            "Settings registered by gameplay and quality-of-life features.",
+                            LoadSettings(),
+                            new[] { "Tweak" },
+                            includeMaintenance: false);
                     }
                     break;
                 case DashboardPage.SaveLoad:
                     if (m_builtPages.Add(m_selectedPage))
                     {
-                        AddDomainPage("Save & Load", "Settings and lifecycle controls that apply at save reload or game restart.", LoadSettings(), new[] { "Save", "Load" }, includeMaintenance: false);
+                        AddDomainPage(
+                            "Save & Load",
+                            "Settings and lifecycle controls that apply at save reload or game restart.",
+                            LoadSettings(),
+                            new[] { "Save", "Load" },
+                            includeMaintenance: false);
                     }
                     break;
                 case DashboardPage.Memory:
                     if (m_builtPages.Add(m_selectedPage))
                     {
-                        AddDomainPage("Memory", "Explicit memory-facing diagnostics and paused-only asset maintenance.", LoadSettings(), new[] { "Memory", "Asset" }, includeMaintenance: true);
+                        AddDomainPage(
+                            "Memory",
+                            "Explicit memory-facing diagnostics and paused-only asset maintenance.",
+                            LoadSettings(),
+                            new[] { "Memory", "Asset" },
+                            includeMaintenance: true);
                     }
                     break;
                 case DashboardPage.Rendering:
                     if (m_builtPages.Add(m_selectedPage))
                     {
-                        AddDomainPage("Rendering", "Rendering and visual-load settings exposed by the loaded suite.", LoadSettings(), new[] { "Render", "Texture", "Graphics" }, includeMaintenance: false);
+                        AddDomainPage(
+                            "Rendering",
+                            "Rendering and visual-load settings exposed by the loaded suite.",
+                            LoadSettings(),
+                            new[] { "Render", "Texture", "Graphics" },
+                            includeMaintenance: false);
                     }
                     break;
                 case DashboardPage.Compatibility:
@@ -362,8 +386,14 @@ namespace TajsCOI.Core.Settings
                 TajsDashboardUi.MetricTile("Mods loaded", mods.Count.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan),
                 TajsDashboardUi.MetricTile("Active settings", activeSettings.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan),
                 TajsDashboardUi.MetricTile("Compatibility", healthy ? "Healthy" : "Attention", healthy ? TajsDashboardUi.Green : TajsDashboardUi.Yellow),
-                TajsDashboardUi.MetricTile("Runtime status", profiler.IsAvailable ? "Recording" : "Unavailable", profiler.IsAvailable ? TajsDashboardUi.Green : TajsDashboardUi.Red),
-                TajsDashboardUi.MetricTile("Load errors", loadErrors.ToString(CultureInfo.InvariantCulture), loadErrors == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Red));
+                TajsDashboardUi.MetricTile(
+                    "Runtime status",
+                    profiler.IsAvailable ? "Recording" : "Unavailable",
+                    profiler.IsAvailable ? TajsDashboardUi.Green : TajsDashboardUi.Red),
+                TajsDashboardUi.MetricTile(
+                    "Load errors",
+                    loadErrors.ToString(CultureInfo.InvariantCulture),
+                    loadErrors == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Red));
             CurrentPage.Add(metrics);
 
             CurrentPage.Add(BuildLiveProfilerPanel(profiler));
@@ -391,9 +421,10 @@ namespace TajsCOI.Core.Settings
                 .ToArray();
             if (filtered.Count == 0)
             {
-                CurrentPage.Add(TajsDashboardUi.Card(
-                    "No registered settings",
-                    "This surface is ready for settings from the loaded suite; the current scene did not report any matching descriptors."));
+                CurrentPage.Add(
+                    TajsDashboardUi.Card(
+                        "No registered settings",
+                        "This surface is ready for settings from the loaded suite; the current scene did not report any matching descriptors."));
                 return;
             }
 
@@ -420,16 +451,17 @@ namespace TajsCOI.Core.Settings
             {
                 foreach (CompatibilityReport report in reports)
                 {
-                    details.Body.Add(new Row(4.pt())
-                    {
-                        new Column(1.pt())
+                    details.Body.Add(
+                        new Row(4.pt())
                         {
-                            new Label($"{report.ModId} / {report.ComponentId}".AsLoc()).FontBold(),
-                            new Label(report.Reason.AsLoc()).FontSize(11),
-                            new Label($"Expected: {report.Expected} · Observed: {report.Observed}".AsLoc()).FontSize(11),
-                        }.FlexGrow(1f),
-                        TajsDashboardUi.StatusBadge(report.State.ToString(), CompatibilityColor(report.State)),
-                    }.AlignItemsCenter());
+                            new Column(1.pt())
+                            {
+                                new Label($"{report.ModId} / {report.ComponentId}".AsLoc()).FontBold(),
+                                new Label(report.Reason.AsLoc()).FontSize(11),
+                                new Label($"Expected: {report.Expected} · Observed: {report.Observed}".AsLoc()).FontSize(11),
+                            }.FlexGrow(1f),
+                            TajsDashboardUi.StatusBadge(report.State.ToString(), CompatibilityColor(report.State)),
+                        }.AlignItemsCenter());
                 }
             }
             CurrentPage.Add(details);
@@ -458,25 +490,24 @@ namespace TajsCOI.Core.Settings
                     snapshot.Descriptor.Category,
                     m_selectedCategory,
                     StringComparison.Ordinal)).ToArray();
-            AddSettingsList(visible, string.Equals(m_selectedCategory, AllCategories, StringComparison.Ordinal)
-                ? "All settings"
-                : $"Settings · {m_selectedCategory}");
+            AddSettingsList(
+                visible,
+                string.Equals(m_selectedCategory, AllCategories, StringComparison.Ordinal)
+                    ? "All settings"
+                    : $"Settings · {m_selectedCategory}");
         }
 
         private ButtonText CreateInlineCategoryButton(string category, int count)
         {
             ButtonText button = new ButtonText(
                 Button.Area,
-                ($"{category} ({count})").AsLoc(),
+                $"{category} ({count})".AsLoc(),
                 () => SelectCategory(category)).Compact();
             button.Selected(string.Equals(m_selectedCategory, category, StringComparison.Ordinal));
             return button;
         }
 
-        private void AddSettingsList(IReadOnlyList<SettingSnapshot> settings, string heading)
-        {
-            AddSettingsListTo(CurrentPage, settings, heading);
-        }
+        private void AddSettingsList(IReadOnlyList<SettingSnapshot> settings, string heading) => AddSettingsListTo(CurrentPage, settings, heading);
 
         private void AddSettingsListTo(Column target, IReadOnlyList<SettingSnapshot> settings, string heading)
         {
@@ -492,21 +523,23 @@ namespace TajsCOI.Core.Settings
                          .OrderBy(group => group.First().Descriptor.ModDisplayName, StringComparer.Ordinal))
             {
                 SettingDescriptor first = modGroup.First().Descriptor;
-                target.Add(new Label(
-                        $"{first.ModDisplayName} · {modGroup.Count()} setting{PluralSuffix(modGroup.Count())}".AsLoc())
-                    .FontBold()
-                    .FontSize(16)
-                    .MarginTop(3.pt()));
+                target.Add(
+                    new Label(
+                            $"{first.ModDisplayName} · {modGroup.Count()} setting{PluralSuffix(modGroup.Count())}".AsLoc())
+                        .FontBold()
+                        .FontSize(16)
+                        .MarginTop(3.pt()));
 
                 foreach (IGrouping<string, SettingSnapshot> category in modGroup
                              .GroupBy(snapshot => snapshot.Descriptor.Category)
                              .OrderBy(group => group.Key, StringComparer.Ordinal))
                 {
-                    target.Add(new Label($"{category.Key} · {category.Count()}".AsLoc())
-                        .FontBold()
-                        .FontSize(12)
-                        .StyleChip()
-                        .MarginTop(2.pt()));
+                    target.Add(
+                        new Label($"{category.Key} · {category.Count()}".AsLoc())
+                            .FontBold()
+                            .FontSize(12)
+                            .StyleChip()
+                            .MarginTop(2.pt()));
                     foreach (SettingSnapshot setting in category.OrderBy(
                                  snapshot => snapshot.Descriptor.DisplayName,
                                  StringComparer.Ordinal))
@@ -526,7 +559,7 @@ namespace TajsCOI.Core.Settings
                 new Label(descriptor.DisplayName.AsLoc()).FontBold(),
                 new Label(descriptor.Description.AsLoc()).FontSize(12),
                 new Label(FormatSettingMeta(descriptor).AsLoc()).FontSize(11),
-            }.FlexGrow(1f);
+            }.MinWidth(0.px()).FlexGrow(1f).FlexShrink(1f);
 
             UiComponent editor;
             switch (descriptor.ValueType)
@@ -535,18 +568,18 @@ namespace TajsCOI.Core.Settings
                     bool enabled = (bool)snapshot.Value;
                     ButtonText stateButton = null!;
                     stateButton = new ButtonText(
-                        Button.ToggleGroup,
-                        BooleanStateText(enabled).AsLoc(),
-                        () =>
-                        {
-                            bool nextValue = !m_settings.Get<bool>(descriptor.ModId, descriptor.Key);
-                            SettingSetResult result = Set(descriptor, nextValue, feedback);
-                            if (result.Success)
+                            Button.ToggleGroup,
+                            BooleanStateText(enabled).AsLoc(),
+                            () =>
                             {
-                                bool currentValue = (bool)result.Value!;
-                                stateButton.Value(BooleanStateText(currentValue).AsLoc()).Selected(currentValue);
-                            }
-                        })
+                                bool nextValue = !m_settings.Get<bool>(descriptor.ModId, descriptor.Key);
+                                SettingSetResult result = Set(descriptor, nextValue, feedback);
+                                if (result.Success)
+                                {
+                                    bool currentValue = (bool)result.Value!;
+                                    stateButton.Value(BooleanStateText(currentValue).AsLoc()).Selected(currentValue);
+                                }
+                            })
                         .Toggleable(true)
                         .Selected(enabled)
                         .Compact();
@@ -555,8 +588,7 @@ namespace TajsCOI.Core.Settings
 
                 case SettingValueType.Choice:
                     SettingChoice currentChoice = FindChoice(descriptor, snapshot.Value);
-                    Dropdown<SettingChoice> dropdown = new Dropdown<SettingChoice>(
-                            (choice, _, __) => new Label(choice.DisplayName.AsLoc()))
+                    Dropdown<SettingChoice> dropdown = new Dropdown<SettingChoice>((choice, _, __) => new Label(choice.DisplayName.AsLoc()))
                         .SetOptions(descriptor.Choices)
                         .SetValue(currentChoice);
                     dropdown.OnValueChanged((choice, _) =>
@@ -584,15 +616,9 @@ namespace TajsCOI.Core.Settings
                     break;
             }
 
-            Column body = new Column(2.pt())
-            {
-                new Row(4.pt())
-                {
-                    description,
-                    editor,
-                }.AlignItemsCenter(),
-                feedback,
-            };
+            editor.FlexShrink(0f).MaxWidth(280.px());
+
+            var body = new Column(2.pt()) { new Row(4.pt()) { description, editor }.AlignItemsStart(), feedback };
             return new Panel(true).ReducedPadding().BodyGap(2.pt()).BodyAdd(body).StyleGroupDark();
         }
 
@@ -611,9 +637,13 @@ namespace TajsCOI.Core.Settings
             Row statuses = new Row(3.pt()).Wrap().AlignItemsCenter();
             statuses.Add(
                 TajsDashboardUi.StatusBadge("Flight recorder: " + profiler.FlightRecorder, profiler.IsAvailable ? TajsDashboardUi.Green : TajsDashboardUi.Red),
-                TajsDashboardUi.StatusBadge("Deep trace: " + profiler.DeepTrace, profiler.DeepTrace.IndexOf("active", StringComparison.OrdinalIgnoreCase) >= 0 ? TajsDashboardUi.Yellow : TajsDashboardUi.Cyan),
+                TajsDashboardUi.StatusBadge(
+                    "Deep trace: " + profiler.DeepTrace,
+                    profiler.DeepTrace.IndexOf("active", StringComparison.OrdinalIgnoreCase) >= 0 ? TajsDashboardUi.Yellow : TajsDashboardUi.Cyan),
                 TajsDashboardUi.StatusBadge("Ring drops: " + profiler.RingDrops, profiler.RingDrops == "0" ? TajsDashboardUi.Green : TajsDashboardUi.Yellow),
-                TajsDashboardUi.StatusBadge("GPU timing: " + profiler.GpuTiming, profiler.GpuTiming.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0 ? TajsDashboardUi.Yellow : TajsDashboardUi.Green));
+                TajsDashboardUi.StatusBadge(
+                    "GPU timing: " + profiler.GpuTiming,
+                    profiler.GpuTiming.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0 ? TajsDashboardUi.Yellow : TajsDashboardUi.Green));
             panel.Body.Add(statuses);
             panel.Body.Add(new Label(Truncate(profiler.StatusText, 900).AsLoc()).FontSize(11).Selectable(true));
             return panel;
@@ -650,6 +680,12 @@ namespace TajsCOI.Core.Settings
             any |= AddCommandButton(buttons, Button.Area, "Export trace", "tajs_profiler_trace_export runtime", feedback);
             any |= AddCommandButton(buttons, Button.Area, "Clear runtime history", "tajs_profiler_runtime_clear", feedback);
             any |= AddCommandButton(buttons, Button.Warning, "Trim unused assets", "trim_unused_assets", feedback);
+            any |= AddSettingToggleButton(
+                buttons,
+                "TajsPerformance",
+                "render_load_shedding",
+                "Rendering load shedding",
+                feedback);
             if (any)
             {
                 panel.Body.Add(buttons);
@@ -661,6 +697,43 @@ namespace TajsCOI.Core.Settings
             panel.Body.Add(new ButtonText(Button.Area, "Refresh diagnostics".AsLoc(), QueueRefresh).Compact());
             panel.Body.Add(feedback);
             return panel;
+        }
+
+        private bool AddSettingToggleButton(
+            Row buttons,
+            string modId,
+            string key,
+            string label,
+            Label feedback)
+        {
+            SettingSnapshot? snapshot = m_settings.GetSnapshot().FirstOrDefault(item =>
+                string.Equals(item.Descriptor.ModId, modId, StringComparison.Ordinal) &&
+                string.Equals(item.Descriptor.Key, key, StringComparison.Ordinal));
+            if (snapshot is null || snapshot.Value is not bool enabled)
+            {
+                return false;
+            }
+
+            ButtonText stateButton = null!;
+            stateButton = new ButtonText(
+                    Button.ToggleGroup,
+                    $"{label}: {BooleanStateText(enabled)}".AsLoc(),
+                    () =>
+                    {
+                        bool nextValue = !m_settings.Get<bool>(modId, key);
+                        SettingSetResult result = m_settings.TrySet(modId, key, nextValue);
+                        feedback.Value((result.Success ? ApplyModeText(result.ApplyMode) : result.Error).AsLoc()).Show();
+                        if (result.Success)
+                        {
+                            bool currentValue = (bool)result.Value!;
+                            stateButton.Value($"{label}: {BooleanStateText(currentValue)}".AsLoc()).Selected(currentValue);
+                        }
+                    })
+                .Toggleable(true)
+                .Selected(enabled)
+                .Compact();
+            buttons.Add(stateButton);
+            return true;
         }
 
         private Panel BuildMaintenancePanel()
@@ -690,21 +763,27 @@ namespace TajsCOI.Core.Settings
             int compatible = reports.Count(report => report.State == CompatibilityState.Compatible);
             int degraded = reports.Count(report => report.State == CompatibilityState.Degraded);
             int disabled = reports.Count(report => report.State == CompatibilityState.Disabled);
-            Panel panel = TajsDashboardUi.Card("Compatibility summary", "Missing components and load errors stay visible instead of silently disabling controls.");
+            Panel panel = TajsDashboardUi.Card(
+                "Compatibility summary",
+                "Missing components and load errors stay visible instead of silently disabling controls.");
             Row summary = new Row(3.pt()).Wrap();
             summary.Add(
                 TajsDashboardUi.MetricTile("Healthy", compatible.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Green),
                 TajsDashboardUi.MetricTile("Warnings", degraded.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Yellow),
-                TajsDashboardUi.MetricTile("Unavailable", disabled.ToString(CultureInfo.InvariantCulture), disabled == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Red));
+                TajsDashboardUi.MetricTile(
+                    "Unavailable",
+                    disabled.ToString(CultureInfo.InvariantCulture),
+                    disabled == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Red));
             panel.Body.Add(summary);
 
             foreach (CompatibilityReport report in reports.Take(8))
             {
-                panel.Body.Add(new Row(3.pt())
-                {
-                    new Label($"{report.ModId} / {report.ComponentId}".AsLoc()).FlexGrow(1f),
-                    TajsDashboardUi.StatusBadge(report.State.ToString(), CompatibilityColor(report.State)),
-                }.AlignItemsCenter());
+                panel.Body.Add(
+                    new Row(3.pt())
+                    {
+                        new Label($"{report.ModId} / {report.ComponentId}".AsLoc()).FlexGrow(1f),
+                        TajsDashboardUi.StatusBadge(report.State.ToString(), CompatibilityColor(report.State)),
+                    }.AlignItemsCenter());
             }
             if (reports.Count > 8)
             {
@@ -726,15 +805,13 @@ namespace TajsCOI.Core.Settings
             {
                 bool failed = mod.LoadError.HasValue;
                 string version = Convert.ToString(mod.Manifest.Version, CultureInfo.InvariantCulture) ?? "unknown";
-                panel.Body.Add(new Row(4.pt())
-                {
-                    new Column(1.pt())
+                panel.Body.Add(
+                    new Row(4.pt())
                     {
-                        new Label(mod.Manifest.Id.AsLoc()).FontBold(),
-                        new Label($"Version {version}".AsLoc()).FontSize(11),
-                    }.FlexGrow(1f),
-                    TajsDashboardUi.StatusBadge(failed ? "Load failed" : "Loaded", failed ? TajsDashboardUi.Red : TajsDashboardUi.Green),
-                }.AlignItemsCenter());
+                        new Column(1.pt()) { new Label(mod.Manifest.Id.AsLoc()).FontBold(), new Label($"Version {version}".AsLoc()).FontSize(11) }
+                            .FlexGrow(1f),
+                        TajsDashboardUi.StatusBadge(failed ? "Load failed" : "Loaded", failed ? TajsDashboardUi.Red : TajsDashboardUi.Green),
+                    }.AlignItemsCenter());
                 if (failed)
                 {
                     panel.Body.Add(new Label(mod.LoadError.Value.ToString().AsLoc()).FontSize(11));
@@ -751,10 +828,11 @@ namespace TajsCOI.Core.Settings
                 return false;
             }
 
-            buttons.Add(new ButtonText(
-                variant,
-                text.AsLoc(),
-                () => ExecuteConsoleCommand(command, feedback)).Compact());
+            buttons.Add(
+                new ButtonText(
+                    variant,
+                    text.AsLoc(),
+                    () => ExecuteConsoleCommand(command, feedback)).Compact());
             return true;
         }
 
@@ -915,11 +993,7 @@ namespace TajsCOI.Core.Settings
 
         private static string FormatSettingMeta(SettingDescriptor descriptor)
         {
-            var parts = new List<string>
-            {
-                descriptor.StableId,
-                ApplyModeText(descriptor.ApplyMode),
-            };
+            var parts = new List<string> { descriptor.StableId, ApplyModeText(descriptor.ApplyMode) };
             if (descriptor.Scope == SettingScope.PerSave)
             {
                 parts.Add("Per save");
@@ -1128,7 +1202,19 @@ namespace TajsCOI.Core.Settings
             internal string Render { get; }
 
             internal static ProfilerSnapshot Unavailable(string status, string runtime) =>
-                new(false, status, runtime, "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable");
+                new(
+                    false,
+                    status,
+                    runtime,
+                    "unavailable",
+                    "unavailable",
+                    "unavailable",
+                    "unavailable",
+                    "unavailable",
+                    "unavailable",
+                    "unavailable",
+                    "unavailable",
+                    "unavailable");
 
             private static string ValueOrUnavailable(string value) =>
                 string.IsNullOrWhiteSpace(value) ? "unavailable" : value;
@@ -1137,10 +1223,10 @@ namespace TajsCOI.Core.Settings
 
     internal static class TajsDashboardUi
     {
-        internal static readonly ColorRgba Cyan = new ColorRgba(130, 200, 255);
-        internal static readonly ColorRgba Green = new ColorRgba(130, 220, 150);
-        internal static readonly ColorRgba Yellow = new ColorRgba(245, 195, 90);
-        internal static readonly ColorRgba Red = new ColorRgba(240, 105, 105);
+        internal static readonly ColorRgba Cyan = new(130, 200, 255);
+        internal static readonly ColorRgba Green = new(130, 220, 150);
+        internal static readonly ColorRgba Yellow = new(245, 195, 90);
+        internal static readonly ColorRgba Red = new(240, 105, 105);
 
         internal static Label SectionHeader(string text) =>
             new Label(text.AsLoc()).FontBold().FontSize(20).MarginTop(4.pt()).MarginBottom(1.pt());
@@ -1160,10 +1246,10 @@ namespace TajsCOI.Core.Settings
             return panel;
         }
 
-        internal static Panel MetricTile(string title, string value, ColorRgba color)
-        {
-            return MetricTile(title, new Label(value.AsLoc()).FontBold().FontSize(17).Color(color), color);
-        }
+        internal static Panel MetricTile(string title, string value, ColorRgba color) => MetricTile(
+            title,
+            new Label(value.AsLoc()).FontBold().FontSize(17).Color(color),
+            color);
 
         internal static Panel MetricTile(string title, Label value, ColorRgba color)
         {

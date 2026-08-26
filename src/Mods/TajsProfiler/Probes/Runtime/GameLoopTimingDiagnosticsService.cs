@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Threading;
 using Mafi;
@@ -26,9 +25,9 @@ using TajsCOI.Profiler.Core;
 namespace TajsCOI.Profiler.Probes.Runtime
 {
     /// <summary>
-    /// Reads Captain of Industry's existing GameLoopTimings rings once per render frame and
-    /// retains a bounded primitive history for hitch diagnosis. The reader never wraps game
-    /// callbacks or changes loop behavior; unsupported private surfaces degrade fail-open.
+    ///     Reads Captain of Industry's existing GameLoopTimings rings once per render frame and
+    ///     retains a bounded primitive history for hitch diagnosis. The reader never wraps game
+    ///     callbacks or changes loop behavior; unsupported private surfaces degrade fail-open.
     /// </summary>
     [GlobalDependency(RegistrationMode.AsSelf)]
     public sealed class GameLoopTimingDiagnosticsService
@@ -42,25 +41,25 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private readonly GameLoopTimingsAccess? m_timings;
         private readonly DeferredGameRunnerTimingAccess m_runnerDiscovery;
         private readonly SimLoopEvents m_simLoop;
-        private readonly RuntimeFrameHistory m_history = new RuntimeFrameHistory(HistoryCapacity);
+        private readonly RuntimeFrameHistory m_history = new(HistoryCapacity);
         private readonly RuntimeSpikeHistory m_spikes;
         private readonly RuntimeCounterSampler m_counters;
-        private readonly RuntimeRollingPercentile m_frameBaseline = new RuntimeRollingPercentile(128);
+        private readonly RuntimeRollingPercentile m_frameBaseline = new(128);
         private RuntimeSpikePolicy m_spikePolicy;
         private readonly ITajsSettings m_settings;
         private readonly ITajsRuntime m_runtime;
         private GameRunnerTimingAccess? m_runner;
-        private string m_timingReason;
+        private readonly string m_timingReason;
         private string m_runnerReason = DeferredGameRunnerTimingAccess.PendingReason;
-        private readonly object m_runnerReportGate = new object();
+        private readonly object m_runnerReportGate = new();
         private bool m_runnerCompatibilityReported;
-        private DeepTracingPatchSummary m_deepPatchSummary;
+        private readonly DeepTracingPatchSummary m_deepPatchSummary;
         private long m_rollingMedianFrameTicks;
         private int m_baselineSampleCounter;
         private long m_traceWindowStart;
         private long m_traceWindowEnd;
         private bool m_traceCaptureActive;
-        private ITajsLogger? m_log;
+        private readonly ITajsLogger? m_log;
         private int m_callbackFailureLogged;
 
         public GameLoopTimingDiagnosticsService(
@@ -99,29 +98,31 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
             ReportTimingCompatibility(discoveryPending: true);
 
-            runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsProfiler",
-                "DeepCallbacks",
-                m_deepPatchSummary.IsAvailable ? CompatibilityState.Compatible : CompatibilityState.Degraded,
-                "0.8.7b Event/EventNonSaveable callback invocation surfaces",
-                "expected=" + m_deepPatchSummary.ExpectedMethods +
-                ", patched=" + m_deepPatchSummary.PatchedMethods +
-                ", callback replacements=" + m_deepPatchSummary.ReplacedInvocations +
-                ", failures=" + m_deepPatchSummary.Failures +
-                ", phase-conflicts=" + m_deepPatchSummary.PhaseConflicts,
-                m_deepPatchSummary.IsAvailable
-                    ? "Opt-in deep callback spans are available; they remain inactive until explicitly armed."
-                    : "Deep callback spans are unavailable; broad timing and counter capture remain independent."));
+            runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    "TajsProfiler",
+                    "DeepCallbacks",
+                    m_deepPatchSummary.IsAvailable ? CompatibilityState.Compatible : CompatibilityState.Degraded,
+                    "0.8.7b Event/EventNonSaveable callback invocation surfaces",
+                    "expected=" + m_deepPatchSummary.ExpectedMethods +
+                    ", patched=" + m_deepPatchSummary.PatchedMethods +
+                    ", callback replacements=" + m_deepPatchSummary.ReplacedInvocations +
+                    ", failures=" + m_deepPatchSummary.Failures +
+                    ", phase-conflicts=" + m_deepPatchSummary.PhaseConflicts,
+                    m_deepPatchSummary.IsAvailable
+                        ? "Opt-in deep callback spans are available; they remain inactive until explicitly armed."
+                        : "Deep callback spans are unavailable; broad timing and counter capture remain independent."));
 
-            runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsProfiler",
-                "RuntimeCounters",
-                m_counters.SupportedUnityCounters != 0 || m_counters.SupportedProfilerCounters != 0
-                    ? CompatibilityState.Compatible
-                    : CompatibilityState.Degraded,
-                "0.8.7b Unity Profiler accessors and optional ProfilerRecorder counters",
-                m_counters.SupportSummary,
-                "Unsupported or zero-valued counters are reported as unavailable; GPU classification requires a trusted time counter."));
+            runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    "TajsProfiler",
+                    "RuntimeCounters",
+                    m_counters.SupportedUnityCounters != 0 || m_counters.SupportedProfilerCounters != 0
+                        ? CompatibilityState.Compatible
+                        : CompatibilityState.Degraded,
+                    "0.8.7b Unity Profiler accessors and optional ProfilerRecorder counters",
+                    m_counters.SupportSummary,
+                    "Unsupported or zero-valued counters are reported as unavailable; GPU classification requires a trusted time counter."));
         }
 
         private void ReportTimingCompatibility(bool discoveryPending)
@@ -131,7 +132,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 ? CompatibilityState.Degraded
                 : m_timings is null
                     ? runnerAvailable ? CompatibilityState.Degraded : CompatibilityState.Disabled
-                    : runnerAvailable ? CompatibilityState.Compatible : CompatibilityState.Degraded;
+                    : runnerAvailable
+                        ? CompatibilityState.Compatible
+                        : CompatibilityState.Degraded;
             string details;
             if (discoveryPending)
             {
@@ -142,7 +145,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             else if (m_timings is null)
             {
                 details = "GameLoopTimings unavailable: " + m_timingReason +
-                    (m_runner is null ? "; GameRunner unavailable: " : "; GameRunner degraded: ") + m_runnerReason;
+                          (m_runner is null ? "; GameRunner unavailable: " : "; GameRunner degraded: ") + m_runnerReason;
             }
             else if (m_runner is null)
             {
@@ -157,17 +160,18 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 details = "GameRunner degraded: " + m_runnerReason;
             }
 
-            m_runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsProfiler",
-                "GameLoopTimings",
-                state,
-                "0.8.7b GameLoopTimings and GameRunner flight-recorder surfaces",
-                details,
-                state == CompatibilityState.Compatible
-                    ? "Rolling frame, render, wait-for-simulation, and simulation summaries are available."
-                    : state == CompatibilityState.Degraded
-                        ? "Available timing surfaces remain active; unsupported detail is reported as unavailable."
-                        : "No compatible timing surface was found; the probe remains inactive."));
+            m_runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    "TajsProfiler",
+                    "GameLoopTimings",
+                    state,
+                    "0.8.7b GameLoopTimings and GameRunner flight-recorder surfaces",
+                    details,
+                    state == CompatibilityState.Compatible
+                        ? "Rolling frame, render, wait-for-simulation, and simulation summaries are available."
+                        : state == CompatibilityState.Degraded
+                            ? "Available timing surfaces remain active; unsupported detail is reported as unavailable."
+                            : "No compatible timing surface was found; the probe remains inactive."));
         }
 
         private void EnsureRunnerTimingAccess()
@@ -191,7 +195,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         public string Status()
         {
             RuntimeFrameSample[] latest = m_history.SnapshotRecent(1);
-            var builder = new StringBuilder(512)
+            StringBuilder builder = new StringBuilder(512)
                 .Append("TajsProfiler runtime flight recorder: frames=")
                 .Append(m_history.Count)
                 .Append('/')
@@ -199,9 +203,14 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 .Append(", GameLoopTimings=")
                 .Append(m_timings is null ? "unavailable" : "available")
                 .Append(", GameRunner=")
-                .Append(!m_runnerDiscovery.IsDiscoveryAttempted
-                    ? "pending"
-                    : m_runner is null ? "unavailable" : m_runner.IsAvailable ? "available" : "unavailable")
+                .Append(
+                    !m_runnerDiscovery.IsDiscoveryAttempted
+                        ? "pending"
+                        : m_runner is null
+                            ? "unavailable"
+                            : m_runner.IsAvailable
+                                ? "available"
+                                : "unavailable")
                 .Append(", automatic-spikes=").Append(m_spikes.Count)
                 .Append(", deep=").Append(DeepCallbackRecorder.IsActive ? "active" : "idle")
                 .Append(", deep-patches=").Append(m_deepPatchSummary.PatchedMethods)
@@ -276,7 +285,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             }
 
             DeepCallbackOverheadSnapshot profiler = DeepCallbackRecorder.SnapshotOverhead();
-            var builder = new StringBuilder(1024)
+            StringBuilder builder = new StringBuilder(1024)
                 .Append("Runtime stutter summary (last ")
                 .Append(seconds.ToString("F1", CultureInfo.InvariantCulture))
                 .Append(" s, samples=")
@@ -361,7 +370,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 return "Runtime profiler spikes: none stored.";
             }
 
-            var builder = new StringBuilder(2048).Append("Runtime profiler spikes:");
+            StringBuilder builder = new StringBuilder(2048).Append("Runtime profiler spikes:");
             foreach (RuntimeSpikeRecord capture in captures)
             {
                 RuntimeFrameSample sample = capture.Trigger;
@@ -417,7 +426,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 return "Runtime profiler raw samples: none stored.";
             }
 
-            var builder = new StringBuilder(2048).Append("Runtime profiler raw samples:");
+            StringBuilder builder = new StringBuilder(2048).Append("Runtime profiler raw samples:");
             foreach (RuntimeFrameSample sample in samples)
             {
                 builder.Append("\n  #").Append(sample.Sequence).Append(" ")
@@ -468,7 +477,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 m_traceWindowEnd = window.EndTimestamp;
             }
             return "Runtime profiler deep capture stopped: window=" +
-                FormatSeconds(window.EndTimestamp - window.StartTimestamp) + ".";
+                   FormatSeconds(window.EndTimestamp - window.StartTimestamp) + ".";
         }
 
         [ConsoleCommand(
@@ -505,7 +514,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             m_traceCaptureActive = false;
             DeepCallbackRecorder.AddMarker(now, "runtime trace stopped");
             return "Runtime profiler trace stopped: window=" +
-                FormatSeconds(m_traceWindowEnd - m_traceWindowStart) + ".";
+                   FormatSeconds(m_traceWindowEnd - m_traceWindowStart) + ".";
         }
 
         [ConsoleCommand(
@@ -523,7 +532,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 return "Runtime profiler deep report: no callback spans captured.";
             }
 
-            var builder = new StringBuilder(2048).Append("Runtime profiler deep callbacks (top ").Append(metrics.Length).Append("):");
+            StringBuilder builder = new StringBuilder(2048).Append("Runtime profiler deep callbacks (top ").Append(metrics.Length).Append("):");
             foreach (CallbackMetricSnapshot metric in metrics)
             {
                 builder.Append("\n  ").Append(metric.Metadata.DisplayName)
@@ -536,9 +545,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     .Append(", p99=").Append(RuntimeTraceText.Milliseconds(metric.P99Ticks))
                     .Append(", max=").Append(RuntimeTraceText.Milliseconds(metric.MaxTicks))
                     .Append(", slow=").Append(metric.SlowCallCount)
-                    .Append(", worst-ts=").Append(metric.WorstStartTimestamp > 0
-                        ? metric.WorstStartTimestamp.ToString(CultureInfo.InvariantCulture)
-                        : "unavailable");
+                    .Append(", worst-ts=").Append(
+                        metric.WorstStartTimestamp > 0
+                            ? metric.WorstStartTimestamp.ToString(CultureInfo.InvariantCulture)
+                            : "unavailable");
             }
             return builder.ToString();
         }
@@ -562,7 +572,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             long cutoff = samples[samples.Length - 1].CapturedTimestamp -
                           (long)(seconds * Stopwatch.Frequency);
             int counterCount = RuntimeTelemetry.CounterCount;
-            var totals = new long[counterCount];
+            long[] totals = new long[counterCount];
             int included = 0;
             int paused = 0;
             for (int sampleIndex = 0; sampleIndex < samples.Length; sampleIndex++)
@@ -585,7 +595,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 }
             }
 
-            var builder = new StringBuilder(1024)
+            StringBuilder builder = new StringBuilder(1024)
                 .Append("Runtime profiler subsystems (samples=")
                 .Append(included)
                 .Append(", paused-excluded=")
@@ -624,9 +634,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
             else
             {
                 foreach (KeyValuePair<string, long> ownerCost in ownerCosts
-                    .OrderByDescending(x => x.Value)
-                    .ThenBy(x => x.Key, StringComparer.Ordinal)
-                    .Take(8))
+                             .OrderByDescending(x => x.Value)
+                             .ThenBy(x => x.Key, StringComparer.Ordinal)
+                             .Take(8))
                 {
                     builder.Append("\n  ")
                         .Append(ownerCost.Key)
@@ -650,7 +660,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             m_rollingMedianFrameTicks = 0;
             m_baselineSampleCounter = 0;
             return "Runtime profiler subsystem telemetry cleared (" + sampleCount +
-                " frame sample(s), " + counterCount + " counter(s)); next frame starts the interval.";
+                   " frame sample(s), " + counterCount + " counter(s)); next frame starts the interval.";
         }
 
         [ConsoleCommand(
@@ -669,7 +679,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 return "Runtime profiler worst callbacks: no callback spans captured.";
             }
 
-            var builder = new StringBuilder(2048)
+            StringBuilder builder = new StringBuilder(2048)
                 .Append("Runtime profiler worst callback invocations (top ")
                 .Append(invocations.Length)
                 .Append("):");
@@ -747,10 +757,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
             long elapsed = DeepCallbackRecorder.MeasureReader(() => m_timings.ReadLatest(), iterations);
             long historyElapsed = RuntimeFrameHistory.MeasureRecordOverhead(iterations);
             return "Runtime profiler reader overhead: iterations=" + iterations +
-                ", total=" + RuntimeTraceText.Milliseconds(elapsed) +
-                ", avg=" + RuntimeTraceText.Milliseconds(elapsed / iterations) +
-                "; flight-write-total=" + RuntimeTraceText.Milliseconds(historyElapsed) +
-                ", flight-write-avg=" + RuntimeTraceText.Milliseconds(historyElapsed / iterations) + ".";
+                   ", total=" + RuntimeTraceText.Milliseconds(elapsed) +
+                   ", avg=" + RuntimeTraceText.Milliseconds(elapsed / iterations) +
+                   "; flight-write-total=" + RuntimeTraceText.Milliseconds(historyElapsed) +
+                   ", flight-write-avg=" + RuntimeTraceText.Milliseconds(historyElapsed / iterations) + ".";
         }
 
         [ConsoleCommand(
@@ -774,16 +784,16 @@ namespace TajsCOI.Profiler.Probes.Runtime
             }
 
             return "Runtime profiler deep overhead benchmark: iterations=" + benchmark.Iterations +
-                ", baseline=" + RuntimeTraceText.Milliseconds(benchmark.BaselineTicks) +
-                " (" + RuntimeTraceText.Milliseconds(benchmark.BaselineTicks / benchmark.Iterations) + "/callback)" +
-                ", deep-disabled=" + RuntimeTraceText.Milliseconds(benchmark.DisabledTicks) +
-                " (" + RuntimeTraceText.Milliseconds(benchmark.DisabledTicks / benchmark.Iterations) + "/callback)" +
-                ", deep-enabled=" + RuntimeTraceText.Milliseconds(benchmark.EnabledTicks) +
-                " (" + RuntimeTraceText.Milliseconds(benchmark.EnabledTicks / benchmark.Iterations) + "/callback)" +
-                ", deep-enabled-metadata+span=" + RuntimeTraceText.Milliseconds(benchmark.MetadataAndSpanTicks) +
-                " (" + RuntimeTraceText.Milliseconds(benchmark.MetadataAndSpanTicks / benchmark.Iterations) + "/callback)" +
-                ", deep-overhead=" + RuntimeTraceText.Milliseconds(benchmark.EnabledOverheadTicks) +
-                " (" + RuntimeTraceText.Milliseconds(benchmark.EnabledOverheadTicks / benchmark.Iterations) + "/callback).";
+                   ", baseline=" + RuntimeTraceText.Milliseconds(benchmark.BaselineTicks) +
+                   " (" + RuntimeTraceText.Milliseconds(benchmark.BaselineTicks / benchmark.Iterations) + "/callback)" +
+                   ", deep-disabled=" + RuntimeTraceText.Milliseconds(benchmark.DisabledTicks) +
+                   " (" + RuntimeTraceText.Milliseconds(benchmark.DisabledTicks / benchmark.Iterations) + "/callback)" +
+                   ", deep-enabled=" + RuntimeTraceText.Milliseconds(benchmark.EnabledTicks) +
+                   " (" + RuntimeTraceText.Milliseconds(benchmark.EnabledTicks / benchmark.Iterations) + "/callback)" +
+                   ", deep-enabled-metadata+span=" + RuntimeTraceText.Milliseconds(benchmark.MetadataAndSpanTicks) +
+                   " (" + RuntimeTraceText.Milliseconds(benchmark.MetadataAndSpanTicks / benchmark.Iterations) + "/callback)" +
+                   ", deep-overhead=" + RuntimeTraceText.Milliseconds(benchmark.EnabledOverheadTicks) +
+                   " (" + RuntimeTraceText.Milliseconds(benchmark.EnabledOverheadTicks / benchmark.Iterations) + "/callback).";
         }
 
         [ConsoleCommand(
@@ -798,10 +808,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
             long elapsed = m_counters.MeasureOverhead(iterations);
             return "Runtime profiler counter overhead benchmark: iterations=" + iterations +
-                ", sampling-interval=" + m_counters.IntervalMilliseconds.ToString("F1", CultureInfo.InvariantCulture) + " ms" +
-                ", total=" + RuntimeTraceText.Milliseconds(elapsed) +
-                ", avg=" + RuntimeTraceText.Milliseconds(elapsed / iterations) +
-                ", forced-gc=none.";
+                   ", sampling-interval=" + m_counters.IntervalMilliseconds.ToString("F1", CultureInfo.InvariantCulture) + " ms" +
+                   ", total=" + RuntimeTraceText.Milliseconds(elapsed) +
+                   ", avg=" + RuntimeTraceText.Milliseconds(elapsed / iterations) +
+                   ", forced-gc=none.";
         }
 
         [ConsoleCommand(
@@ -871,7 +881,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 EnsureRunnerTimingAccess();
                 long capturedTimestamp = Stopwatch.GetTimestamp();
                 GameLoopTimingRanges ranges = default;
-                GameLoopTimingSnapshot timings = new GameLoopTimingSnapshot();
+                var timings = new GameLoopTimingSnapshot();
                 bool hasTimingSample = m_timings is not null && m_timings.ReadCompleted(out timings, out ranges);
                 if (!hasTimingSample)
                 {
@@ -1000,8 +1010,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 m_traceWindowEnd = window.EndTimestamp;
             }
             return "Runtime profiler deep capture started: window=" +
-                FormatSeconds(window.EndTimestamp - window.StartTimestamp) +
-                ", automatic=" + automatic + ".";
+                   FormatSeconds(window.EndTimestamp - window.StartTimestamp) +
+                   ", automatic=" + automatic + ".";
         }
 
         private RuntimeFrameSample[] SnapshotTraceFrames()
@@ -1029,7 +1039,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             long end = m_traceWindowEnd > 0 && m_traceWindowEnd <= now
                 ? m_traceWindowEnd
                 : now;
-            var filtered = new System.Collections.Generic.List<RuntimeTraceSpan>(spans.Length);
+            var filtered = new List<RuntimeTraceSpan>(spans.Length);
             for (int index = 0; index < spans.Length; index++)
             {
                 RuntimeTraceSpan span = spans[index];
@@ -1053,7 +1063,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             long end = m_traceWindowEnd > 0 && m_traceWindowEnd <= now
                 ? m_traceWindowEnd
                 : now;
-            var filtered = new System.Collections.Generic.List<RuntimeTraceMarker>(markers.Length);
+            var filtered = new List<RuntimeTraceMarker>(markers.Length);
             for (int index = 0; index < markers.Length; index++)
             {
                 RuntimeTraceMarker marker = markers[index];
@@ -1079,7 +1089,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         }
 
         private static bool IsOptionalPositive(float value) =>
-            value < 0 || (!float.IsNaN(value) && !float.IsInfinity(value) && value > 0);
+            value < 0 || !float.IsNaN(value) && !float.IsInfinity(value) && value > 0;
 
         private static string FormatSeconds(long stopwatchTicks) =>
             (stopwatchTicks / (double)Stopwatch.Frequency).ToString("F2", CultureInfo.InvariantCulture) + " s";
@@ -1153,7 +1163,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         private static string FormatRawTiming(GameLoopTimingSnapshot timing)
         {
-            var builder = new StringBuilder(768)
+            StringBuilder builder = new StringBuilder(768)
                 .Append("input=").Append(FormatMilliseconds(timing.InputTicks))
                 .Append(", input-end=").Append(FormatMilliseconds(timing.InputEndTicks))
                 .Append(", sync-start=").Append(FormatMilliseconds(timing.SyncStartTicks))

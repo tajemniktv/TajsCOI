@@ -4,6 +4,7 @@
 
 #region
 
+using System.Threading;
 using Mafi;
 using Mafi.Core.Console;
 using Mafi.Core.Simulation;
@@ -11,7 +12,6 @@ using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
-using System.Threading;
 
 #endregion
 
@@ -39,23 +39,25 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
             {
                 const string reason = "The private game contract changed or could not be resolved.";
                 m_log.Error(reason + " " + SimLoopAccess.BindingStatus);
-                runtime.ReportCompatibility(new CompatibilityReport(
-                    "TajsTweaks",
-                    "UnlockedSpeed",
-                    CompatibilityState.Disabled,
-                    "SimLoopEvents requested-speed and adaptive-mode setters",
-                    SimLoopAccess.BindingStatus,
-                    reason));
+                runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        "TajsTweaks",
+                        "UnlockedSpeed",
+                        CompatibilityState.Disabled,
+                        "SimLoopEvents requested-speed and adaptive-mode setters",
+                        SimLoopAccess.BindingStatus,
+                        reason));
             }
             else
             {
-                runtime.ReportCompatibility(new CompatibilityReport(
-                    "TajsTweaks",
-                    "UnlockedSpeed",
-                    CompatibilityState.Compatible,
-                    "SimLoopEvents requested-speed and adaptive-mode setters",
-                    SimLoopAccess.BindingStatus,
-                    "All required private bindings resolved."));
+                runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        "TajsTweaks",
+                        "UnlockedSpeed",
+                        CompatibilityState.Compatible,
+                        "SimLoopEvents requested-speed and adaptive-mode setters",
+                        SimLoopAccess.BindingStatus,
+                        "All required private bindings resolved."));
             }
         }
 

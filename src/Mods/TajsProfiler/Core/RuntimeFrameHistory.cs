@@ -63,7 +63,7 @@ namespace TajsCOI.Profiler.Core
         internal int SimStepsSinceLoad { get; }
         internal bool IsAvailable => UpdateTicks >= 0 || InputTicks >= 0 || SyncTicks >= 0 || RenderTicks >= 0 || SimTicks >= 0;
 
-        internal static GameRunnerTimingSnapshot Unavailable => new GameRunnerTimingSnapshot(
+        internal static GameRunnerTimingSnapshot Unavailable => new(
             -1,
             -1,
             -1,
@@ -119,8 +119,9 @@ namespace TajsCOI.Profiler.Core
         }
 
         internal string UnavailableProperties { get; }
+
         internal bool IsAvailable => m_update is not null || m_input is not null || m_sync is not null ||
-            m_sim is not null || m_render is not null;
+                                     m_sim is not null || m_render is not null;
 
         internal static GameRunnerTimingAccess? TryCreate(object? runner, out string reason)
         {
@@ -144,7 +145,7 @@ namespace TajsCOI.Profiler.Core
             Func<object, int>? simUpdateCount = CreateGetter<int>(type, "SimUpdateCount", typeof(int), unavailable);
             Func<object, int>? simStepsSinceLoad = CreateGetter<int>(type, "SimStepsSinceLoad", typeof(int), unavailable);
 
-            GameRunnerTimingAccess access = new GameRunnerTimingAccess(
+            var access = new GameRunnerTimingAccess(
                 runner,
                 update,
                 input,
@@ -192,7 +193,7 @@ namespace TajsCOI.Profiler.Core
             try
             {
                 MethodInfo getter = property.GetGetMethod(true)!;
-                DynamicMethod method = new DynamicMethod(
+                var method = new DynamicMethod(
                     "ReadGameRunner" + propertyName,
                     typeof(T),
                     new[] { typeof(object) },
@@ -225,15 +226,15 @@ namespace TajsCOI.Profiler.Core
     }
 
     /// <summary>
-    /// Defers optional GameRunner discovery until the resolver has finished constructing global
-    /// dependencies. Mafi's resolver deliberately rejects nested resolution from constructors.
+    ///     Defers optional GameRunner discovery until the resolver has finished constructing global
+    ///     dependencies. Mafi's resolver deliberately rejects nested resolution from constructors.
     /// </summary>
     internal sealed class DeferredGameRunnerTimingAccess
     {
         internal const string PendingReason = "GameRunner discovery deferred until after dependency initialization.";
 
         private readonly LazyResolve<IGameIdProvider> m_runner;
-        private readonly object m_gate = new object();
+        private readonly object m_gate = new();
         private bool m_attempted;
         private GameRunnerTimingAccess? m_access;
         private string m_reason = PendingReason;
@@ -506,7 +507,7 @@ namespace TajsCOI.Profiler.Core
 
     internal sealed class RuntimeFrameHistory
     {
-        private readonly object m_gate = new object();
+        private readonly object m_gate = new();
         private readonly RuntimeFrameSample[] m_samples;
         private int m_count;
         private int m_next;
@@ -574,7 +575,7 @@ namespace TajsCOI.Profiler.Core
             lock (m_gate)
             {
                 long sequence = ++m_sequence;
-                RuntimeFrameSample sample = new RuntimeFrameSample(
+                var sample = new RuntimeFrameSample(
                     sequence,
                     capturedTimestamp,
                     timings,
@@ -625,7 +626,7 @@ namespace TajsCOI.Profiler.Core
             {
                 return snapshot;
             }
-            RuntimeFrameSample[] result = new RuntimeFrameSample[count];
+            var result = new RuntimeFrameSample[count];
             Array.Copy(snapshot, snapshot.Length - count, result, 0, count);
             return result;
         }
@@ -677,8 +678,8 @@ namespace TajsCOI.Profiler.Core
             }
 
             var history = new RuntimeFrameHistory(Math.Min(4096, Math.Max(2, iterations)));
-            GameLoopTimingSnapshot timings = new GameLoopTimingSnapshot();
-            GameRunnerTimingSnapshot runner = new GameRunnerTimingSnapshot(updateTicks: 1);
+            var timings = new GameLoopTimingSnapshot();
+            var runner = new GameRunnerTimingSnapshot(updateTicks: 1);
             long timestamp = Stopwatch.GetTimestamp();
             long start = Stopwatch.GetTimestamp();
             for (int index = 0; index < iterations; index++)
@@ -699,7 +700,7 @@ namespace TajsCOI.Profiler.Core
         {
             lock (m_gate)
             {
-                RuntimeFrameSample[] result = new RuntimeFrameSample[m_count];
+                var result = new RuntimeFrameSample[m_count];
                 int start = (m_next - m_count + m_samples.Length) % m_samples.Length;
                 for (int index = 0; index < m_count; index++)
                 {

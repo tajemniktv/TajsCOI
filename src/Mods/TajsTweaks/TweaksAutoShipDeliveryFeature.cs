@@ -7,7 +7,6 @@ using System.Reflection;
 using HarmonyLib;
 using Mafi;
 using Mafi.Collections;
-using Mafi.Core;
 using Mafi.Core.Buildings.Shipyard;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Static;
@@ -30,7 +29,7 @@ namespace TajsCOI.Tweaks
             internal WorldMapLocId? SentToLocation;
         }
 
-        private static readonly Dictionary<int, ShipState> s_states = new Dictionary<int, ShipState>();
+        private static readonly Dictionary<int, ShipState> s_states = new();
         private static WeakReference<DependencyResolver>? s_resolver;
         private static WeakReference<WorldMapManager>? s_worldMap;
         private static WeakReference<TravelingFleetManager>? s_fleet;
@@ -42,8 +41,8 @@ namespace TajsCOI.Tweaks
         {
             s_resolver = new WeakReference<DependencyResolver>(resolver);
             MethodInfo target = typeof(Shipyard).GetInterfaceMap(typeof(IEntityWithSimUpdate)).TargetMethods
-                .FirstOrDefault(x => x.Name.IndexOf("SimUpdate", StringComparison.Ordinal) >= 0)
-                ?? throw new MissingMethodException(typeof(Shipyard).FullName, "SimUpdate");
+                                    .FirstOrDefault(x => x.Name.IndexOf("SimUpdate", StringComparison.Ordinal) >= 0)
+                                ?? throw new MissingMethodException(typeof(Shipyard).FullName, "SimUpdate");
             harmony.Patch(target, postfix: new HarmonyMethod(typeof(TweaksAutoShipDeliveryFeature), nameof(SimUpdatePostfix)));
             s_worldEntityConstructBuffersField = typeof(Shipyard).GetField("m_worldEntityConstructBuffers", BindingFlags.Instance | BindingFlags.NonPublic);
             s_battleShipPathFinderField = typeof(BattleShip).GetField("m_pathFinder", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -107,7 +106,7 @@ namespace TajsCOI.Tweaks
                         state.CargoWasLoading = true;
                     }
                     else if (IsCargoLoadingComplete(__instance) &&
-                        TrySendShipToLocation(ship, __instance.WorldEntityToConstruct.Value.Location.Id, fleet))
+                             TrySendShipToLocation(ship, __instance.WorldEntityToConstruct.Value.Location.Id, fleet))
                     {
                         state.ShipSent = true;
                         state.CargoWasLoading = false;
@@ -202,7 +201,7 @@ namespace TajsCOI.Tweaks
             {
                 return false;
             }
-            Lyst<WorldMapLocId> path = new Lyst<WorldMapLocId>();
+            var path = new Lyst<WorldMapLocId>();
             if (!ship.FindPathTo(locationId, pathFinder, path) || path.Count == 0 || !ship.TryLeaveToWorld())
             {
                 return false;

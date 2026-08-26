@@ -21,7 +21,7 @@ namespace TajsCOI.Core.Runtime
 
         public ITajsLogger GetLogger(string modId, string componentId)
         {
-            var key = CreateKey(modId, componentId);
+            ComponentKey key = CreateKey(modId, componentId);
             return m_loggers.GetOrAdd(key, item => new TajsLogger(item.ModId, item.ComponentId));
         }
 

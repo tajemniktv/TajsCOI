@@ -205,8 +205,10 @@ namespace TajsCOI.Core.Settings
             IReadOnlyList<SettingSnapshot> snapshot = GetSnapshot();
             return snapshot.Count == 0
                 ? "TajsCOI settings: no feature settings are registered in this scene."
-                : "TajsCOI settings:\n" + string.Join("\n", snapshot.Select(x =>
-                    $"  {x.Descriptor.StableId}={FormatValue(x.Value)} [{x.Descriptor.ApplyMode}, {x.Descriptor.Scope}]"));
+                : "TajsCOI settings:\n" + string.Join(
+                    "\n",
+                    snapshot.Select(x =>
+                        $"  {x.Descriptor.StableId}={FormatValue(x.Value)} [{x.Descriptor.ApplyMode}, {x.Descriptor.Scope}]"));
         }
 
         [ConsoleCommand(
@@ -313,10 +315,7 @@ namespace TajsCOI.Core.Settings
 
         private string CreatePersistenceJson(string changedId, object changedValue)
         {
-            var values = new Dictionary<string, object>(m_persistedValues, StringComparer.Ordinal)
-            {
-                [changedId] = changedValue,
-            };
+            var values = new Dictionary<string, object>(m_persistedValues, StringComparer.Ordinal) { [changedId] = changedValue };
             foreach (SettingDescriptor descriptor in m_descriptors.Values.Where(x => x.Scope == SettingScope.Global))
             {
                 if (!values.ContainsKey(descriptor.StableId))
@@ -325,11 +324,7 @@ namespace TajsCOI.Core.Settings
                 }
             }
 
-            var root = new Dictionary<string, object>(StringComparer.Ordinal)
-            {
-                ["schema_version"] = CurrentSchemaVersion,
-                ["values"] = values,
-            };
+            var root = new Dictionary<string, object>(StringComparer.Ordinal) { ["schema_version"] = CurrentSchemaVersion, ["values"] = values };
             return SerializeSettings(root);
         }
 

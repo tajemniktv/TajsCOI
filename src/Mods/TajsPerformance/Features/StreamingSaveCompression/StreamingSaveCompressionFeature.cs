@@ -34,10 +34,10 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
             MethodInfo? target = FindTarget();
             MethodInfo? patchMethod = AccessTools.Method(typeof(StreamingSaveCompressionFeature), nameof(WriteStreaming));
             return target is not null && patchMethod is not null &&
-                ProcessHarmonyPatchOwnership.HasExpected(
-                    Harmony.GetPatchInfo(target)?.Prefixes,
-                    HarmonyId,
-                    patchMethod);
+                   ProcessHarmonyPatchOwnership.HasExpected(
+                       Harmony.GetPatchInfo(target)?.Prefixes,
+                       HarmonyId,
+                       patchMethod);
         }
 
         public void Install(ITajsRuntime runtime, ITajsLogger log)
@@ -77,11 +77,14 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
                 if (ProcessHarmonyPatchOwnership.HasExpected(patches?.Prefixes, HarmonyId, patchMethod))
                 {
                     log.Info("Already installed / compatible; the process-lifetime streaming-save patch was not applied again.");
-                    runtime.ReportCompatibility(new CompatibilityReport(
-                        "TajsPerformance", Id, CompatibilityState.Compatible,
-                        "Existing process-lifetime Harmony owner and prefix method",
-                        "Already installed / compatible",
-                        "The validated 0.8.7a streaming-save patch remains active; no duplicate prefix was registered."));
+                    runtime.ReportCompatibility(
+                        new CompatibilityReport(
+                            "TajsPerformance",
+                            Id,
+                            CompatibilityState.Compatible,
+                            "Existing process-lifetime Harmony owner and prefix method",
+                            "Already installed / compatible",
+                            "The validated 0.8.7a streaming-save patch remains active; no duplicate prefix was registered."));
                     return;
                 }
 
@@ -103,15 +106,16 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
                 }
             }
 
-            runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsPerformance",
-                Id,
-                CompatibilityState.Compatible,
-                "0.8.7a GameSaver snapshot/compression fields and seekable temporary-file output",
-                "Streaming gzip prefix installed",
-                StreamingSaveCompressionSettings.SkipUncompressedChecksum
-                    ? "Compressed CRC and post-write validation remain active; uncompressed CRC is explicitly disabled."
-                    : "Both compressed and uncompressed CRCs plus post-write validation remain active."));
+            runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    "TajsPerformance",
+                    Id,
+                    CompatibilityState.Compatible,
+                    "0.8.7a GameSaver snapshot/compression fields and seekable temporary-file output",
+                    "Streaming gzip prefix installed",
+                    StreamingSaveCompressionSettings.SkipUncompressedChecksum
+                        ? "Compressed CRC and post-write validation remain active; uncompressed CRC is explicitly disabled."
+                        : "Both compressed and uncompressed CRCs plus post-write validation remain active."));
         }
 
         private static readonly object s_installGate = new();
@@ -186,7 +190,7 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
                 throw new IOException("Streaming save could not finalize the serialized snapshot.", exception);
             }
 
-            Stopwatch timer = Stopwatch.StartNew();
+            var timer = Stopwatch.StartNew();
             StreamingSaveResult? result = WriteStreamingOrVanilla(
                 uncompressedInput,
                 outputStream,

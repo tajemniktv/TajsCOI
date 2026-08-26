@@ -78,6 +78,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
 
         private static readonly FieldInfo? s_rawSimSpeedBackingField =
             typeof(SimLoopEvents).GetField("<SimSpeedMult>k__BackingField", s_instanceFlags);
+
         private static readonly FieldInfo? s_simSpeedBackingField =
             ValidateField(s_rawSimSpeedBackingField, typeof(int)) ? s_rawSimSpeedBackingField : null;
 
@@ -100,9 +101,9 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
             MethodInfo? setter = property.GetSetMethod(true);
             ParameterInfo[] parameters = setter?.GetParameters() ?? Array.Empty<ParameterInfo>();
             return setter is { IsStatic: false } && setter.ReturnType == typeof(void) &&
-                parameters.Length == 1 && parameters[0].ParameterType == expectedType
-                    ? setter
-                    : null;
+                   parameters.Length == 1 && parameters[0].ParameterType == expectedType
+                ? setter
+                : null;
         }
 
         private static bool ValidateField(FieldInfo? field, Type expectedType) =>

@@ -24,6 +24,7 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
         public override bool CanSeek => false;
         public override bool CanWrite => m_inner.CanWrite;
         public override long Length => throw new NotSupportedException();
+
         public override long Position
         {
             get => throw new NotSupportedException();
@@ -50,7 +51,7 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
 
         internal static uint Compute(Stream input, out long bytesRead)
         {
-            var buffer = new byte[64 * 1024];
+            byte[] buffer = new byte[64 * 1024];
             uint crc = uint.MaxValue;
             bytesRead = 0;
             int read;
@@ -76,20 +77,20 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
             int end = offset + count;
             for (int index = offset; index < end; index++)
             {
-                crc = s_table[(byte)(crc ^ buffer[index])] ^ (crc >> 8);
+                crc = s_table[(byte)(crc ^ buffer[index])] ^ crc >> 8;
             }
             return crc;
         }
 
         private static uint[] CreateTable()
         {
-            var table = new uint[256];
+            uint[] table = new uint[256];
             for (uint value = 0; value < table.Length; value++)
             {
                 uint entry = value;
                 for (int bit = 0; bit < 8; bit++)
                 {
-                    entry = (entry & 1) != 0 ? 0xedb88320u ^ (entry >> 1) : entry >> 1;
+                    entry = (entry & 1) != 0 ? 0xedb88320u ^ entry >> 1 : entry >> 1;
                 }
                 table[value] = entry;
             }

@@ -4,9 +4,9 @@ using System;
 using System.Linq;
 using HarmonyLib;
 using Mafi;
-using Mafi.Core.Console;
 using Mafi.Core;
 using Mafi.Core.Buildings.VehicleDepots;
+using Mafi.Core.Console;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Dynamic;
 using Mafi.Core.GameLoop;
@@ -15,7 +15,6 @@ using Mafi.Core.Prototypes;
 using Mafi.Core.Vehicles.Commands;
 using Mafi.Core.Vehicles.Trucks;
 using Mafi.Core.World;
-using Mafi.Core.World.Entities;
 using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
@@ -68,28 +67,30 @@ namespace TajsCOI.Tweaks
             TryInstall(runtime, "StorageOverrides", harmony => TweaksStorageFeature.Install(harmony, resolver));
             TryInstallResolved(runtime, "HudLayout", () => TweaksHudLayoutFeature.Install(resolver, settings));
 
-            runtime.ReportCompatibility(new CompatibilityReport(
-                TajsTweaksSettingsCatalog.ModId,
-                "FeatureHost",
-                CompatibilityState.Compatible,
-                "Typed global settings and independently fail-open feature patches",
-                TajsTweaksSettingsCatalog.All.Count + " settings; " + HarmonyId,
-                "Features are optional and retain vanilla behavior when a target is unavailable."));
+            runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    TajsTweaksSettingsCatalog.ModId,
+                    "FeatureHost",
+                    CompatibilityState.Compatible,
+                    "Typed global settings and independently fail-open feature patches",
+                    TajsTweaksSettingsCatalog.All.Count + " settings; " + HarmonyId,
+                    "Features are optional and retain vanilla behavior when a target is unavailable."));
         }
 
         private void TryInstall(ITajsRuntime runtime, string id, Action<Harmony> install)
         {
-            Harmony harmony = new Harmony(HarmonyId + "." + id);
+            var harmony = new Harmony(HarmonyId + "." + id);
             try
             {
                 install(harmony);
-                runtime.ReportCompatibility(new CompatibilityReport(
-                    TajsTweaksSettingsCatalog.ModId,
-                    id,
-                    CompatibilityState.Compatible,
-                    "0.8.7b target or native fallback",
-                    "Patch registration completed",
-                    "The feature remains disabled unless its own setting is enabled."));
+                runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsTweaksSettingsCatalog.ModId,
+                        id,
+                        CompatibilityState.Compatible,
+                        "0.8.7b target or native fallback",
+                        "Patch registration completed",
+                        "The feature remains disabled unless its own setting is enabled."));
             }
             catch (Exception exception)
             {
@@ -106,13 +107,14 @@ namespace TajsCOI.Tweaks
                     m_log.Exception(rollbackException, "Feature '" + id + "' rollback failed.");
                 }
                 m_log.Exception(exception, "Feature '" + id + "' failed open during installation.");
-                runtime.ReportCompatibility(new CompatibilityReport(
-                    TajsTweaksSettingsCatalog.ModId,
-                    id,
-                    CompatibilityState.Disabled,
-                    "0.8.7b target or native fallback",
-                    exception.GetType().Name,
-                    "No behavior was changed for this feature; vanilla behavior remains active."));
+                runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsTweaksSettingsCatalog.ModId,
+                        id,
+                        CompatibilityState.Disabled,
+                        "0.8.7b target or native fallback",
+                        exception.GetType().Name,
+                        "No behavior was changed for this feature; vanilla behavior remains active."));
             }
         }
 
@@ -121,24 +123,26 @@ namespace TajsCOI.Tweaks
             try
             {
                 install();
-                runtime.ReportCompatibility(new CompatibilityReport(
-                    TajsTweaksSettingsCatalog.ModId,
-                    id,
-                    CompatibilityState.Compatible,
-                    "0.8.7b target or native fallback",
-                    "Dependency-backed feature initialized",
-                    "The feature remains disabled unless its own setting is enabled."));
+                runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsTweaksSettingsCatalog.ModId,
+                        id,
+                        CompatibilityState.Compatible,
+                        "0.8.7b target or native fallback",
+                        "Dependency-backed feature initialized",
+                        "The feature remains disabled unless its own setting is enabled."));
             }
             catch (Exception exception)
             {
                 m_log.Exception(exception, "Feature '" + id + "' failed open during initialization.");
-                runtime.ReportCompatibility(new CompatibilityReport(
-                    TajsTweaksSettingsCatalog.ModId,
-                    id,
-                    CompatibilityState.Disabled,
-                    "0.8.7b target or native fallback",
-                    exception.GetType().Name,
-                    "No behavior was changed for this feature; vanilla behavior remains active."));
+                runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsTweaksSettingsCatalog.ModId,
+                        id,
+                        CompatibilityState.Disabled,
+                        "0.8.7b target or native fallback",
+                        exception.GetType().Name,
+                        "No behavior was changed for this feature; vanilla behavior remains active."));
             }
         }
 
@@ -148,6 +152,11 @@ namespace TajsCOI.Tweaks
             if (change.Descriptor.Key == TajsTweaksSettingsCatalog.UnlimitedZoom)
             {
                 TweaksCameraFeature.ApplyZoom();
+            }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.GroundClipping ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.FreeCamera)
+            {
+                TweaksCameraFeature.RefreshGroundClipping();
             }
             if (change.Descriptor.Key == TajsTweaksSettingsCatalog.ShipPreload ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.ShipPreloadData)
@@ -207,7 +216,7 @@ namespace TajsCOI.Tweaks
 
             try
             {
-                TajsWorldOperationsWindow window = m_resolver.Instantiate<TajsWorldOperationsWindow>();
+                var window = m_resolver.Instantiate<TajsWorldOperationsWindow>();
                 window.OnCloseStart += OnWorldOperationsWindowClose;
                 m_worldOperationsWindow = window;
                 return "World operations window: shown";
@@ -237,7 +246,7 @@ namespace TajsCOI.Tweaks
 
             try
             {
-                TajsFleetManagementWindow window = m_resolver.Instantiate<TajsFleetManagementWindow>();
+                var window = m_resolver.Instantiate<TajsFleetManagementWindow>();
                 window.OnCloseStart += OnFleetManagementWindowClose;
                 m_fleetManagementWindow = window;
                 return "Fleet management window: shown";
@@ -318,9 +327,9 @@ namespace TajsCOI.Tweaks
                 }
             }
             return "World operations manager: enabled; pending deliveries=" + pending + "; auto delivery=" +
-                TajsTweaksRuntimeState.AutoWorldDelivery + "; ship preload=" +
-                TajsTweaksRuntimeState.ShipPreload + "; configured preload records=" + preloadLines +
-                "; orders use the normal game flow.";
+                   TajsTweaksRuntimeState.AutoWorldDelivery + "; ship preload=" +
+                   TajsTweaksRuntimeState.ShipPreload + "; configured preload records=" + preloadLines +
+                   "; orders use the normal game flow.";
         }
 
         [ConsoleCommand(
@@ -342,7 +351,7 @@ namespace TajsCOI.Tweaks
             }
             try
             {
-                EntityId id = new EntityId(parsedId);
+                var id = new EntityId(parsedId);
                 switch ((operation ?? string.Empty).Trim().ToLowerInvariant())
                 {
                     case "repair": scheduler.ScheduleInputCmd(new WorldMapEntityStartRepairCmd(id)); break;
@@ -383,23 +392,25 @@ namespace TajsCOI.Tweaks
                 int pendingScrap = vehicles.Count(x => x.IsOnWayToDepotForScrap);
                 int pendingReplacement = vehicles.Count(x => x.IsOnWayToDepotForReplacement || x.ReplaceQueued);
                 int cannotDeliver = vehicles.Count(x => x is Truck truck && truck.IsCannotDeliverNotificationActive);
-                string groups = string.Join(", ", vehicles
-                    .GroupBy(x => x.Prototype.Id.Value, StringComparer.Ordinal)
-                    .OrderByDescending(x => x.Count())
-                    .ThenBy(x => x.Key, StringComparer.Ordinal)
-                    .Take(8)
-                    .Select(x => x.Key + "=" + x.Count() + "/assigned:" + x.Count(v => v.AssignedTo.HasValue) +
-                        "/scrap:" + x.Count(v => v.IsOnWayToDepotForScrap) + "/replace:" +
-                        x.Count(v => v.IsOnWayToDepotForReplacement || v.ReplaceQueued)));
+                string groups = string.Join(
+                    ", ",
+                    vehicles
+                        .GroupBy(x => x.Prototype.Id.Value, StringComparer.Ordinal)
+                        .OrderByDescending(x => x.Count())
+                        .ThenBy(x => x.Key, StringComparer.Ordinal)
+                        .Take(8)
+                        .Select(x => x.Key + "=" + x.Count() + "/assigned:" + x.Count(v => v.AssignedTo.HasValue) +
+                                     "/scrap:" + x.Count(v => v.IsOnWayToDepotForScrap) + "/replace:" +
+                                     x.Count(v => v.IsOnWayToDepotForReplacement || v.ReplaceQueued)));
                 int queuedBuilds = entities.GetAllEntitiesOfType<VehicleDepotBase>().Sum(x => x.BuildQueue.Count);
                 int queuedReplacements = entities.GetAllEntitiesOfType<VehicleDepotBase>().Sum(x => x.ReplaceQueue.Count);
                 return "Fleet manager: total=" + vehicles.Length + ", assigned=" + assigned + ", loaded=" + loaded +
-                    ", cannot-deliver=" + cannotDeliver + ", pending-scrap=" + pendingScrap +
-                    ", pending-replacement=" + pendingReplacement + ", queued-builds=" + queuedBuilds +
-                    ", queued-replacements=" + queuedReplacements +
-                    ", prototypes=[" + groups + "]" +
-                    "; actions are capped at " + TajsTweaksRuntimeState.FleetBatchLimit +
-                    " and require explicit normal-game command confirmation.";
+                       ", cannot-deliver=" + cannotDeliver + ", pending-scrap=" + pendingScrap +
+                       ", pending-replacement=" + pendingReplacement + ", queued-builds=" + queuedBuilds +
+                       ", queued-replacements=" + queuedReplacements +
+                       ", prototypes=[" + groups + "]" +
+                       "; actions are capped at " + TajsTweaksRuntimeState.FleetBatchLimit +
+                       " and require explicit normal-game command confirmation.";
             }
             catch (Exception exception)
             {
@@ -423,7 +434,7 @@ namespace TajsCOI.Tweaks
                 return "Usage: tajs_fleet_plan <scrap|replace>";
             }
             return "Fleet plan prepared for '" + normalized + "' with a maximum of " +
-                TajsTweaksRuntimeState.FleetBatchLimit + " vehicles. No vehicle was changed; confirm through the normal vehicle manager.";
+                   TajsTweaksRuntimeState.FleetBatchLimit + " vehicles. No vehicle was changed; confirm through the normal vehicle manager.";
         }
 
         [ConsoleCommand(
@@ -543,7 +554,7 @@ namespace TajsCOI.Tweaks
             requested = Math.Min(requested, TajsTweaksRuntimeState.FleetBatchLimit);
             Vehicle[] candidates = entities.GetAllEntitiesOfType<Vehicle>()
                 .Where(x => string.Equals(x.Prototype.Id.Value, (prototypeId ?? string.Empty).Trim(), StringComparison.Ordinal) &&
-                    !x.IsOnWayToDepotForScrap && !x.IsOnWayToDepotForReplacement && (!assignedOnly || x.AssignedTo.HasValue))
+                            !x.IsOnWayToDepotForScrap && !x.IsOnWayToDepotForReplacement && (!assignedOnly || x.AssignedTo.HasValue))
                 .OrderBy(x => unassignedFirst && x.AssignedTo.HasValue ? 1 : 0)
                 .ThenBy(x => x.Id.Value)
                 .Take(requested)
@@ -560,7 +571,12 @@ namespace TajsCOI.Tweaks
         [ConsoleCommand(
             documentation: "Requests bounded replacement of vehicles of one type through the normal replacement workflow.",
             customCommandName: "tajs_fleet_replace_type")]
-        public string FleetReplaceType(string? sourcePrototypeId, string? targetPrototypeId, string count, string confirmation, string policy = "unassigned-first")
+        public string FleetReplaceType(
+            string? sourcePrototypeId,
+            string? targetPrototypeId,
+            string count,
+            string confirmation,
+            string policy = "unassigned-first")
         {
             if (!TajsTweaksRuntimeState.FleetManager)
             {
@@ -587,8 +603,8 @@ namespace TajsCOI.Tweaks
             requested = Math.Min(requested, TajsTweaksRuntimeState.FleetBatchLimit);
             Vehicle[] candidates = entities.GetAllEntitiesOfType<Vehicle>()
                 .Where(x => string.Equals(x.Prototype.Id.Value, (sourcePrototypeId ?? string.Empty).Trim(), StringComparison.Ordinal) &&
-                    !x.IsOnWayToDepotForScrap && !x.IsOnWayToDepotForReplacement && !x.ReplaceQueued &&
-                    (!assignedOnly || x.AssignedTo.HasValue))
+                            !x.IsOnWayToDepotForScrap && !x.IsOnWayToDepotForReplacement && !x.ReplaceQueued &&
+                            (!assignedOnly || x.AssignedTo.HasValue))
                 .OrderBy(x => unassignedFirst && x.AssignedTo.HasValue ? 1 : 0)
                 .ThenBy(x => x.Id.Value)
                 .Take(requested)
@@ -649,10 +665,7 @@ namespace TajsCOI.Tweaks
         [ConsoleCommand(
             documentation: "Shows the current bounded HUD layout state.",
             customCommandName: "tajs_hud_status")]
-        public string HudStatus()
-        {
-            return TweaksHudLayoutFeature.Status();
-        }
+        public string HudStatus() => TweaksHudLayoutFeature.Status();
 
         [ConsoleCommand(
             documentation: "Clears saved HUD positions and restores the vanilla geometry.",

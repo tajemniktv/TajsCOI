@@ -11,9 +11,6 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
 
         internal static bool SkipUncompressedChecksum { get; private set; }
 
-        internal static void Update(bool skipUncompressedChecksum)
-        {
-            SkipUncompressedChecksum = skipUncompressedChecksum;
-        }
+        internal static void Update(bool skipUncompressedChecksum) => SkipUncompressedChecksum = skipUncompressedChecksum;
     }
 }

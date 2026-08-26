@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.Linq;
 using System.Threading;
 
 namespace TajsCOI.Profiler.Core
@@ -162,8 +161,8 @@ namespace TajsCOI.Profiler.Core
 
             if (m_active is not null ||
                 m_automaticCaptures >= policy.MaximumAutomaticCaptures ||
-                (m_lastAutomaticCaptureTimestamp != long.MinValue &&
-                 sample.CapturedTimestamp - m_lastAutomaticCaptureTimestamp < policy.CooldownTicks))
+                m_lastAutomaticCaptureTimestamp != long.MinValue &&
+                sample.CapturedTimestamp - m_lastAutomaticCaptureTimestamp < policy.CooldownTicks)
             {
                 return completed;
             }
@@ -265,7 +264,7 @@ namespace TajsCOI.Profiler.Core
         private RuntimeSpikeRecord FinishActive(ActiveCapture active, long endTimestamp)
         {
             RuntimeFrameSample[] post = m_history.SnapshotBetween(active.Trigger.CapturedTimestamp + 1, endTimestamp);
-            RuntimeFrameSample[] samples = new RuntimeFrameSample[active.PreSamples.Length + post.Length];
+            var samples = new RuntimeFrameSample[active.PreSamples.Length + post.Length];
             Array.Copy(active.PreSamples, samples, active.PreSamples.Length);
             Array.Copy(post, 0, samples, active.PreSamples.Length, post.Length);
             var result = new RuntimeSpikeRecord(

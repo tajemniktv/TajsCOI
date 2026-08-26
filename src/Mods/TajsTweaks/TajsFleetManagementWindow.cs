@@ -7,15 +7,11 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using Mafi;
-using Mafi.Core;
 using Mafi.Core.Buildings.VehicleDepots;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Dynamic;
-using Mafi.Core.Prototypes;
-using Mafi.Core.Vehicles;
 using Mafi.Core.Vehicles.Trucks;
 using Mafi.Localization;
-using Mafi.Unity;
 using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
@@ -42,7 +38,7 @@ namespace TajsCOI.Tweaks
             internal int Replacement;
             internal int Queued;
             internal int Problem;
-            internal readonly List<Vehicle> Vehicles = new List<Vehicle>();
+            internal readonly List<Vehicle> Vehicles = new();
         }
 
         private readonly TajsTweaksFeatureHost m_host;
@@ -53,7 +49,7 @@ namespace TajsCOI.Tweaks
         private readonly TextField m_source;
         private readonly TextField m_target;
         private readonly TextField m_count;
-        private IVisualElementScheduledItem? m_refreshSchedule;
+        private readonly IVisualElementScheduledItem? m_refreshSchedule;
         private float m_lastActivityTime;
         private float m_nextRefreshTime;
         private string m_confirmationKey = string.Empty;
@@ -84,19 +80,34 @@ namespace TajsCOI.Tweaks
             header.Add(m_source);
             header.Add(m_target);
             header.Add(m_count);
-            header.Add(MakeButton("Order", () => ConfirmAndRun("order", () =>
-                m_host.FleetOrder(m_source.GetText(), m_count.GetText(), "CONFIRM"))));
-            header.Add(MakeButton("Scrap", () => ConfirmAndRun("scrap", () =>
-                m_host.FleetScrapType(m_source.GetText(), m_count.GetText(), "CONFIRM"))));
-            header.Add(MakeButton("Replace", () => ConfirmAndRun("replace", () =>
-                m_host.FleetReplaceType(m_source.GetText(), m_target.GetText(), m_count.GetText(), "CONFIRM"))));
+            header.Add(
+                MakeButton(
+                    "Order",
+                    () => ConfirmAndRun(
+                        "order",
+                        () =>
+                            m_host.FleetOrder(m_source.GetText(), m_count.GetText(), "CONFIRM"))));
+            header.Add(
+                MakeButton(
+                    "Scrap",
+                    () => ConfirmAndRun(
+                        "scrap",
+                        () =>
+                            m_host.FleetScrapType(m_source.GetText(), m_count.GetText(), "CONFIRM"))));
+            header.Add(
+                MakeButton(
+                    "Replace",
+                    () => ConfirmAndRun(
+                        "replace",
+                        () =>
+                            m_host.FleetReplaceType(m_source.GetText(), m_target.GetText(), m_count.GetText(), "CONFIRM"))));
             header.Add(MakeButton("Refresh", ManualRefresh));
             panel.Add(header);
 
             m_status = new Label(string.Empty.AsLoc());
             panel.Add(m_status);
             m_groups = new Column(3.pt()).AlignItemsStretch();
-            ScrollColumn scroll = new ScrollColumn();
+            var scroll = new ScrollColumn();
             scroll.Add(m_groups);
             panel.Add(scroll);
             Body.Add(panel);
@@ -112,19 +123,19 @@ namespace TajsCOI.Tweaks
 
         private ButtonText MakeButton(string text, Action action)
         {
-            ButtonText button = new ButtonText(Mafi.Unity.UiToolkit.Library.Button.General, text.AsLoc(), () =>
-            {
-                MarkActivity();
-                action();
-            });
+            var button = new ButtonText(
+                Mafi.Unity.UiToolkit.Library.Button.General,
+                text.AsLoc(),
+                () =>
+                {
+                    MarkActivity();
+                    action();
+                });
             button.Width(new Px(90f));
             return button;
         }
 
-        private void MarkActivity()
-        {
-            m_lastActivityTime = Time.realtimeSinceStartup;
-        }
+        private void MarkActivity() => m_lastActivityTime = Time.realtimeSinceStartup;
 
         private void ManualRefresh()
         {
@@ -178,7 +189,7 @@ namespace TajsCOI.Tweaks
                 Vehicle[] vehicles = m_entities.GetAllEntitiesOfType<Vehicle>()
                     .Where(vehicle => vehicle is not null && !vehicle.IsDestroyed)
                     .ToArray();
-                Dictionary<string, VehicleGroup> groups = new Dictionary<string, VehicleGroup>(StringComparer.Ordinal);
+                var groups = new Dictionary<string, VehicleGroup>(StringComparer.Ordinal);
                 foreach (Vehicle vehicle in vehicles)
                 {
                     string id = vehicle.Prototype.Id.Value;
@@ -212,9 +223,10 @@ namespace TajsCOI.Tweaks
                 int replacements = vehicles.Count(vehicle => vehicle.IsOnWayToDepotForReplacement || vehicle.ReplaceQueued);
                 int problems = vehicles.Count(vehicle => vehicle is Truck truck && truck.IsCannotDeliverNotificationActive);
                 int queued = groups.Values.Sum(group => group.Queued);
-                m_status.Value((vehicles.Length + " vehicles | assigned " + assigned + " | scrap " + scrap +
-                    " | replacement " + replacements + " | queued " + queued + " | problems " + problems +
-                    " | batch limit " + TajsTweaksRuntimeState.FleetBatchLimit).AsLoc());
+                m_status.Value(
+                    (vehicles.Length + " vehicles | assigned " + assigned + " | scrap " + scrap +
+                     " | replacement " + replacements + " | queued " + queued + " | problems " + problems +
+                     " | batch limit " + TajsTweaksRuntimeState.FleetBatchLimit).AsLoc());
             }
             catch
             {
@@ -263,17 +275,29 @@ namespace TajsCOI.Tweaks
             row.Add(new Label(("scrap " + group.Scrap + "  replacement " + group.Replacement).AsLoc()).Width(new Px(220f)));
             row.Add(new Label(("queued " + group.Queued + "  problem " + group.Problem).AsLoc()).Width(new Px(180f)));
 
-            ButtonText scrap = MakeButton("Scrap", () => ConfirmAndRun("scrap:" + group.PrototypeId,
-                () => m_host.FleetScrapType(group.PrototypeId, GetBatchText(group), "CONFIRM")));
+            ButtonText scrap = MakeButton(
+                "Scrap",
+                () => ConfirmAndRun(
+                    "scrap:" + group.PrototypeId,
+                    () => m_host.FleetScrapType(group.PrototypeId, GetBatchText(group), "CONFIRM")));
             row.Add(scrap);
-            ButtonText replace = MakeButton("Replace", () => ConfirmAndRun("replace:" + group.PrototypeId,
-                () => m_host.FleetReplaceType(group.PrototypeId, m_target.GetText(), GetBatchText(group), "CONFIRM")));
+            ButtonText replace = MakeButton(
+                "Replace",
+                () => ConfirmAndRun(
+                    "replace:" + group.PrototypeId,
+                    () => m_host.FleetReplaceType(group.PrototypeId, m_target.GetText(), GetBatchText(group), "CONFIRM")));
             row.Add(replace);
-            ButtonText cancelScrap = MakeButton("Cancel scrap", () => ConfirmAndRun("cancel-scrap:" + group.PrototypeId,
-                () => CancelGroup(group, "scrap")));
+            ButtonText cancelScrap = MakeButton(
+                "Cancel scrap",
+                () => ConfirmAndRun(
+                    "cancel-scrap:" + group.PrototypeId,
+                    () => CancelGroup(group, "scrap")));
             row.Add(cancelScrap);
-            ButtonText cancelReplace = MakeButton("Cancel replace", () => ConfirmAndRun("cancel-replace:" + group.PrototypeId,
-                () => CancelGroup(group, "replace")));
+            ButtonText cancelReplace = MakeButton(
+                "Cancel replace",
+                () => ConfirmAndRun(
+                    "cancel-replace:" + group.PrototypeId,
+                    () => CancelGroup(group, "replace")));
             row.Add(cancelReplace);
             return row;
         }
@@ -282,11 +306,12 @@ namespace TajsCOI.Tweaks
 
         private string CancelGroup(VehicleGroup group, string operation)
         {
-            string ids = string.Join(",", group.Vehicles
-                .Where(vehicle => operation == "scrap" ? vehicle.IsOnWayToDepotForScrap :
-                    vehicle.IsOnWayToDepotForReplacement || vehicle.ReplaceQueued)
-                .Take(TajsTweaksRuntimeState.FleetBatchLimit)
-                .Select(vehicle => vehicle.Id.Value.ToString(CultureInfo.InvariantCulture)));
+            string ids = string.Join(
+                ",",
+                group.Vehicles
+                    .Where(vehicle => operation == "scrap" ? vehicle.IsOnWayToDepotForScrap : vehicle.IsOnWayToDepotForReplacement || vehicle.ReplaceQueued)
+                    .Take(TajsTweaksRuntimeState.FleetBatchLimit)
+                    .Select(vehicle => vehicle.Id.Value.ToString(CultureInfo.InvariantCulture)));
             return string.IsNullOrEmpty(ids)
                 ? "No pending " + operation + " requests for " + group.PrototypeId + "."
                 : m_host.FleetCancel(operation, ids, "CONFIRM");

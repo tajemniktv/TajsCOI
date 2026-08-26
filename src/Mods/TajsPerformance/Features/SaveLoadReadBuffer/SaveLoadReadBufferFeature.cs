@@ -32,10 +32,10 @@ namespace TajsCOI.Performance.Features.SaveLoadReadBuffer
             ConstructorInfo? target = FindTarget();
             MethodInfo? patchMethod = AccessTools.Method(typeof(SaveLoadReadBufferFeature), nameof(ReplaceBufferSize));
             return target is not null && patchMethod is not null &&
-                ProcessHarmonyPatchOwnership.HasExpected(
-                    Harmony.GetPatchInfo(target)?.Transpilers,
-                    HarmonyId,
-                    patchMethod);
+                   ProcessHarmonyPatchOwnership.HasExpected(
+                       Harmony.GetPatchInfo(target)?.Transpilers,
+                       HarmonyId,
+                       patchMethod);
         }
 
         public void Install(ITajsRuntime runtime, ITajsLogger log)
@@ -57,11 +57,14 @@ namespace TajsCOI.Performance.Features.SaveLoadReadBuffer
                 if (ProcessHarmonyPatchOwnership.HasExpected(patches?.Transpilers, HarmonyId, patchMethod))
                 {
                     log.Info("Already installed / compatible; the process-lifetime save reader patch was not applied again.");
-                    runtime.ReportCompatibility(new CompatibilityReport(
-                        "TajsPerformance", Id, CompatibilityState.Compatible,
-                        "Existing process-lifetime Harmony owner and transpiler method",
-                        "Already installed / compatible",
-                        "The validated 0.8.7a save-reader patch remains active; no duplicate transpiler was registered."));
+                    runtime.ReportCompatibility(
+                        new CompatibilityReport(
+                            "TajsPerformance",
+                            Id,
+                            CompatibilityState.Compatible,
+                            "Existing process-lifetime Harmony owner and transpiler method",
+                            "Already installed / compatible",
+                            "The validated 0.8.7a save-reader patch remains active; no duplicate transpiler was registered."));
                     return;
                 }
 
@@ -87,34 +90,26 @@ namespace TajsCOI.Performance.Features.SaveLoadReadBuffer
 
             int kibibytes = SaveLoadReadBufferSettings.BufferBytes / 1024;
             log.Info($"Enabled {kibibytes} KiB buffered save reader; vanilla checksum and loading paths remain active.");
-            runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsPerformance",
-                Id,
-                CompatibilityState.Compatible,
-                "Exactly one 4 KiB BlobReader buffer-size constant in the 0.8.7a constructor",
-                $"Replaced with {kibibytes} KiB",
-                "Opt-in read-buffer change installed; checksum preflight and deserialization behavior are unchanged."));
+            runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    "TajsPerformance",
+                    Id,
+                    CompatibilityState.Compatible,
+                    "Exactly one 4 KiB BlobReader buffer-size constant in the 0.8.7a constructor",
+                    $"Replaced with {kibibytes} KiB",
+                    "Opt-in read-buffer change installed; checksum preflight and deserialization behavior are unchanged."));
         }
 
         private static readonly object s_installGate = new();
 
-        private static ConstructorInfo? FindTarget() => typeof(BlobReader).GetConstructor(new[]
-        {
-            typeof(System.IO.Stream),
-            typeof(int),
-            typeof(Mafi.Collections.ImmutableCollections.ImmutableArray<ISpecialSerializerFactory>),
-        });
+        private static ConstructorInfo? FindTarget() => typeof(BlobReader).GetConstructor(
+            new[] { typeof(System.IO.Stream), typeof(int), typeof(Mafi.Collections.ImmutableCollections.ImmutableArray<ISpecialSerializerFactory>) });
 
         internal static IEnumerable<CodeInstruction> ReplaceBufferSize(IEnumerable<CodeInstruction> instructions)
         {
             List<CodeInstruction> input = instructions.ToList();
             var result = new List<CodeInstruction>(input);
-            ConstructorInfo? bufferedReader = typeof(BufferedReadStream).GetConstructor(new[]
-            {
-                typeof(System.IO.Stream),
-                typeof(int),
-                typeof(bool),
-            });
+            ConstructorInfo? bufferedReader = typeof(BufferedReadStream).GetConstructor(new[] { typeof(System.IO.Stream), typeof(int), typeof(bool) });
             if (bufferedReader is null)
             {
                 throw new MissingMethodException(typeof(BufferedReadStream).FullName, ".ctor(Stream, int, bool)");

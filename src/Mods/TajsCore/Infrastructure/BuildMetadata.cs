@@ -4,8 +4,8 @@
 
 #region
 
-using System.Globalization;
 using System;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using Mafi.Core.Mods;
@@ -23,6 +23,7 @@ namespace TajsCOI.Core.Infrastructure
         internal static string Version => s_info.Version;
         internal static string Configuration => s_info.Configuration;
         internal static string GitCommit => s_info.GitCommit;
+
         internal static string BuildTimestampUtc =>
             s_info.BuildTimestampUtc?.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture) ?? "unknown";
 

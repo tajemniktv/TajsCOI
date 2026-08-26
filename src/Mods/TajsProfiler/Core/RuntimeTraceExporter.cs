@@ -66,7 +66,7 @@ namespace TajsCOI.Profiler.Core
                 throw new ArgumentException("A trace path is required.", nameof(path));
             }
 
-            string? directory = System.IO.Path.GetDirectoryName(path);
+            string? directory = Path.GetDirectoryName(path);
             if (!string.IsNullOrWhiteSpace(directory))
             {
                 Directory.CreateDirectory(directory);
@@ -178,7 +178,7 @@ namespace TajsCOI.Profiler.Core
                 throw new ArgumentException("A CSV path is required.", nameof(path));
             }
 
-            string? directory = System.IO.Path.GetDirectoryName(path);
+            string? directory = Path.GetDirectoryName(path);
             if (!string.IsNullOrWhiteSpace(directory))
             {
                 Directory.CreateDirectory(directory);
@@ -638,10 +638,7 @@ namespace TajsCOI.Profiler.Core
         private static double ToMicroseconds(long ticks) =>
             ticks * 1000000.0 / Stopwatch.Frequency;
 
-        private static void AppendNumber(StringBuilder builder, double value)
-        {
-            builder.Append(value.ToString("F3", CultureInfo.InvariantCulture));
-        }
+        private static void AppendNumber(StringBuilder builder, double value) => builder.Append(value.ToString("F3", CultureInfo.InvariantCulture));
 
         private static void AppendJsonString(StringBuilder builder, string? value)
         {

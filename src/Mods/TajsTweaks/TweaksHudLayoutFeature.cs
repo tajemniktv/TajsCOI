@@ -97,7 +97,7 @@ namespace TajsCOI.Tweaks
                 {
                     return;
                 }
-                Vector2 current = new Vector2(evt.position.x, evt.position.y);
+                var current = new Vector2(evt.position.x, evt.position.y);
                 m_onDelta(current - m_start);
                 m_start = current;
                 evt.StopPropagation();
@@ -140,7 +140,7 @@ namespace TajsCOI.Tweaks
             "m_priceDisplaysContainer=priceDisplays",
         };
 
-        private static readonly Dictionary<string, HudElementState> s_elements = new Dictionary<string, HudElementState>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, HudElementState> s_elements = new(StringComparer.Ordinal);
         private static readonly BindingFlags s_instanceFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         private static FieldInfo[]? s_hudFields;
         private static ITajsSettings? s_settings;
@@ -166,7 +166,7 @@ namespace TajsCOI.Tweaks
                 s_hudFields = typeof(HudController).GetFields(s_instanceFlags);
             }
 
-            HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (string mapping in s_fieldKeys)
             {
                 string[] parts = mapping.Split(new[] { '=' }, 2);
@@ -229,7 +229,7 @@ namespace TajsCOI.Tweaks
         internal static string Status()
         {
             return "HUD layout=" + TajsTweaksRuntimeState.HudLayout + "; locked=" + TajsTweaksRuntimeState.HudDragLocked +
-                "; supported elements=" + s_elements.Count + "; drag positions are normalized to the current resolution.";
+                   "; supported elements=" + s_elements.Count + "; drag positions are normalized to the current resolution.";
         }
 
         private static void ApplyState(HudElementState state)
@@ -275,9 +275,11 @@ namespace TajsCOI.Tweaks
             {
                 return;
             }
-            string value = string.Join(";", s_elements.Values.OrderBy(x => x.Key, StringComparer.Ordinal)
-                .Select(x => x.Key + "=" + x.Position.x.ToString("R", CultureInfo.InvariantCulture) + "," +
-                    x.Position.y.ToString("R", CultureInfo.InvariantCulture)));
+            string value = string.Join(
+                ";",
+                s_elements.Values.OrderBy(x => x.Key, StringComparer.Ordinal)
+                    .Select(x => x.Key + "=" + x.Position.x.ToString("R", CultureInfo.InvariantCulture) + "," +
+                                 x.Position.y.ToString("R", CultureInfo.InvariantCulture)));
             s_settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudPositions, value);
         }
 
@@ -300,7 +302,7 @@ namespace TajsCOI.Tweaks
             return Vector2.zero;
         }
 
-        private static Vector2 ClampPosition(Vector2 value) => new Vector2(Mathf.Clamp(value.x, -1f, 1f), Mathf.Clamp(value.y, -1f, 1f));
+        private static Vector2 ClampPosition(Vector2 value) => new(Mathf.Clamp(value.x, -1f, 1f), Mathf.Clamp(value.y, -1f, 1f));
 
         private static VisualElement? GetRoot(object component)
         {

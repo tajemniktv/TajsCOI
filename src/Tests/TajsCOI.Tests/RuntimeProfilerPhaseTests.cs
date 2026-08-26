@@ -6,9 +6,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Web.Script.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Web.Script.Serialization;
 using TajsCOI.Common.Settings;
 using TajsCOI.Profiler;
 using TajsCOI.Profiler.Core;
@@ -23,12 +23,14 @@ namespace TajsCOI.Tests
         {
             Assert.Equal(11, ProfilerSettingsCatalog.All.Count);
             Assert.Equal(11, ProfilerSettingsCatalog.All.Select(x => x.Key).Distinct(StringComparer.Ordinal).Count());
-            Assert.All(ProfilerSettingsCatalog.All, descriptor =>
-            {
-                Assert.Equal(ProfilerSettingsCatalog.ModId, descriptor.ModId);
-                Assert.Equal("Profiler", descriptor.Category);
-                Assert.Equal(SettingApplyMode.Immediate, descriptor.ApplyMode);
-            });
+            Assert.All(
+                ProfilerSettingsCatalog.All,
+                descriptor =>
+                {
+                    Assert.Equal(ProfilerSettingsCatalog.ModId, descriptor.ModId);
+                    Assert.Equal("Profiler", descriptor.Category);
+                    Assert.Equal(SettingApplyMode.Immediate, descriptor.ApplyMode);
+                });
         }
 
         [Fact]
@@ -73,7 +75,7 @@ namespace TajsCOI.Tests
             string path = Path.Combine(Path.GetTempPath(), "tajs-telemetry-" + Guid.NewGuid().ToString("N") + ".json");
             try
             {
-                RuntimeFrameSample frame = new RuntimeFrameSample(
+                var frame = new RuntimeFrameSample(
                     1,
                     1000,
                     new GameLoopTimingSnapshot(),
@@ -138,7 +140,7 @@ namespace TajsCOI.Tests
         [Fact]
         public void CsvExportIncludesBroadTimingColumnsAndLeavesUnavailableCountersBlank()
         {
-            RuntimeFrameSample frame = new RuntimeFrameSample(
+            var frame = new RuntimeFrameSample(
                 1,
                 1000,
                 new GameLoopTimingSnapshot(renderTicks: 20),
@@ -189,7 +191,7 @@ namespace TajsCOI.Tests
         [Fact]
         public void SpikePolicySupportsAbsoluteRelativeAndOvertimeTriggers()
         {
-            RuntimeSpikePolicy absolutePolicy = new RuntimeSpikePolicy(
+            var absolutePolicy = new RuntimeSpikePolicy(
                 frameMilliseconds: 50,
                 waitForSimMilliseconds: 20,
                 simulationMilliseconds: 50,
@@ -199,7 +201,7 @@ namespace TajsCOI.Tests
             Assert.True(RuntimeSpikeHistory.TryGetTrigger(absolute, 0, absolutePolicy, out string absoluteReason));
             Assert.Equal("frame/update threshold", absoluteReason);
 
-            RuntimeSpikePolicy relativePolicy = new RuntimeSpikePolicy(
+            var relativePolicy = new RuntimeSpikePolicy(
                 frameMilliseconds: 1000,
                 waitForSimMilliseconds: 1000,
                 simulationMilliseconds: 1000,
@@ -221,8 +223,8 @@ namespace TajsCOI.Tests
         [Fact]
         public async Task PhaseContextKeepsOverlappingDispatchesOnTheirOwningThreads()
         {
-            object simulationEvent = new object();
-            object renderEvent = new object();
+            object simulationEvent = new();
+            object renderEvent = new();
             RuntimeTracePhaseContext.RegisterEvent(simulationEvent, RuntimeTracePhase.SimUpdate);
             RuntimeTracePhaseContext.RegisterEvent(renderEvent, RuntimeTracePhase.Render);
 
@@ -285,7 +287,7 @@ namespace TajsCOI.Tests
         [Fact]
         public void ConflictingEventRegistrationIsReportedOnceAndRemainsUnknown()
         {
-            object eventSource = new object();
+            object eventSource = new();
             int conflictsBefore = RuntimeTracePhaseContext.PhaseConflictCount;
 
             RuntimeTracePhaseContext.RegisterEvent(eventSource, RuntimeTracePhase.SimUpdate);
@@ -320,23 +322,20 @@ namespace TajsCOI.Tests
             for (int index = 1; index <= 100; index++)
             {
                 long start = 1000 + index * 10;
-                spans.Add(new RuntimeTraceSpan(
-                    start,
-                    start + index,
-                    1,
-                    RuntimeTracePhase.SimUpdate,
-                    11,
-                    index,
-                    0));
+                spans.Add(
+                    new RuntimeTraceSpan(
+                        start,
+                        start + index,
+                        1,
+                        RuntimeTracePhase.SimUpdate,
+                        11,
+                        index,
+                        0));
             }
 
             long slowTicks = System.Diagnostics.Stopwatch.Frequency * 2 / 1000;
             spans.Add(new RuntimeTraceSpan(3000, 3000 + slowTicks, 2, RuntimeTracePhase.Render, 12, 101, 0));
-            CallbackMetadataSnapshot[] metadata =
-            {
-                new CallbackMetadataSnapshot(1, "SimulationOwner", "Update", "Tests"),
-                new CallbackMetadataSnapshot(2, "RenderOwner", "Render", "Tests"),
-            };
+            CallbackMetadataSnapshot[] metadata = { new(1, "SimulationOwner", "Update", "Tests"), new(2, "RenderOwner", "Render", "Tests") };
 
             CallbackMetricSnapshot[] metrics = DeepCallbackRecorder.AggregateCallbackMetrics(spans, metadata, 64);
             CallbackMetricSnapshot simulation = Assert.Single(metrics, x => x.Metadata.Id == 1);
@@ -365,7 +364,7 @@ namespace TajsCOI.Tests
         {
             var history = new RuntimeFrameHistory(16);
             var spikes = new RuntimeSpikeHistory(history);
-            RuntimeSpikePolicy policy = new RuntimeSpikePolicy(
+            var policy = new RuntimeSpikePolicy(
                 frameMilliseconds: 50,
                 waitForSimMilliseconds: 1000,
                 simulationMilliseconds: 1000,
@@ -420,7 +419,7 @@ namespace TajsCOI.Tests
         [Fact]
         public void ClassificationUsesTrustedGpuAndGcSignalsWithoutInventingUnsupportedTelemetry()
         {
-            RuntimeFrameSample gc = new RuntimeFrameSample(
+            var gc = new RuntimeFrameSample(
                 1,
                 1,
                 new GameLoopTimingSnapshot(renderTicks: StopwatchTicks(60)),
@@ -448,7 +447,7 @@ namespace TajsCOI.Tests
                     -1,
                     false,
                     0));
-            RuntimeFrameSample gpu = new RuntimeFrameSample(
+            var gpu = new RuntimeFrameSample(
                 2,
                 2,
                 new GameLoopTimingSnapshot(renderTicks: StopwatchTicks(20)),

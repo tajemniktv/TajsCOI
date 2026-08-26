@@ -5,6 +5,7 @@
 #region
 
 using System;
+using System.Collections.Generic;
 using System.Text;
 using Mafi;
 using Mafi.Core.Console;
@@ -71,7 +72,7 @@ namespace TajsCOI.Core.Features.Debug
             }
 
             builder.AppendLine("Compatibility:");
-            var reports = m_runtime.GetCompatibilitySnapshot();
+            IReadOnlyList<CompatibilityReport> reports = m_runtime.GetCompatibilitySnapshot();
             if (reports.Count == 0)
             {
                 builder.AppendLine("  no component reports");

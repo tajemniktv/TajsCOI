@@ -68,34 +68,46 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
         internal static readonly RuntimeTelemetryCounter DumpingJobsCreatedCounter =
             RuntimeTelemetry.RegisterCounter("dumping.jobs-created", owner: "TajsProfiler.Dumping");
+
         internal static readonly RuntimeTelemetryCounter DumpingCallsCounter =
             RuntimeTelemetry.RegisterCounter("dumping.calls", owner: "TajsProfiler.Dumping");
+
         internal static readonly RuntimeTelemetryCounter DumpingTrueResultsCounter =
             RuntimeTelemetry.RegisterCounter("dumping.true-results", owner: "TajsProfiler.Dumping");
+
         internal static readonly RuntimeTelemetryCounter DumpingFalseResultsCounter =
             RuntimeTelemetry.RegisterCounter("dumping.false-results", owner: "TajsProfiler.Dumping");
+
         internal static readonly RuntimeTelemetryCounter DumpingTimeCounter =
             RuntimeTelemetry.RegisterCounter(
                 "dumping.time",
                 RuntimeTelemetryUnit.StopwatchTicks,
                 "TajsProfiler.Dumping");
+
         internal static readonly RuntimeTelemetryCounter PathfindingEnqueuesCounter =
             RuntimeTelemetry.RegisterCounter("pathfinding.enqueues", owner: "TajsProfiler.Pathfinding");
+
         internal static readonly RuntimeTelemetryCounter PathfindingTimeCounter =
             RuntimeTelemetry.RegisterCounter(
                 "pathfinding.time",
                 RuntimeTelemetryUnit.StopwatchTicks,
                 "TajsProfiler.Pathfinding");
+
         internal static readonly RuntimeTelemetryCounter DumpingFailuresCounter =
             RuntimeTelemetry.RegisterCounter("dumping.failures", owner: "TajsProfiler.Dumping");
+
         internal static readonly RuntimeTelemetryCounter TerrainEligibleCacheCallsCounter =
             RuntimeTelemetry.RegisterCounter("terrain.eligible-cache-calls", owner: "TajsProfiler.Terrain");
+
         internal static readonly RuntimeTelemetryCounter TerrainNearbyChecksCounter =
             RuntimeTelemetry.RegisterCounter("terrain.nearby-checks", owner: "TajsProfiler.Terrain");
+
         private static readonly RuntimeTelemetryEvent s_profileStartedEvent =
             RuntimeTelemetry.RegisterEvent("dumping.profile-enabled");
+
         private static readonly RuntimeTelemetryEvent s_profileStoppedEvent =
             RuntimeTelemetry.RegisterEvent("dumping.profile-disabled");
+
         private static readonly RuntimeTelemetryEvent s_largeSearchEvent =
             RuntimeTelemetry.RegisterEvent("dumping.large-search");
 
@@ -1768,10 +1780,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
         private static void BeginDumpingJob(out CallerContextState __state) => __state = EnterCaller(SearchCaller.DumpingJob);
 
-        private static void BeginDumpingJobFactory(out CallerContextState __state)
-        {
-            __state = EnterCaller(SearchCaller.DumpingJob);
-        }
+        private static void BeginDumpingJobFactory(out CallerContextState __state) => __state = EnterCaller(SearchCaller.DumpingJob);
 
         private static void AfterDumpingJobFactory(bool __result)
         {
@@ -1845,13 +1854,14 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 _ => "The required dumping-search signature or root patch could not be installed.",
             };
 
-            runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsProfiler",
-                "Dumping",
-                state,
-                "CoI 0.8.7/0.8.7a dumping-search root and optional diagnostic signatures",
-                observed,
-                reason));
+            runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    "TajsProfiler",
+                    "Dumping",
+                    state,
+                    "CoI 0.8.7/0.8.7a dumping-search root and optional diagnostic signatures",
+                    observed,
+                    reason));
         }
 
         private static void LogInfo(string message) => s_log?.Info(message);
@@ -2807,7 +2817,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
             public long NearbyAdded;
             public long NearbyExpansionCalls;
             public long NearbyExpansionElapsedTicks;
-            public NearbyMode NearbyMode;
+            public readonly NearbyMode NearbyMode;
             public int NearbyScanned;
             public long PreSelectionElapsedTicks;
             public int TowerCacheCalls;

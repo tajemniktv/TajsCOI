@@ -28,7 +28,7 @@ namespace TajsCOI.Core.Runtime
         {
             unchecked
             {
-                return (StringComparer.Ordinal.GetHashCode(ModId) * 397) ^
+                return StringComparer.Ordinal.GetHashCode(ModId) * 397 ^
                        StringComparer.Ordinal.GetHashCode(ComponentId);
             }
         }

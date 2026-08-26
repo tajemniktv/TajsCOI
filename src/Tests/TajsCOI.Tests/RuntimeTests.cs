@@ -6,6 +6,7 @@ using HarmonyLib;
 using Mafi;
 using Mafi.Logging;
 using TajsCOI.Common.Compatibility;
+using TajsCOI.Common.Logging;
 using TajsCOI.Core.Infrastructure;
 using TajsCOI.Core.Runtime;
 using Xunit;
@@ -40,7 +41,7 @@ namespace TajsCOI.Tests
         public void LoggerPreservesPrefixSeverityOnceSemanticsAndException()
         {
             var runtime = new TajsRuntime();
-            var logger = runtime.GetLogger("TajsProfiler", "Dumping");
+            ITajsLogger logger = runtime.GetLogger("TajsProfiler", "Dumping");
             string unique = Guid.NewGuid().ToString("N");
             var entries = new List<LogEntry>();
             Action<LogEntry> handler = entry => entries.Add(entry);
@@ -62,23 +63,30 @@ namespace TajsCOI.Tests
                 logger.Exception(exception, "context-" + unique);
                 logger.Exception(exception, "context-with-space-" + unique + "  ");
 
-                Assert.Contains(entries, entry =>
-                    entry.Type == LogType.Info &&
-                    entry.Message == $"[TajsCOI][TajsProfiler][Dumping] info-{unique}");
-                Assert.Single(entries.FindAll(entry =>
-                    entry.Type == LogType.Warning &&
-                    entry.Message == $"[TajsCOI][TajsProfiler][Dumping] once-{unique}"));
-                Assert.Single(entries.FindAll(entry =>
-                    entry.Type == LogType.Error &&
-                    entry.Message == $"[TajsCOI][TajsProfiler][Dumping] error-once-{unique}"));
-                LogEntry exceptionEntry = Assert.Single(entries.FindAll(entry =>
-                    entry.Type == LogType.Exception && entry.Message == $"[TajsCOI][TajsProfiler][Dumping] context-{unique}"));
+                Assert.Contains(
+                    entries,
+                    entry =>
+                        entry.Type == LogType.Info &&
+                        entry.Message == $"[TajsCOI][TajsProfiler][Dumping] info-{unique}");
+                Assert.Single(
+                    entries.FindAll(entry =>
+                        entry.Type == LogType.Warning &&
+                        entry.Message == $"[TajsCOI][TajsProfiler][Dumping] once-{unique}"));
+                Assert.Single(
+                    entries.FindAll(entry =>
+                        entry.Type == LogType.Error &&
+                        entry.Message == $"[TajsCOI][TajsProfiler][Dumping] error-once-{unique}"));
+                LogEntry exceptionEntry = Assert.Single(
+                    entries.FindAll(entry =>
+                        entry.Type == LogType.Exception && entry.Message == $"[TajsCOI][TajsProfiler][Dumping] context-{unique}"));
                 Assert.Equal($"[TajsCOI][TajsProfiler][Dumping] context-{unique}", exceptionEntry.Message);
                 Assert.True(exceptionEntry.Exception.HasValue);
                 Assert.Same(exception, exceptionEntry.Exception.Value);
-                Assert.Contains(entries, entry =>
-                    entry.Type == LogType.Exception &&
-                    entry.Message == $"[TajsCOI][TajsProfiler][Dumping] context-with-space-{unique}  ");
+                Assert.Contains(
+                    entries,
+                    entry =>
+                        entry.Type == LogType.Exception &&
+                        entry.Message == $"[TajsCOI][TajsProfiler][Dumping] context-with-space-{unique}  ");
             }
             finally
             {

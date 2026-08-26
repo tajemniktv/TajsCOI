@@ -73,44 +73,161 @@ namespace TajsCOI.Common.Settings
         public string? ComponentRequirement { get; }
 
         public static SettingDescriptor Boolean(
-            string modId, string modDisplayName, string key, string displayName, string description,
-            bool defaultValue, string category = "General", SettingScope scope = SettingScope.Global,
-            SettingApplyMode applyMode = SettingApplyMode.Immediate, SettingFlags flags = SettingFlags.None,
+            string modId,
+            string modDisplayName,
+            string key,
+            string displayName,
+            string description,
+            bool defaultValue,
+            string category = "General",
+            SettingScope scope = SettingScope.Global,
+            SettingApplyMode applyMode = SettingApplyMode.Immediate,
+            SettingFlags flags = SettingFlags.None,
             string? componentRequirement = null) =>
-            new(modId, modDisplayName, key, displayName, description, category, SettingValueType.Boolean,
-                defaultValue, null, null, null, null, scope, applyMode, flags, componentRequirement);
+            new(
+                modId,
+                modDisplayName,
+                key,
+                displayName,
+                description,
+                category,
+                SettingValueType.Boolean,
+                defaultValue,
+                null,
+                null,
+                null,
+                null,
+                scope,
+                applyMode,
+                flags,
+                componentRequirement);
 
         public static SettingDescriptor Integer(
-            string modId, string modDisplayName, string key, string displayName, string description,
-            int defaultValue, int minimum, int maximum, int step = 1, string category = "General",
-            SettingScope scope = SettingScope.Global, SettingApplyMode applyMode = SettingApplyMode.Immediate,
-            SettingFlags flags = SettingFlags.None, string? componentRequirement = null) =>
-            new(modId, modDisplayName, key, displayName, description, category, SettingValueType.Integer,
-                defaultValue, minimum, maximum, step, null, scope, applyMode, flags, componentRequirement);
+            string modId,
+            string modDisplayName,
+            string key,
+            string displayName,
+            string description,
+            int defaultValue,
+            int minimum,
+            int maximum,
+            int step = 1,
+            string category = "General",
+            SettingScope scope = SettingScope.Global,
+            SettingApplyMode applyMode = SettingApplyMode.Immediate,
+            SettingFlags flags = SettingFlags.None,
+            string? componentRequirement = null) =>
+            new(
+                modId,
+                modDisplayName,
+                key,
+                displayName,
+                description,
+                category,
+                SettingValueType.Integer,
+                defaultValue,
+                minimum,
+                maximum,
+                step,
+                null,
+                scope,
+                applyMode,
+                flags,
+                componentRequirement);
 
         public static SettingDescriptor Float(
-            string modId, string modDisplayName, string key, string displayName, string description,
-            double defaultValue, double minimum, double maximum, double step, string category = "General",
-            SettingScope scope = SettingScope.Global, SettingApplyMode applyMode = SettingApplyMode.Immediate,
-            SettingFlags flags = SettingFlags.None, string? componentRequirement = null) =>
-            new(modId, modDisplayName, key, displayName, description, category, SettingValueType.Float,
-                defaultValue, minimum, maximum, step, null, scope, applyMode, flags, componentRequirement);
+            string modId,
+            string modDisplayName,
+            string key,
+            string displayName,
+            string description,
+            double defaultValue,
+            double minimum,
+            double maximum,
+            double step,
+            string category = "General",
+            SettingScope scope = SettingScope.Global,
+            SettingApplyMode applyMode = SettingApplyMode.Immediate,
+            SettingFlags flags = SettingFlags.None,
+            string? componentRequirement = null) =>
+            new(
+                modId,
+                modDisplayName,
+                key,
+                displayName,
+                description,
+                category,
+                SettingValueType.Float,
+                defaultValue,
+                minimum,
+                maximum,
+                step,
+                null,
+                scope,
+                applyMode,
+                flags,
+                componentRequirement);
 
         public static SettingDescriptor Choice(
-            string modId, string modDisplayName, string key, string displayName, string description,
-            string defaultValue, IReadOnlyList<SettingChoice> choices, string category = "General",
-            SettingScope scope = SettingScope.Global, SettingApplyMode applyMode = SettingApplyMode.Immediate,
-            SettingFlags flags = SettingFlags.None, string? componentRequirement = null) =>
-            new(modId, modDisplayName, key, displayName, description, category, SettingValueType.Choice,
-                defaultValue, null, null, null, choices, scope, applyMode, flags, componentRequirement);
+            string modId,
+            string modDisplayName,
+            string key,
+            string displayName,
+            string description,
+            string defaultValue,
+            IReadOnlyList<SettingChoice> choices,
+            string category = "General",
+            SettingScope scope = SettingScope.Global,
+            SettingApplyMode applyMode = SettingApplyMode.Immediate,
+            SettingFlags flags = SettingFlags.None,
+            string? componentRequirement = null) =>
+            new(
+                modId,
+                modDisplayName,
+                key,
+                displayName,
+                description,
+                category,
+                SettingValueType.Choice,
+                defaultValue,
+                null,
+                null,
+                null,
+                choices,
+                scope,
+                applyMode,
+                flags,
+                componentRequirement);
 
         public static SettingDescriptor String(
-            string modId, string modDisplayName, string key, string displayName, string description,
-            string defaultValue, string category = "General", SettingScope scope = SettingScope.Global,
-            SettingApplyMode applyMode = SettingApplyMode.Immediate, SettingFlags flags = SettingFlags.None,
+            string modId,
+            string modDisplayName,
+            string key,
+            string displayName,
+            string description,
+            string defaultValue,
+            string category = "General",
+            SettingScope scope = SettingScope.Global,
+            SettingApplyMode applyMode = SettingApplyMode.Immediate,
+            SettingFlags flags = SettingFlags.None,
             string? componentRequirement = null) =>
-            new(modId, modDisplayName, key, displayName, description, category, SettingValueType.String,
-                defaultValue, null, null, null, null, scope, applyMode, flags, componentRequirement);
+            new(
+                modId,
+                modDisplayName,
+                key,
+                displayName,
+                description,
+                category,
+                SettingValueType.String,
+                defaultValue,
+                null,
+                null,
+                null,
+                null,
+                scope,
+                applyMode,
+                flags,
+                componentRequirement);
 
         public bool TryNormalize(object? input, out object normalized, out string error)
         {
@@ -140,7 +257,8 @@ namespace TajsCOI.Common.Settings
                         return false;
                 }
             }
-            catch (Exception exception) when (exception is FormatException || exception is InvalidCastException || exception is OverflowException || exception is ArgumentNullException)
+            catch (Exception exception) when (exception is FormatException || exception is InvalidCastException || exception is OverflowException ||
+                                              exception is ArgumentNullException)
             {
                 error = "Value could not be converted to " + ValueType + ".";
                 return false;

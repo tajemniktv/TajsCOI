@@ -67,8 +67,8 @@ namespace TajsCOI.Performance.Features.StreamingSaveCompression
 
                 var crcOutput = new Crc32ForwardingWriteStream(output);
                 using (Stream gzip = createCompressor is null
-                    ? new GZipStream(crcOutput, CompressionLevel.Optimal, leaveOpen: true)
-                    : createCompressor(crcOutput))
+                           ? new GZipStream(crcOutput, CompressionLevel.Optimal, leaveOpen: true)
+                           : createCompressor(crcOutput))
                 {
                     uncompressedInput.CopyTo(gzip, 64 * 1024);
                 }

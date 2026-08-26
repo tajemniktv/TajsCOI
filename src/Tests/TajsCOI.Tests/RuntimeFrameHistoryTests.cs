@@ -165,7 +165,7 @@ namespace TajsCOI.Tests
         [Fact]
         public void ClassificationDistinguishesWaitingSimulationAndMainRender()
         {
-            RuntimeFrameSample waiting = new RuntimeFrameSample(
+            var waiting = new RuntimeFrameSample(
                 1,
                 1,
                 new GameLoopTimingSnapshot(
@@ -176,7 +176,7 @@ namespace TajsCOI.Tests
                 1,
                 1,
                 false);
-            RuntimeFrameSample main = new RuntimeFrameSample(
+            var main = new RuntimeFrameSample(
                 2,
                 2,
                 new GameLoopTimingSnapshot(renderTicks: 60),
@@ -185,7 +185,7 @@ namespace TajsCOI.Tests
                 1,
                 1,
                 false);
-            RuntimeFrameSample sim = new RuntimeFrameSample(
+            var sim = new RuntimeFrameSample(
                 3,
                 3,
                 new GameLoopTimingSnapshot(simUpdateTicks: 60),
@@ -203,7 +203,7 @@ namespace TajsCOI.Tests
         [Fact]
         public void DegradedRunnerUsesRingTimingsAndPreservesUnavailableSentinels()
         {
-            RuntimeFrameSample sample = new RuntimeFrameSample(
+            var sample = new RuntimeFrameSample(
                 1,
                 1,
                 new GameLoopTimingSnapshot(renderTicks: 10),
@@ -221,7 +221,7 @@ namespace TajsCOI.Tests
         [Fact]
         public void PartialRunnerFallsBackToAvailableComponentsWhenRingsAreUnavailable()
         {
-            RuntimeFrameSample sample = new RuntimeFrameSample(
+            var sample = new RuntimeFrameSample(
                 1,
                 1,
                 new GameLoopTimingSnapshot(),
@@ -403,19 +403,19 @@ namespace TajsCOI.Tests
         {
             var fake = new FakeGameRunner
             {
-                LatestUpdateDuration = System.TimeSpan.FromMilliseconds(12),
-                LatestInputUpdateDuration = System.TimeSpan.FromMilliseconds(1),
-                LatestSyncDuration = System.TimeSpan.FromMilliseconds(2),
-                LatestRenderUpdateDuration = System.TimeSpan.FromMilliseconds(3),
-                LatestSimUpdateDuration = System.TimeSpan.FromMilliseconds(4),
+                LatestUpdateDuration = TimeSpan.FromMilliseconds(12),
+                LatestInputUpdateDuration = TimeSpan.FromMilliseconds(1),
+                LatestSyncDuration = TimeSpan.FromMilliseconds(2),
+                LatestRenderUpdateDuration = TimeSpan.FromMilliseconds(3),
+                LatestSimUpdateDuration = TimeSpan.FromMilliseconds(4),
                 LatestSimUpdateWasOvertime = true,
-                LatestSimUpdateOvertimeDuration = System.TimeSpan.FromMilliseconds(5),
+                LatestSimUpdateOvertimeDuration = TimeSpan.FromMilliseconds(5),
                 RunSimulationInBackgroundThread = true,
                 SimUpdateCount = 6,
                 SimStepsSinceLoad = 7,
             };
 
-            GameRunnerTimingAccess? access = GameRunnerTimingAccess.TryCreate(fake, out string reason);
+            var access = GameRunnerTimingAccess.TryCreate(fake, out string reason);
 
             Assert.NotNull(access);
             Assert.True(access!.IsAvailable, reason);
@@ -434,10 +434,7 @@ namespace TajsCOI.Tests
         [Fact]
         public void DeferredRunnerTimingAccessDoesNotDiscoverDuringConstruction()
         {
-            var fake = new FakeGameRunner
-            {
-                LatestUpdateDuration = System.TimeSpan.FromMilliseconds(12),
-            };
+            var fake = new FakeGameRunner { LatestUpdateDuration = TimeSpan.FromMilliseconds(12) };
             var deferred = new DeferredGameRunnerTimingAccess(new Mafi.LazyResolve<IGameIdProvider>(fake));
 
             Assert.False(deferred.IsDiscoveryAttempted);
@@ -467,13 +464,13 @@ namespace TajsCOI.Tests
             public long SessionId { get; set; }
             public DateTime GameStartedAtUtc { get; set; }
             public string GameStartedAtVersion { get; set; } = "test";
-            public System.TimeSpan LatestUpdateDuration { get; set; }
-            public System.TimeSpan LatestInputUpdateDuration { get; set; }
-            public System.TimeSpan LatestSyncDuration { get; set; }
-            public System.TimeSpan LatestRenderUpdateDuration { get; set; }
-            public System.TimeSpan LatestSimUpdateDuration { get; set; }
+            public TimeSpan LatestUpdateDuration { get; set; }
+            public TimeSpan LatestInputUpdateDuration { get; set; }
+            public TimeSpan LatestSyncDuration { get; set; }
+            public TimeSpan LatestRenderUpdateDuration { get; set; }
+            public TimeSpan LatestSimUpdateDuration { get; set; }
             public bool LatestSimUpdateWasOvertime { get; set; }
-            public System.TimeSpan LatestSimUpdateOvertimeDuration { get; set; }
+            public TimeSpan LatestSimUpdateOvertimeDuration { get; set; }
             public bool RunSimulationInBackgroundThread { get; set; }
             public int SimUpdateCount { get; set; }
             public int SimStepsSinceLoad { get; set; }

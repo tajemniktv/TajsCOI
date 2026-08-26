@@ -3,6 +3,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
@@ -35,7 +36,7 @@ namespace TajsCOI.Tweaks
             }
 
             MethodInfo markChunkDirty = AccessTools.Method(typeof(ResVisBarsRenderer), "markChunkDirty")
-                ?? throw new MissingMethodException(typeof(ResVisBarsRenderer).FullName, "markChunkDirty");
+                                        ?? throw new MissingMethodException(typeof(ResVisBarsRenderer).FullName, "markChunkDirty");
             _.Patch(markChunkDirty, postfix: new HarmonyMethod(typeof(TweaksResourceDepositFeature), nameof(NativeChunkDirty)));
         }
 
@@ -77,8 +78,8 @@ namespace TajsCOI.Tweaks
                 UnityEngine.Object.Destroy(current.gameObject);
             }
 
-            GameObject owner = new GameObject("Tajs resource deposit labels");
-            ResourceDepositLabelController created = owner.AddComponent<ResourceDepositLabelController>();
+            var owner = new GameObject("Tajs resource deposit labels");
+            var created = owner.AddComponent<ResourceDepositLabelController>();
             created.Initialize(terrain, renderer);
             s_controller = new WeakReference<ResourceDepositLabelController>(created);
         }
@@ -112,7 +113,7 @@ namespace TajsCOI.Tweaks
         private sealed class DepositCluster
         {
             internal LooseProductProto Product = null!;
-            internal readonly HashSet<Chunk2i> Chunks = new HashSet<Chunk2i>();
+            internal readonly HashSet<Chunk2i> Chunks = new();
             internal string Key = string.Empty;
             internal Vector3 WorldCenter;
             internal float SurfaceHeight;
@@ -122,10 +123,12 @@ namespace TajsCOI.Tweaks
         }
 
         private const int ChunkSize = 64;
-        private const int SampleStep = 4;
-        private const int MinimumSampleCount = 20;
+        private const int SampleStep = 8;
+        private const int MinimumSampleCount = 4;
+        private const int MaximumSamplesPerCluster = 128;
         private const float DirtyDebounceSeconds = 0.5f;
         private const int MaximumClusters = 512;
+        private const double FullRefreshBudgetMilliseconds = 2.0;
 
         private static readonly BindingFlags InstanceFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
@@ -133,18 +136,23 @@ namespace TajsCOI.Tweaks
         private ResVisBarsRenderer? m_renderer;
         private FieldInfo? m_visibilityField;
         private FieldInfo? m_chunksField;
-        private readonly List<DepositCluster> m_clusters = new List<DepositCluster>();
-        private readonly Dictionary<LooseProductProto, object> m_nativeChunkSets = new Dictionary<LooseProductProto, object>();
-        private readonly Dictionary<LooseProductProto, HashSet<Chunk2i>> m_productChunks = new Dictionary<LooseProductProto, HashSet<Chunk2i>>();
-        private readonly HashSet<ProductProto> m_visibleProducts = new HashSet<ProductProto>();
-        private readonly HashSet<ProductProto> m_previousVisibleProducts = new HashSet<ProductProto>();
-        private readonly HashSet<Chunk2i> m_dirtyChunks = new HashSet<Chunk2i>();
-        private readonly object m_dirtyGate = new object();
+        private readonly List<DepositCluster> m_clusters = new();
+        private readonly Dictionary<LooseProductProto, object> m_nativeChunkSets = new();
+        private readonly Dictionary<LooseProductProto, HashSet<Chunk2i>> m_productChunks = new();
+        private readonly HashSet<ProductProto> m_visibleProducts = new();
+        private readonly HashSet<ProductProto> m_previousVisibleProducts = new();
+        private readonly HashSet<Chunk2i> m_dirtyChunks = new();
+        private readonly object m_dirtyGate = new();
         private bool m_enabled;
         private bool m_cacheBuilt;
         private bool m_wasActive;
         private bool m_hasDirty;
         private float m_dirtyTimer;
+        private int m_pendingShellIndex;
+        private List<DepositCluster>? m_pendingShells;
+        private Dictionary<string, DepositCluster>? m_pendingOldByKey;
+        private List<DepositCluster>? m_pendingOldClusters;
+        private HashSet<DepositCluster>? m_pendingReused;
         private int m_areaStartX;
         private int m_areaStartY;
         private int m_areaEndX;
@@ -213,14 +221,21 @@ namespace TajsCOI.Tweaks
             m_wasActive = true;
             ReadVisibleProducts();
             bool visibilityChanged = !m_visibleProducts.SetEquals(m_previousVisibleProducts);
-            if (!m_cacheBuilt || visibilityChanged)
+            if (visibilityChanged)
             {
                 m_previousVisibleProducts.Clear();
                 m_previousVisibleProducts.UnionWith(m_visibleProducts);
                 ClearDirty();
-                RefreshClusters(null);
-                m_cacheBuilt = true;
-                ShowLabels();
+                BeginFullRefresh();
+            }
+
+            if (!m_cacheBuilt)
+            {
+                if (m_pendingShells is null)
+                {
+                    BeginFullRefresh();
+                }
+                ProcessFullRefresh();
                 return;
             }
 
@@ -269,7 +284,7 @@ namespace TajsCOI.Tweaks
                 cluster.Label.transform.position = new Vector3(
                     cluster.WorldCenter.x,
                     Math.Max(cluster.SurfaceHeight, cluster.ResourceTop) * 2f +
-                        (float)TajsTweaksRuntimeState.ResourceOverlayLabelHeight,
+                    (float)TajsTweaksRuntimeState.ResourceOverlayLabelHeight,
                     cluster.WorldCenter.z);
             }
         }
@@ -291,6 +306,118 @@ namespace TajsCOI.Tweaks
             }
 
             RefreshClusters(dirty);
+        }
+
+        private void BeginFullRefresh()
+        {
+            if (m_terrain is null || m_chunksField?.GetValue(m_renderer) is not IEnumerable entries)
+            {
+                return;
+            }
+
+            CancelPendingRefresh();
+            RectangleTerrainArea2i area = m_terrain.TerrainArea;
+            m_areaStartX = area.Origin.X;
+            m_areaStartY = area.Origin.Y;
+            m_areaEndX = m_areaStartX + area.Size.X;
+            m_areaEndY = m_areaStartY + area.Size.Y;
+
+            m_pendingShells = BuildShells(entries);
+            m_pendingOldByKey = new Dictionary<string, DepositCluster>(StringComparer.Ordinal);
+            m_pendingOldClusters = new List<DepositCluster>(m_clusters);
+            m_pendingReused = new HashSet<DepositCluster>();
+            foreach (DepositCluster old in m_pendingOldClusters)
+            {
+                if (!m_pendingOldByKey.ContainsKey(old.Key))
+                {
+                    m_pendingOldByKey.Add(old.Key, old);
+                }
+            }
+
+            HideLabels();
+            m_clusters.Clear();
+            m_pendingShellIndex = 0;
+            m_cacheBuilt = false;
+        }
+
+        private void ProcessFullRefresh()
+        {
+            if (m_pendingShells is null || m_pendingOldByKey is null || m_pendingReused is null)
+            {
+                return;
+            }
+
+            var budget = Stopwatch.StartNew();
+            while (m_pendingShellIndex < m_pendingShells.Count &&
+                   (m_pendingShellIndex == 0 || budget.Elapsed.TotalMilliseconds < FullRefreshBudgetMilliseconds))
+            {
+                DepositCluster shell = m_pendingShells[m_pendingShellIndex++];
+                if (m_clusters.Count >= MaximumClusters)
+                {
+                    continue;
+                }
+
+                m_pendingOldByKey.TryGetValue(shell.Key, out DepositCluster? old);
+                bool sameTopology = old is not null && SameChunks(shell.Chunks, old.Chunks);
+                if (sameTopology)
+                {
+                    m_pendingReused.Add(old!);
+                    m_clusters.Add(old!);
+                }
+                else if (SampleCluster(shell))
+                {
+                    m_clusters.Add(shell);
+                }
+
+                ShowLabels();
+            }
+
+            if (m_pendingShellIndex < m_pendingShells.Count)
+            {
+                return;
+            }
+
+            if (m_pendingOldClusters is not null)
+            {
+                foreach (DepositCluster old in m_pendingOldClusters)
+                {
+                    if (!m_pendingReused.Contains(old))
+                    {
+                        DestroyLabel(old);
+                    }
+                }
+            }
+
+            m_pendingShells = null;
+            m_pendingOldByKey = null;
+            m_pendingOldClusters = null;
+            m_pendingReused = null;
+            m_cacheBuilt = true;
+            ShowLabels();
+        }
+
+        private void CancelPendingRefresh()
+        {
+            if (m_pendingShells is null && m_pendingOldClusters is null)
+            {
+                return;
+            }
+
+            var toDestroy = new HashSet<DepositCluster>(m_clusters);
+            if (m_pendingOldClusters is not null)
+            {
+                toDestroy.UnionWith(m_pendingOldClusters);
+            }
+            foreach (DepositCluster cluster in toDestroy)
+            {
+                DestroyLabel(cluster);
+            }
+            m_clusters.Clear();
+            m_pendingShells = null;
+            m_pendingOldByKey = null;
+            m_pendingOldClusters = null;
+            m_pendingReused = null;
+            m_pendingShellIndex = 0;
         }
 
         private void ClearDirty()
@@ -341,17 +468,17 @@ namespace TajsCOI.Tweaks
             }
 
             List<DepositCluster> shells = BuildShells(entries);
-            Dictionary<string, DepositCluster> oldByKey = new Dictionary<string, DepositCluster>(StringComparer.Ordinal);
+            var oldByKey = new Dictionary<string, DepositCluster>(StringComparer.Ordinal);
             foreach (DepositCluster old in m_clusters)
             {
-                    if (!oldByKey.ContainsKey(old.Key))
-                    {
-                        oldByKey.Add(old.Key, old);
-                    }
+                if (!oldByKey.ContainsKey(old.Key))
+                {
+                    oldByKey.Add(old.Key, old);
+                }
             }
 
-            List<DepositCluster> next = new List<DepositCluster>(Math.Min(shells.Count, MaximumClusters));
-            HashSet<DepositCluster> reused = new HashSet<DepositCluster>();
+            var next = new List<DepositCluster>(Math.Min(shells.Count, MaximumClusters));
+            var reused = new HashSet<DepositCluster>();
             foreach (DepositCluster shell in shells)
             {
                 if (next.Count >= MaximumClusters)
@@ -387,12 +514,12 @@ namespace TajsCOI.Tweaks
 
         private List<DepositCluster> BuildShells(IEnumerable entries)
         {
-            List<DepositCluster> result = new List<DepositCluster>();
+            var result = new List<DepositCluster>();
             m_nativeChunkSets.Clear();
             m_productChunks.Clear();
-            HashSet<Chunk2i> all = new HashSet<Chunk2i>();
-            HashSet<Chunk2i> visited = new HashSet<Chunk2i>();
-            Queue<Chunk2i> queue = new Queue<Chunk2i>();
+            var all = new HashSet<Chunk2i>();
+            var visited = new HashSet<Chunk2i>();
+            var queue = new Queue<Chunk2i>();
 
             foreach (object entry in entries)
             {
@@ -423,10 +550,7 @@ namespace TajsCOI.Tweaks
                         continue;
                     }
 
-                    DepositCluster cluster = new DepositCluster
-                    {
-                        Product = product,
-                    };
+                    var cluster = new DepositCluster { Product = product };
                     queue.Clear();
                     queue.Enqueue(start);
                     while (queue.Count > 0)
@@ -483,7 +607,7 @@ namespace TajsCOI.Tweaks
                 }
             }
 
-            HashSet<DepositCluster> affected = new HashSet<DepositCluster>();
+            var affected = new HashSet<DepositCluster>();
             foreach (DepositCluster cluster in m_clusters)
             {
                 if (TouchesDirty(cluster.Chunks, dirty))
@@ -492,7 +616,7 @@ namespace TajsCOI.Tweaks
                 }
             }
 
-            Dictionary<LooseProductProto, HashSet<Chunk2i>> seeds = new Dictionary<LooseProductProto, HashSet<Chunk2i>>();
+            var seeds = new Dictionary<LooseProductProto, HashSet<Chunk2i>>();
             foreach (Chunk2i dirtyChunk in dirty)
             {
                 AddDirtySeeds(dirtyChunk, seeds);
@@ -519,7 +643,7 @@ namespace TajsCOI.Tweaks
                 }
             }
 
-            List<DepositCluster> next = new List<DepositCluster>(m_clusters.Count + seeds.Count);
+            var next = new List<DepositCluster>(m_clusters.Count + seeds.Count);
             foreach (DepositCluster existing in m_clusters)
             {
                 if (!affected.Contains(existing))
@@ -535,8 +659,8 @@ namespace TajsCOI.Tweaks
                     continue;
                 }
 
-                HashSet<Chunk2i> visited = new HashSet<Chunk2i>();
-                Queue<Chunk2i> queue = new Queue<Chunk2i>();
+                var visited = new HashSet<Chunk2i>();
+                var queue = new Queue<Chunk2i>();
                 foreach (Chunk2i start in pair.Value)
                 {
                     if (!chunks.Contains(start) || !visited.Add(start))
@@ -544,7 +668,7 @@ namespace TajsCOI.Tweaks
                         continue;
                     }
 
-                    DepositCluster cluster = new DepositCluster { Product = pair.Key };
+                    var cluster = new DepositCluster { Product = pair.Key };
                     queue.Enqueue(start);
                     while (queue.Count > 0)
                     {
@@ -685,7 +809,7 @@ namespace TajsCOI.Tweaks
             int minY = int.MaxValue;
             foreach (Chunk2i chunk in chunks)
             {
-                if (chunk.X < minX || (chunk.X == minX && chunk.Y < minY))
+                if (chunk.X < minX || chunk.X == minX && chunk.Y < minY)
                 {
                     minX = chunk.X;
                     minY = chunk.Y;
@@ -708,6 +832,7 @@ namespace TajsCOI.Tweaks
             float surface = float.MinValue;
             float top = float.MinValue;
             float maxDepth = 0f;
+            int sampledTiles = 0;
             foreach (Chunk2i chunk in cluster.Chunks)
             {
                 Tile2i origin = chunk.Tile2i;
@@ -715,11 +840,12 @@ namespace TajsCOI.Tweaks
                 int startY = Math.Max(origin.Y, m_areaStartY);
                 int endX = Math.Min(origin.X + ChunkSize, m_areaEndX);
                 int endY = Math.Min(origin.Y + ChunkSize, m_areaEndY);
-                for (int y = startY; y < endY; y += SampleStep)
+                for (int y = startY; y < endY && sampledTiles < MaximumSamplesPerCluster; y += SampleStep)
                 {
-                    for (int x = startX; x < endX; x += SampleStep)
+                    for (int x = startX; x < endX && sampledTiles < MaximumSamplesPerCluster; x += SampleStep)
                     {
-                        Tile2i tile = new Tile2i(x, y);
+                        sampledTiles++;
+                        var tile = new Tile2i(x, y);
                         if (m_terrain.IsOcean(tile))
                         {
                             continue;
@@ -800,12 +926,12 @@ namespace TajsCOI.Tweaks
 
         private GameObject CreateLabel(DepositCluster cluster)
         {
-            GameObject label = new GameObject("Tajs resource deposit " + cluster.Product.Id.Value);
+            var label = new GameObject("Tajs resource deposit " + cluster.Product.Id.Value);
             label.transform.SetParent(transform, worldPositionStays: true);
-            Type? textMeshType = Type.GetType("UnityEngine.TextMesh, UnityEngine.TextRenderingModule", false);
+            var textMeshType = Type.GetType("UnityEngine.TextMesh, UnityEngine.TextRenderingModule", false);
             if (textMeshType is null)
             {
-                UnityEngine.Object.Destroy(label);
+                Destroy(label);
                 return label;
             }
 
@@ -816,7 +942,10 @@ namespace TajsCOI.Tweaks
             SetTextProperty(text, "alignment", Enum.Parse(textMeshType.GetProperty("alignment")!.PropertyType, "Center"));
             SetTextProperty(text, "anchor", Enum.Parse(textMeshType.GetProperty("anchor")!.PropertyType, "MiddleCenter"));
             SetTextProperty(text, "color", new Color(1f, 1f, 1f, Mathf.Clamp(TajsTweaksRuntimeState.ResourceOverlayLabelAlpha, 0, 100) / 100f));
-            SetTextProperty(text, "text", cluster.Product.Id.Value +
+            SetTextProperty(
+                text,
+                "text",
+                cluster.Product.Id.Value +
                 "\nsurface " + cluster.SurfaceHeight.ToString("F1", CultureInfo.InvariantCulture) +
                 "  top " + cluster.ResourceTop.ToString("F1", CultureInfo.InvariantCulture) +
                 "\nmax depth " + cluster.MaxDepth.ToString("F1", CultureInfo.InvariantCulture));
@@ -878,20 +1007,21 @@ namespace TajsCOI.Tweaks
         {
             Type type = value.GetType();
             return type.GetProperty(name, InstanceFlags)?.GetValue(value) ??
-                type.GetField(name, InstanceFlags)?.GetValue(value);
+                   type.GetField(name, InstanceFlags)?.GetValue(value);
         }
 
         private static void DestroyLabel(DepositCluster cluster)
         {
             if (cluster.Label is not null)
             {
-                UnityEngine.Object.Destroy(cluster.Label);
+                Destroy(cluster.Label);
                 cluster.Label = null;
             }
         }
 
         private void OnDestroy()
         {
+            CancelPendingRefresh();
             foreach (DepositCluster cluster in m_clusters)
             {
                 DestroyLabel(cluster);

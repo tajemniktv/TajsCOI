@@ -27,10 +27,10 @@ namespace TajsCOI.Performance.Features.LowProductTextures
             MethodInfo? target = FindTarget();
             MethodInfo? patchMethod = AccessTools.Method(typeof(LowProductTexturesFeature), nameof(OverrideMipBiasRead));
             return target is not null && patchMethod is not null &&
-                ProcessHarmonyPatchOwnership.HasExpected(
-                    Harmony.GetPatchInfo(target)?.Transpilers,
-                    HarmonyId,
-                    patchMethod);
+                   ProcessHarmonyPatchOwnership.HasExpected(
+                       Harmony.GetPatchInfo(target)?.Transpilers,
+                       HarmonyId,
+                       patchMethod);
         }
 
         public void Install(ITajsRuntime runtime, ITajsLogger log)
@@ -51,11 +51,14 @@ namespace TajsCOI.Performance.Features.LowProductTextures
                 if (ProcessHarmonyPatchOwnership.HasExpected(patches?.Transpilers, HarmonyId, patchMethod))
                 {
                     log.Info("Already installed / compatible; the process-lifetime texture patch was not applied again.");
-                    runtime.ReportCompatibility(new CompatibilityReport(
-                        "TajsPerformance", Id, CompatibilityState.Compatible,
-                        "Existing process-lifetime Harmony owner and transpiler method",
-                        "Already installed / compatible",
-                        "The validated 0.8.7a texture patch remains active; no duplicate transpiler was registered."));
+                    runtime.ReportCompatibility(
+                        new CompatibilityReport(
+                            "TajsPerformance",
+                            Id,
+                            CompatibilityState.Compatible,
+                            "Existing process-lifetime Harmony owner and transpiler method",
+                            "Already installed / compatible",
+                            "The validated 0.8.7a texture patch remains active; no duplicate transpiler was registered."));
                     return;
                 }
 
@@ -79,13 +82,14 @@ namespace TajsCOI.Performance.Features.LowProductTextures
 
             int bias = LowProductTexturesSettings.MipBias;
             log.Info($"Enabled product texture mip bias {bias}; the normal renderer rebuild path and 64 px floor remain active.");
-            runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsPerformance",
-                Id,
-                CompatibilityState.Compatible,
-                "One RenderingSettingOption.Value read in ProductMeshTable.RebuildTextureArrays(bool)",
-                $"Mip bias overridden to {bias} ({(bias == 3 ? "Low" : "Very Low")})",
-                "Vanilla presets are unchanged; the normal texture-array rebuild and minimum slice clamp remain active."));
+            runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    "TajsPerformance",
+                    Id,
+                    CompatibilityState.Compatible,
+                    "One RenderingSettingOption.Value read in ProductMeshTable.RebuildTextureArrays(bool)",
+                    $"Mip bias overridden to {bias} ({(bias == 3 ? "Low" : "Very Low")})",
+                    "Vanilla presets are unchanged; the normal texture-array rebuild and minimum slice clamp remain active."));
         }
 
         private static readonly object s_installGate = new();
@@ -117,7 +121,7 @@ namespace TajsCOI.Performance.Features.LowProductTextures
                     field.Name == "Value" &&
                     field.DeclaringType?.FullName == "Mafi.Unity.RenderingSettingOption")
                 {
-                    result.Add(new CodeInstruction(System.Reflection.Emit.OpCodes.Call, overrideMethod));
+                    result.Add(new CodeInstruction(OpCodes.Call, overrideMethod));
                     matches++;
                 }
             }

@@ -2,12 +2,10 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
-using System.Reflection;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System;
-using System.IO;
-using System.IO.Compression;
+using System.Reflection;
 using HarmonyLib;
 using Mafi.Core.SaveGame;
 using TajsCOI.Profiler.Core;
@@ -86,15 +84,14 @@ namespace TajsCOI.Tests
                 SaveLoadFileUtils.ValidateChecksum(
                     "this-file-deliberately-does-not-exist.save",
                     out _,
-                    out Mafi.Option<System.Exception> _);
+                    out Mafi.Option<Exception> _);
 
                 FieldInfo stagesField = typeof(RuntimePerformanceDiagnosticsService).GetField(
                     "s_stages",
                     BindingFlags.Static | BindingFlags.NonPublic)!;
-                var stages = (System.Collections.Generic.Dictionary<string, StageAccumulator>)stagesField.GetValue(null)!;
+                var stages = (Dictionary<string, StageAccumulator>)stagesField.GetValue(null)!;
                 checksumStage = stages[RuntimePerformanceDiagnosticsService.FileChecksumValidation];
                 Assert.True(checksumStage.Snapshot().Count >= 1);
-
             }
             finally
             {
@@ -115,12 +112,10 @@ namespace TajsCOI.Tests
                 BindingFlags.Static | BindingFlags.NonPublic)!;
             var input = new List<CodeInstruction>
             {
-                new(System.Reflection.Emit.OpCodes.Nop),
-                new(System.Reflection.Emit.OpCodes.Call, collect),
-                new(System.Reflection.Emit.OpCodes.Call, wait),
+                new(System.Reflection.Emit.OpCodes.Nop), new(System.Reflection.Emit.OpCodes.Call, collect), new(System.Reflection.Emit.OpCodes.Call, wait),
             };
 
-            var output = ((IEnumerable<CodeInstruction>)transpiler.Invoke(null, new object[] { input })!).ToList();
+            List<CodeInstruction> output = ((IEnumerable<CodeInstruction>)transpiler.Invoke(null, new object[] { input })!).ToList();
 
             Assert.Equal(3, output.Count);
             Assert.Equal("CollectGarbageMeasured", ((MethodInfo)output[1].operand).Name);
@@ -243,10 +238,9 @@ namespace TajsCOI.Tests
         [InlineData(-1, -1)]
         [InlineData(0, -1)]
         [InlineData(42, 42)]
-        public void ProcessMemoryMetricsTreatNonPositiveValuesAsUnavailable(long value, long expected)
-        {
-            Assert.Equal(expected, RuntimePerformanceDiagnosticsService.NormalizeProcessMemoryMetric(value));
-        }
+        public void ProcessMemoryMetricsTreatNonPositiveValuesAsUnavailable(long value, long expected) => Assert.Equal(
+            expected,
+            RuntimePerformanceDiagnosticsService.NormalizeProcessMemoryMetric(value));
 
         [Fact]
         public void HarmonyAuditMethodFormattingIncludesParameterSignatures()
@@ -263,10 +257,7 @@ namespace TajsCOI.Tests
         {
             var passes = new List<GcPassMetric>
             {
-                new(4, 10, 100, 90, 0, 0, 1),
-                new(5, 20, 100, 80, 0, 0, 1),
-                new(6, 30, 100, 70, 0, 0, 1),
-                new(7, 40, 100, 60, 0, 0, 1),
+                new(4, 10, 100, 90, 0, 0, 1), new(5, 20, 100, 80, 0, 0, 1), new(6, 30, 100, 70, 0, 0, 1), new(7, 40, 100, 60, 0, 0, 1),
             };
 
             IReadOnlyList<GcPassMetric> interval = RuntimePerformanceDiagnosticsService

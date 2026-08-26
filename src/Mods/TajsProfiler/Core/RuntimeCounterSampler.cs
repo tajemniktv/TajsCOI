@@ -12,9 +12,9 @@ using System.Threading;
 namespace TajsCOI.Profiler.Core
 {
     /// <summary>
-    /// Samples cumulative managed/Unity counters and optional Unity ProfilerRecorder values.
-    /// Unity accessors and recorder delegates are resolved once. Ordinary frame capture only
-    /// performs cheap primitive reads; memory access is rate limited and no GC is forced.
+    ///     Samples cumulative managed/Unity counters and optional Unity ProfilerRecorder values.
+    ///     Unity accessors and recorder delegates are resolved once. Ordinary frame capture only
+    ///     performs cheap primitive reads; memory access is rate limited and no GC is forced.
     /// </summary>
     internal sealed class RuntimeCounterSampler : IDisposable
     {
@@ -120,15 +120,14 @@ namespace TajsCOI.Profiler.Core
         internal int SupportedUnityCounters => m_supportedUnityCounters;
         internal int SupportedProfilerCounters => m_supportedProfilerCounters;
         internal string SupportSummary => m_supportSummary;
+
         internal string GpuTelemetryStatus => m_gpuFrame is null
             ? "unavailable: no trusted player-build GPU time counter"
             : "available: Unity ProfilerRecorder Render/GPU Frame Time";
+
         internal double IntervalMilliseconds => Volatile.Read(ref m_intervalTicks) * 1000.0 / Stopwatch.Frequency;
 
-        internal void UpdateIntervalSeconds(double intervalSeconds)
-        {
-            Interlocked.Exchange(ref m_intervalTicks, ToIntervalTicks(intervalSeconds));
-        }
+        internal void UpdateIntervalSeconds(double intervalSeconds) => Interlocked.Exchange(ref m_intervalTicks, ToIntervalTicks(intervalSeconds));
 
         internal RuntimeCounterSnapshot Read(long timestamp, bool force = false)
         {
@@ -139,7 +138,7 @@ namespace TajsCOI.Profiler.Core
                 int gen2 = GC.CollectionCount(2);
                 RecorderSnapshot recorder = ReadProfilerRecorders();
                 bool readMemory = force || m_lastSampleTimestamp <= 0 ||
-                    timestamp - m_lastSampleTimestamp >= Volatile.Read(ref m_intervalTicks);
+                                  timestamp - m_lastSampleTimestamp >= Volatile.Read(ref m_intervalTicks);
                 if (!readMemory)
                 {
                     RuntimeCounterSnapshot interval = WithGcDeltas(timestamp, gen0, gen1, gen2, recorder);
@@ -161,7 +160,7 @@ namespace TajsCOI.Profiler.Core
                 long monoUsed = ReadBytes(m_monoUsed, zeroMeansUnavailable: true);
                 long monoHeap = ReadBytes(m_monoHeap, zeroMeansUnavailable: true);
 
-                RuntimeCounterSnapshot current = new RuntimeCounterSnapshot(
+                var current = new RuntimeCounterSnapshot(
                     true,
                     timestamp,
                     managedHeap,
@@ -240,7 +239,7 @@ namespace TajsCOI.Profiler.Core
             int gen1,
             int gen2,
             RecorderSnapshot recorder) =>
-            new RuntimeCounterSnapshot(
+            new(
                 m_lastSnapshot.Available,
                 timestamp,
                 m_lastSnapshot.ManagedHeapBytes,
@@ -319,7 +318,7 @@ namespace TajsCOI.Profiler.Core
         }
 
         private static long NormalizeBytes(long value, bool zeroMeansUnavailable = false) =>
-            value > 0 || (!zeroMeansUnavailable && value == 0) ? value : -1;
+            value > 0 || !zeroMeansUnavailable && value == 0 ? value : -1;
 
         private static long Delta(long current, long previous) =>
             current < 0 || previous < 0 ? 0 : current - previous;
@@ -357,14 +356,8 @@ namespace TajsCOI.Profiler.Core
                     return null;
                 }
 
-                object recorder = constructor.Invoke(new[]
-                {
-                    (object)category,
-                    statName,
-                    1,
-                    Enum.ToObject(optionsType, ProfilerRecorderDefaultOptions),
-                });
-                ProfilerRecorderHandle? handle = ProfilerRecorderHandle.Create(recorder, recorderType, expectedUnit);
+                object recorder = constructor.Invoke(new[] { (object)category, statName, 1, Enum.ToObject(optionsType, ProfilerRecorderDefaultOptions) });
+                var handle = ProfilerRecorderHandle.Create(recorder, recorderType, expectedUnit);
                 if (handle is null || !handle.IsValid)
                 {
                     handle?.Dispose();
@@ -380,7 +373,7 @@ namespace TajsCOI.Profiler.Core
 
         private string BuildSupportSummary()
         {
-            var builder = new StringBuilder(768)
+            StringBuilder builder = new StringBuilder(768)
                 .Append("unity: allocated=").Append(UnityStatus(m_unityAllocated, "Profiler.GetTotalAllocatedMemoryLong"))
                 .Append(", reserved=").Append(UnityStatus(m_unityReserved, "Profiler.GetTotalReservedMemoryLong"))
                 .Append(", unused-reserved=").Append(UnityStatus(m_unityUnusedReserved, "Profiler.GetTotalUnusedReservedMemoryLong"))
@@ -410,9 +403,11 @@ namespace TajsCOI.Profiler.Core
             {
                 intervalSeconds = 0.25;
             }
-            return Math.Max(1, (long)Math.Round(
-                Math.Max(MinimumIntervalSeconds, Math.Min(MaximumIntervalSeconds, intervalSeconds)) * Stopwatch.Frequency,
-                MidpointRounding.AwayFromZero));
+            return Math.Max(
+                1,
+                (long)Math.Round(
+                    Math.Max(MinimumIntervalSeconds, Math.Min(MaximumIntervalSeconds, intervalSeconds)) * Stopwatch.Frequency,
+                    MidpointRounding.AwayFromZero));
         }
 
         private static Func<long>? CreateLongGetter(Type? type, string methodName)
@@ -430,7 +425,7 @@ namespace TajsCOI.Profiler.Core
                     return null;
                 }
 
-                DynamicMethod getter = new DynamicMethod(
+                var getter = new DynamicMethod(
                     "TajsProfiler" + methodName,
                     typeof(long),
                     Type.EmptyTypes,
@@ -453,7 +448,7 @@ namespace TajsCOI.Profiler.Core
 
         private static Type? FindType(string fullName, string assemblyName)
         {
-            Type? type = Type.GetType(fullName + ", " + assemblyName, false);
+            var type = Type.GetType(fullName + ", " + assemblyName, false);
             return type ?? FindLoadedType(fullName, assemblyName);
         }
 
@@ -631,7 +626,7 @@ namespace TajsCOI.Profiler.Core
             {
                 try
                 {
-                    DynamicMethod method = new DynamicMethod(
+                    var method = new DynamicMethod(
                         "ReadTajsProfilerRecorder",
                         typeof(T),
                         new[] { typeof(object) },
@@ -658,7 +653,7 @@ namespace TajsCOI.Profiler.Core
             {
                 try
                 {
-                    DynamicMethod method = new DynamicMethod(
+                    var method = new DynamicMethod(
                         "DisposeTajsProfilerRecorder",
                         typeof(void),
                         new[] { typeof(object) },

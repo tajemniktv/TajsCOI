@@ -8,7 +8,7 @@ namespace TajsCOI.Performance
 {
     /// <summary>
     ///     Root performance mod. Evidence-backed features are installed by
-    ///     <see cref="PerformanceFeatureHost"/> after dependency resolution.
+    ///     <see cref="PerformanceFeatureHost" /> after dependency resolution.
     /// </summary>
     public sealed class TajsPerformanceMod : DataOnlyMod
     {

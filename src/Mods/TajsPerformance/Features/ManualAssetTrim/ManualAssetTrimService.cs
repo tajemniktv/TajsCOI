@@ -90,23 +90,27 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
         {
             CompatibilityState state = !ManualAssetTrimSettings.Enabled
                 ? CompatibilityState.Disabled
-                : compatible ? CompatibilityState.Compatible : CompatibilityState.Disabled;
-            m_runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsPerformance",
-                "ManualAssetTrim",
-                state,
-                "AssetsDb.ClearCachedAssets plus Resources.UnloadUnusedAssets, invoked manually while paused",
-                compatible ? "0.8.7a cache and Unity unload contracts resolved" : "Required cache or Unity unload contract unavailable",
-                !ManualAssetTrimSettings.Enabled
-                    ? "Disabled by configuration; no automatic trim exists."
-                    : compatible
-                        ? "Paused-only command available; no periodic trim exists."
-                        : "Command is unavailable; no caches or assets will be changed."));
+                : compatible
+                    ? CompatibilityState.Compatible
+                    : CompatibilityState.Disabled;
+            m_runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    "TajsPerformance",
+                    "ManualAssetTrim",
+                    state,
+                    "AssetsDb.ClearCachedAssets plus Resources.UnloadUnusedAssets, invoked manually while paused",
+                    compatible ? "0.8.7a cache and Unity unload contracts resolved" : "Required cache or Unity unload contract unavailable",
+                    !ManualAssetTrimSettings.Enabled
+                        ? "Disabled by configuration; no automatic trim exists."
+                        : compatible
+                            ? "Paused-only command available; no periodic trim exists."
+                            : "Command is unavailable; no caches or assets will be changed."));
         }
 
         [ConsoleCommand(
             invokeOnMainThread: true,
-            documentation: "Clears CoI's reloadable asset cache and starts Unity unused-asset unloading. Requires paused simulation and explicit config opt-in.",
+            documentation:
+            "Clears CoI's reloadable asset cache and starts Unity unused-asset unloading. Requires paused simulation and explicit config opt-in.",
             customCommandName: "trim_unused_assets")]
         public string TrimUnusedAssets()
         {
@@ -211,12 +215,12 @@ namespace TajsCOI.Performance.Features.ManualAssetTrim
             PropertyInfo? isDone = m_asyncIsDone;
             MethodInfo? isDoneGetter = isDone?.GetGetMethod(false);
             return m_assetsDbType is not null &&
-                clear is { IsPublic: true, IsStatic: false } && clear.ReturnType == typeof(void) &&
-                clear.GetParameters().Length == 0 &&
-                unload is { IsPublic: true, IsStatic: true } && unload.GetParameters().Length == 0 &&
-                string.Equals(unload.ReturnType.FullName, "UnityEngine.AsyncOperation", StringComparison.Ordinal) &&
-                isDone is not null && isDone.PropertyType == typeof(bool) &&
-                isDoneGetter is { IsPublic: true, IsStatic: false } && isDoneGetter.GetParameters().Length == 0;
+                   clear is { IsPublic: true, IsStatic: false } && clear.ReturnType == typeof(void) &&
+                   clear.GetParameters().Length == 0 &&
+                   unload is { IsPublic: true, IsStatic: true } && unload.GetParameters().Length == 0 &&
+                   string.Equals(unload.ReturnType.FullName, "UnityEngine.AsyncOperation", StringComparison.Ordinal) &&
+                   isDone is not null && isDone.PropertyType == typeof(bool) &&
+                   isDoneGetter is { IsPublic: true, IsStatic: false } && isDoneGetter.GetParameters().Length == 0;
         }
 
         private double ElapsedMilliseconds() =>

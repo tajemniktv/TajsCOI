@@ -9,12 +9,12 @@ namespace TajsCOI.Performance
 {
     internal interface IPerformanceFeature
     {
-        string Id { get; }
+        public string Id { get; }
 
-        string ConfigKey { get; }
+        public string ConfigKey { get; }
 
-        bool IsProcessPatchInstalled();
+        public bool IsProcessPatchInstalled();
 
-        void Install(ITajsRuntime runtime, ITajsLogger log);
+        public void Install(ITajsRuntime runtime, ITajsLogger log);
     }
 }

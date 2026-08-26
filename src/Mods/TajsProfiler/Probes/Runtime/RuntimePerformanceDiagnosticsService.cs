@@ -3,13 +3,13 @@
 // All Rights Reserved.
 
 using System;
-using System.Collections.Generic;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.Linq;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -64,6 +64,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         private static readonly Dictionary<string, StageAccumulator> s_stages =
             s_stageOrder.ToDictionary(x => x, _ => new StageAccumulator(), StringComparer.Ordinal);
+
         private static readonly ConcurrentDictionary<MethodBase, NamedTimingAccumulator> s_initializationTargets = new();
         private static readonly ConcurrentDictionary<MethodBase, string> s_iteratorLifecycleTargets = new();
         private static readonly ConditionalWeakTable<object, IteratorLifecycleState> s_iteratorLifecycleStates = new();
@@ -77,8 +78,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private static readonly List<WeakLifecycleWatch> s_weakLifecycleWatches = new(MaxWeakLifecycleWatchHistory);
 
         private static ITajsLogger? s_log;
+
         private static readonly ConcurrentDictionary<string, byte> s_loggedCallbackFailures =
             new(StringComparer.Ordinal);
+
         private static long s_sequence;
         private static long s_resetGeneration;
         private static long s_gcPassSequence;
@@ -110,22 +113,23 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
             PatchSummary summary = InstallPatches();
             CompatibilityState state = summary.RequiredInstalled == summary.RequiredExpected
-                ? (summary.OptionalInstalled == summary.OptionalExpected
+                ? summary.OptionalInstalled == summary.OptionalExpected
                     ? CompatibilityState.Compatible
-                    : CompatibilityState.Degraded)
+                    : CompatibilityState.Degraded
                 : CompatibilityState.Disabled;
 
-            runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsProfiler",
-                "RuntimePerformance",
-                state,
-                $"{summary.RequiredExpected} required and {summary.OptionalExpected} optional 0.8.7a probe targets",
-                $"{summary.RequiredInstalled} required and {summary.OptionalInstalled} optional targets installed",
-                state == CompatibilityState.Compatible
-                    ? "Save/load, memory, GC, and renderer snapshot probes are available."
-                    : state == CompatibilityState.Degraded
-                        ? "Core save/load timing is available; optional scene or renderer instrumentation is unavailable."
-                : "Required save/load contracts were not found; no behavior was changed."));
+            runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    "TajsProfiler",
+                    "RuntimePerformance",
+                    state,
+                    $"{summary.RequiredExpected} required and {summary.OptionalExpected} optional 0.8.7a probe targets",
+                    $"{summary.RequiredInstalled} required and {summary.OptionalInstalled} optional targets installed",
+                    state == CompatibilityState.Compatible
+                        ? "Save/load, memory, GC, and renderer snapshot probes are available."
+                        : state == CompatibilityState.Degraded
+                            ? "Core save/load timing is available; optional scene or renderer instrumentation is unavailable."
+                            : "Required save/load contracts were not found; no behavior was changed."));
         }
 
         [ConsoleCommand(
@@ -161,8 +165,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
             {
                 return s_weakLifecycleWatches.Count == 0
                     ? "Runtime lifecycle watches: none stored."
-                    : "Runtime lifecycle watches:\n" + string.Join("\n", s_weakLifecycleWatches.Select(x =>
-                        $"  {x.Label} [sequence={x.Sequence}, alive={x.Reference.TryGetTarget(out _)}, recorded={x.RecordedUtc:O}]"));
+                    : "Runtime lifecycle watches:\n" + string.Join(
+                        "\n",
+                        s_weakLifecycleWatches.Select(x =>
+                            $"  {x.Label} [sequence={x.Sequence}, alive={x.Reference.TryGetTarget(out _)}, recorded={x.RecordedUtc:O}]"));
             }
         }
 
@@ -176,7 +182,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             customCommandName: "tajs_runtime_initialization_hotspots")]
         public string InitializationHotspots()
         {
-            var metrics = s_initializationTargets.Values
+            InitializationTimingMetric[] metrics = s_initializationTargets.Values
                 .Select(x => x.Snapshot())
                 .Where(x => x.Count > 0)
                 .OrderByDescending(x => x.MaxTicks)
@@ -188,7 +194,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 return "Initialization hotspots: no named samples captured.";
             }
 
-            var builder = new StringBuilder(1024).Append("Initialization hotspots (top ").Append(metrics.Length).Append("):");
+            StringBuilder builder = new StringBuilder(1024).Append("Initialization hotspots (top ").Append(metrics.Length).Append("):");
             foreach (InitializationTimingMetric metric in metrics)
             {
                 builder.Append("\n  ").Append(metric.Name)
@@ -237,8 +243,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
             {
                 return s_history.Count == 0
                     ? "Runtime profiles: none stored."
-                    : "Runtime profiles:\n" + string.Join("\n", s_history.Select(x =>
-                        $"  {x.Label} [sequence={x.Sequence}, captured={x.CapturedUtc:O}]"));
+                    : "Runtime profiles:\n" + string.Join(
+                        "\n",
+                        s_history.Select(x =>
+                            $"  {x.Label} [sequence={x.Sequence}, captured={x.CapturedUtc:O}]"));
             }
         }
 
@@ -281,7 +289,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 int firstIndex = s_history.IndexOf(first);
                 int secondIndex = s_history.IndexOf(second);
 
-                var builder = new StringBuilder(1024)
+                StringBuilder builder = new StringBuilder(1024)
                     .Append("Runtime profile comparison: ").Append(first.Label).Append(" -> ").Append(second.Label)
                     .Append("\nProcess delta: working-set=").Append(FormatOptionalBytes(second.ProcessWorkingSetBytes, first.ProcessWorkingSetBytes))
                     .Append(", private=").Append(FormatOptionalBytes(second.ProcessPrivateBytes, first.ProcessPrivateBytes))
@@ -435,11 +443,12 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 {
                     s_weakLifecycleWatches.RemoveAt(0);
                 }
-                s_weakLifecycleWatches.Add(new WeakLifecycleWatch(
-                    string.IsNullOrWhiteSpace(label) ? "<unnamed>" : label.Trim(),
-                    Interlocked.Increment(ref s_lifecycleSequence),
-                    DateTime.UtcNow,
-                    new WeakReference<object>(value)));
+                s_weakLifecycleWatches.Add(
+                    new WeakLifecycleWatch(
+                        string.IsNullOrWhiteSpace(label) ? "<unnamed>" : label.Trim(),
+                        Interlocked.Increment(ref s_lifecycleSequence),
+                        DateTime.UtcNow,
+                        new WeakReference<object>(value)));
             }
         }
 
@@ -509,26 +518,43 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 int optionalExpected = 0;
                 int optional = 0;
 
-                requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameSaver", "Mafi.Core", "StartSave", SaveSerialization) ? 1 : 0;
-                requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameSaver", "Mafi.Core", "FinishSaveWriteToStream", SaveFinalize) ? 1 : 0;
-                requiredExpected++; required += PatchSaveChecksum(harmony) ? 1 : 0;
-                requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.SaveLoadFileUtils", "Mafi.Core", "ValidateChecksum", FileChecksumValidation, typeof(string)) ? 1 : 0;
-                requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "StartGameLoad", LoadHeaders) ? 1 : 0;
-                requiredExpected++; required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "ContinueGameLoad", LoadHeaders) ? 1 : 0;
-                requiredExpected++; required += PatchCompressionIo(
+                requiredExpected++;
+                required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameSaver", "Mafi.Core", "StartSave", SaveSerialization) ? 1 : 0;
+                requiredExpected++;
+                required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameSaver", "Mafi.Core", "FinishSaveWriteToStream", SaveFinalize) ? 1 : 0;
+                requiredExpected++;
+                required += PatchSaveChecksum(harmony) ? 1 : 0;
+                requiredExpected++;
+                required += PatchTimed(harmony, "Mafi.Core.SaveGame.SaveLoadFileUtils", "Mafi.Core", "ValidateChecksum", FileChecksumValidation, typeof(string))
+                    ? 1
+                    : 0;
+                requiredExpected++;
+                required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "StartGameLoad", LoadHeaders) ? 1 : 0;
+                requiredExpected++;
+                required += PatchTimed(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "ContinueGameLoad", LoadHeaders) ? 1 : 0;
+                requiredExpected++;
+                required += PatchCompressionIo(
                     harmony,
                     "Mafi.Core.SaveGame.GameSaver",
                     "FinishSaveWriteToStream",
                     "CreateCompressingStream",
                     nameof(BeginMainSaveFinalize),
                     nameof(EndMainSaveFinalize),
-                    nameof(WrapCompressingStream)) ? 1 : 0;
-                requiredExpected++; required += PatchIterator(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "FinishGameLoadAndDisposeTimeSliced", LoadFinalize) ? 1 : 0;
-                requiredExpected++; required += PatchTimed(harmony, "Mafi.DependencyResolver", "Mafi", "DeserializeInto", LoadDeserialization) ? 1 : 0;
-                requiredExpected++; required += PatchIterator(harmony, "Mafi.Serialization.BlobReader", "Mafi", "FinalizeLoadingTimeSliced", LoadResolverFinalization) ? 1 : 0;
-                optionalExpected++; optional += PatchTimed(harmony, "Mafi.Unity.Main", "Mafi.Unity", "collectGarbageDrainingFinalizers", SceneGarbageCollection) ? 1 : 0;
-                optionalExpected++; optional += PatchSceneGcPasses(harmony) ? 1 : 0;
-                optionalExpected++; optional += PatchInitializationHotspots(harmony) ? 1 : 0;
+                    nameof(WrapCompressingStream))
+                    ? 1
+                    : 0;
+                requiredExpected++;
+                required += PatchIterator(harmony, "Mafi.Core.SaveGame.GameLoader", "Mafi.Core", "FinishGameLoadAndDisposeTimeSliced", LoadFinalize) ? 1 : 0;
+                requiredExpected++;
+                required += PatchTimed(harmony, "Mafi.DependencyResolver", "Mafi", "DeserializeInto", LoadDeserialization) ? 1 : 0;
+                requiredExpected++;
+                required += PatchIterator(harmony, "Mafi.Serialization.BlobReader", "Mafi", "FinalizeLoadingTimeSliced", LoadResolverFinalization) ? 1 : 0;
+                optionalExpected++;
+                optional += PatchTimed(harmony, "Mafi.Unity.Main", "Mafi.Unity", "collectGarbageDrainingFinalizers", SceneGarbageCollection) ? 1 : 0;
+                optionalExpected++;
+                optional += PatchSceneGcPasses(harmony) ? 1 : 0;
+                optionalExpected++;
+                optional += PatchInitializationHotspots(harmony) ? 1 : 0;
 
                 if (required != requiredExpected)
                 {
@@ -571,10 +597,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     return false;
                 }
 
-                var begin = new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), beginCallback)
-                {
-                    priority = Priority.First,
-                };
+                var begin = new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), beginCallback) { priority = Priority.First };
                 harmony.Patch(
                     outer,
                     prefix: begin,
@@ -605,8 +628,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 MethodInfo? method = type?.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
                     .Where(x => x.Name == methodName)
                     .FirstOrDefault(x => leadingParameterTypes.Length == 0 ||
-                        x.GetParameters().Take(leadingParameterTypes.Length).Select(p => p.ParameterType)
-                            .SequenceEqual(leadingParameterTypes));
+                                         x.GetParameters().Take(leadingParameterTypes.Length).Select(p => p.ParameterType)
+                                             .SequenceEqual(leadingParameterTypes));
                 if (method is null)
                 {
                     return false;
@@ -641,7 +664,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 {
                     stateMachine = factory.DeclaringType.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)
                         .FirstOrDefault(x => x.Name.IndexOf(methodName, StringComparison.Ordinal) >= 0 &&
-                            typeof(System.Collections.IEnumerator).IsAssignableFrom(x));
+                                             typeof(IEnumerator).IsAssignableFrom(x));
                 }
                 moveNext = stateMachine?.GetMethod("MoveNext", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 if (moveNext is null)
@@ -691,7 +714,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     "Compute",
                     BindingFlags.Static | BindingFlags.Public,
                     null,
-                    new[] { typeof(System.IO.Stream), typeof(long).MakeByRefType() },
+                    new[] { typeof(Stream), typeof(long).MakeByRefType() },
                     null);
                 if (saveData is null || crc is null)
                 {
@@ -848,9 +871,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
             Type? type = FindType(typeName, assemblyName);
             MethodInfo[] methods = type?.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
                 .Where(x => x.Name == methodName &&
-                    x.GetParameters().Length == leadingParameterTypes.Length &&
-                    (leadingParameterTypes.Length == 0 || x.GetParameters().Take(leadingParameterTypes.Length)
-                        .Select(p => p.ParameterType).SequenceEqual(leadingParameterTypes)))
+                            x.GetParameters().Length == leadingParameterTypes.Length &&
+                            (leadingParameterTypes.Length == 0 || x.GetParameters().Take(leadingParameterTypes.Length)
+                                .Select(p => p.ParameterType).SequenceEqual(leadingParameterTypes)))
                 .ToArray() ?? Array.Empty<MethodInfo>();
             if (methods.Length == 1)
             {
@@ -869,7 +892,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             {
                 stateMachine = method.DeclaringType.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)
                     .FirstOrDefault(x => x.Name.IndexOf(method.Name, StringComparison.Ordinal) >= 0 &&
-                        typeof(System.Collections.IEnumerator).IsAssignableFrom(x));
+                                         typeof(IEnumerator).IsAssignableFrom(x));
             }
             return stateMachine?.GetMethod("MoveNext", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         }
@@ -1183,10 +1206,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             }
         }
 
-        private static void AfterTimed(TimingState? __state)
-        {
-            Record(__state);
-        }
+        private static void AfterTimed(TimingState? __state) => Record(__state);
 
         private static Exception? FinalizeTimed(Exception? __exception, TimingState? __state)
         {
@@ -1230,7 +1250,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private static string Format(RuntimeProfileSnapshot snapshot)
         {
             ProductRendererMetric products = snapshot.Products;
-            var builder = new StringBuilder(1536)
+            StringBuilder builder = new StringBuilder(1536)
                 .Append("Runtime profile '").Append(snapshot.Label).Append("' [sequence=")
                 .Append(snapshot.Sequence).Append(", reset generation=").Append(snapshot.ResetGeneration)
                 .Append(", captured=").Append(snapshot.CapturedUtc.ToString("O")).Append(']')
@@ -1314,9 +1334,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
             long expectedCount = Math.Max(0, second.GcPassSequence - first.GcPassSequence);
             if (passes.Count == 0)
             {
-                builder.Append(expectedCount == 0
-                    ? "\nScene-cleanup GC interval: no passes."
-                    : "\nScene-cleanup GC interval: unavailable (bounded pass history rolled over).");
+                builder.Append(
+                    expectedCount == 0
+                        ? "\nScene-cleanup GC interval: no passes."
+                        : "\nScene-cleanup GC interval: unavailable (bounded pass history rolled over).");
                 return;
             }
 
@@ -1351,7 +1372,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             workingSet = privateBytes = cpuMilliseconds = -1;
             try
             {
-                using Process process = Process.GetCurrentProcess();
+                using var process = Process.GetCurrentProcess();
                 workingSet = NormalizeProcessMemoryMetric(process.WorkingSet64);
                 privateBytes = NormalizeProcessMemoryMetric(process.PrivateMemorySize64);
                 cpuMilliseconds = (long)process.TotalProcessorTime.TotalMilliseconds;
@@ -1422,7 +1443,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
             object? buffer = rendererType.GetField(bufferFieldName, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(renderer);
             capacity = buffer is null
                 ? 0
-                : Convert.ToInt32(buffer.GetType().GetProperty("count", BindingFlags.Instance | BindingFlags.Public)!.GetValue(buffer), CultureInfo.InvariantCulture);
+                : Convert.ToInt32(
+                    buffer.GetType().GetProperty("count", BindingFlags.Instance | BindingFlags.Public)!.GetValue(buffer),
+                    CultureInfo.InvariantCulture);
         }
 
         private static Type? FindType(string fullName, string assemblyName) =>
@@ -1448,7 +1471,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
             foreach (object range in ranges)
             {
-                int count = Convert.ToInt32(range.GetType().GetField("Count", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(range), CultureInfo.InvariantCulture);
+                int count = Convert.ToInt32(
+                    range.GetType().GetField("Count", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(range),
+                    CultureInfo.InvariantCulture);
                 fragmentedSlots += count;
                 freeRanges++;
                 largestFreeRange = Math.Max(largestFreeRange, count);
@@ -1534,15 +1559,16 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
             int duplicates = 0;
             foreach (var group in patches
-                .Where(x => x.owner.StartsWith("TajsCOI.", StringComparison.Ordinal))
-                .GroupBy(x => new { x.owner, x.PatchMethod }))
+                         .Where(x => x.owner.StartsWith("TajsCOI.", StringComparison.Ordinal))
+                         .GroupBy(x => new { x.owner, x.PatchMethod }))
             {
                 int count = group.Count();
                 if (count > 1)
                 {
                     duplicates++;
                 }
-                lines.Add($"  original={FormatHarmonyMethod(original)} | kind={kind} | owner={group.Key.owner} | patch={FormatHarmonyMethod(group.Key.PatchMethod)} | count={count}" +
+                lines.Add(
+                    $"  original={FormatHarmonyMethod(original)} | kind={kind} | owner={group.Key.owner} | patch={FormatHarmonyMethod(group.Key.PatchMethod)} | count={count}" +
                     (count > 1 ? " | DUPLICATE" : string.Empty));
             }
             return duplicates;
@@ -1551,8 +1577,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
         internal static string FormatHarmonyMethod(MethodBase method)
         {
             string declaringType = method.DeclaringType?.FullName ?? "<global>";
-            string parameters = string.Join(", ", method.GetParameters().Select(x =>
-                x.ParameterType.FullName ?? x.ParameterType.Name));
+            string parameters = string.Join(
+                ", ",
+                method.GetParameters().Select(x =>
+                    x.ParameterType.FullName ?? x.ParameterType.Name));
             return declaringType + "." + method.Name + "(" + parameters + ")";
         }
 
@@ -1567,7 +1595,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             if (IsUnityGraphicsInconsistent(unityGraphicsBytes, products))
             {
                 return FormatBytes(unityGraphicsBytes) +
-                    " (driver counter; ProductsRenderer estimate=" + FormatBytes(products.GpuBytes) + ")";
+                       " (driver counter; ProductsRenderer estimate=" + FormatBytes(products.GpuBytes) + ")";
             }
             return FormatBytes(unityGraphicsBytes);
         }
@@ -1585,7 +1613,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     ? "unavailable"
                     : FormatOptionalBytes(right.UnityGraphicsBytes, left.UnityGraphicsBytes);
                 return driverDelta +
-                    " (driver counter; ProductsRenderer estimate delta=" + productsDelta + ")";
+                       " (driver counter; ProductsRenderer estimate delta=" + productsDelta + ")";
             }
             return FormatOptionalBytes(right.UnityGraphicsBytes, left.UnityGraphicsBytes);
         }
@@ -1751,6 +1779,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             public override bool CanSeek => m_inner.CanSeek;
             public override bool CanWrite => m_inner.CanWrite;
             public override long Length => m_inner.Length;
+
             public override long Position
             {
                 get => m_inner.Position;
