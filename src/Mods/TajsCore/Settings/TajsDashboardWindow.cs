@@ -13,6 +13,7 @@ using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Compatibility;
+using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
 using UnityEngine.UIElements;
@@ -20,7 +21,6 @@ using Button = Mafi.Unity.UiToolkit.Library.Button;
 using Column = Mafi.Unity.UiToolkit.Library.Column;
 using Label = Mafi.Unity.UiToolkit.Library.Label;
 using TextField = Mafi.Unity.UiToolkit.Library.TextField;
-using TajsCOI.Common.Diagnostics;
 
 namespace TajsCOI.Core.Settings
 {
@@ -182,7 +182,7 @@ namespace TajsCOI.Core.Settings
             Panel header = new Panel(true).ReducedPadding().BodyGap(2.pt());
             m_headerFeedback = new Label().FontSize(11).Hide();
 
-            Column titleText = new Column(1.pt())
+            var titleText = new Column(1.pt())
             {
                 new Label("TajsCOI Control Center".AsLoc()).FontBold().FontSize(19),
                 new Label("Live diagnostics, suite configuration, and safe maintenance tools for the active save.".AsLoc())
@@ -881,7 +881,7 @@ namespace TajsCOI.Core.Settings
 
             foreach (RuntimeCapabilityDescriptor capability in capabilities.Take(16))
             {
-                Column capabilityText = new Column(1.pt())
+                var capabilityText = new Column(1.pt())
                 {
                     new Label(capability.CapabilityId.AsLoc()).FontBold(),
                     new Label($"{capability.ModId} / {capability.ComponentId} · {capability.Lifetime}".AsLoc()).FontSize(11),
@@ -894,8 +894,7 @@ namespace TajsCOI.Core.Settings
                 panel.Body.Add(
                     new Row(4.pt())
                     {
-                        capabilityText.FlexGrow(1f),
-                        TajsDashboardUi.StatusBadge(capability.State.ToString(), CapabilityColor(capability.State)),
+                        capabilityText.FlexGrow(1f), TajsDashboardUi.StatusBadge(capability.State.ToString(), CapabilityColor(capability.State)),
                     }.AlignItemsCenter());
             }
             if (capabilities.Count > 16)
@@ -934,7 +933,10 @@ namespace TajsCOI.Core.Settings
             summary.Add(
                 TajsDashboardUi.MetricTile("Tajs targets", snapshot.TajsPatchedTargetCount.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan),
                 TajsDashboardUi.MetricTile("Shared targets", snapshot.SharedTargetCount.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Yellow),
-                TajsDashboardUi.MetricTile("Attention", snapshot.AttentionCount.ToString(CultureInfo.InvariantCulture), snapshot.AttentionCount == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Red),
+                TajsDashboardUi.MetricTile(
+                    "Attention",
+                    snapshot.AttentionCount.ToString(CultureInfo.InvariantCulture),
+                    snapshot.AttentionCount == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Red),
                 TajsDashboardUi.MetricTile("Tajs patches", snapshot.TajsPatchCount.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan));
             panel.Body.Add(summary);
             if (!snapshot.IsAvailable)
@@ -960,7 +962,8 @@ namespace TajsCOI.Core.Settings
                 {
                     details.Add(
                         new Label(
-                                $"{patch.Kind} · {patch.OwnerId} · priority={patch.Priority} · before={FormatOwners(patch.Before)} · after={FormatOwners(patch.After)}\n{patch.PatchMethod}".AsLoc())
+                                $"{patch.Kind} · {patch.OwnerId} · priority={patch.Priority} · before={FormatOwners(patch.Before)} · after={FormatOwners(patch.After)}\n{patch.PatchMethod}"
+                                    .AsLoc())
                             .FontSize(10)
                             .Selectable(true));
                 }

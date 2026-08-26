@@ -15,7 +15,6 @@ using Mafi.Core.Entities.Animations;
 using Mafi.Core.Factory.ComputingPower;
 using Mafi.Core.Factory.ElectricPower;
 using Mafi.Core.Factory.Machines;
-using Mafi.Core.Entities.Static;
 using Mafi.Core.Factory.Transports;
 using Mafi.Core.Maintenance;
 using Mafi.Core.Population;
@@ -50,14 +49,15 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             MethodInfo? animationStart = AccessTools.Method(typeof(AnimationWithPauseState), nameof(AnimationWithPauseState.Start));
             if (animationStart is not null && s_animationParamsField is not null)
             {
-                harmony.Patch(animationStart,
+                harmony.Patch(
+                    animationStart,
                     prefix: new HarmonyMethod(typeof(OverclockingPatches), nameof(AnimationWithPauseStartPrefix)));
             }
 
             MethodInfo addToConfig = AccessTools.Method(typeof(Machine), "AddToConfig")
-                ?? throw new MissingMethodException(typeof(Machine).FullName, "AddToConfig");
+                                     ?? throw new MissingMethodException(typeof(Machine).FullName, "AddToConfig");
             MethodInfo applyConfig = AccessTools.Method(typeof(Machine), "ApplyConfig")
-                ?? throw new MissingMethodException(typeof(Machine).FullName, "ApplyConfig");
+                                     ?? throw new MissingMethodException(typeof(Machine).FullName, "ApplyConfig");
             harmony.Patch(addToConfig, postfix: new HarmonyMethod(typeof(OverclockingPatches), nameof(AddToConfigPostfix)));
             harmony.Patch(applyConfig, postfix: new HarmonyMethod(typeof(OverclockingPatches), nameof(ApplyConfigPostfix)));
 
@@ -75,8 +75,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             int percent = TajsOverclockingFeature.GetPercentFor(__instance);
             if (percent != 100)
             {
-                __result = new Electricity(Math.Max(0, (int)Math.Round(__result.Value *
-                    OverclockingMath.CostMultiplier(percent, TajsTweaksRuntimeState.OverclockPowerCurve))));
+                __result = new Electricity(
+                    Math.Max(
+                        0,
+                        (int)Math.Round(
+                            __result.Value *
+                            OverclockingMath.CostMultiplier(percent, TajsTweaksRuntimeState.OverclockPowerCurve))));
             }
         }
 
@@ -85,8 +89,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             int percent = TajsOverclockingFeature.GetPercentFor(__instance);
             if (percent != 100)
             {
-                __result = new Computing(Math.Max(0, (int)Math.Round(__result.Value *
-                    OverclockingMath.CostMultiplier(percent, TajsTweaksRuntimeState.OverclockComputingCurve))));
+                __result = new Computing(
+                    Math.Max(
+                        0,
+                        (int)Math.Round(
+                            __result.Value *
+                            OverclockingMath.CostMultiplier(percent, TajsTweaksRuntimeState.OverclockComputingCurve))));
             }
         }
 
@@ -104,8 +112,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             int percent = TajsOverclockingFeature.GetPercentFor(__instance);
             if (percent != 100 && __result.MaintenancePerMonth.IsPositive)
             {
-                int scale = Math.Max(1, (int)Math.Round(OverclockingMath.CostMultiplier(
-                    percent, TajsTweaksRuntimeState.OverclockMaintenanceCurve) * 100));
+                int scale = Math.Max(
+                    1,
+                    (int)Math.Round(
+                        OverclockingMath.CostMultiplier(
+                            percent,
+                            TajsTweaksRuntimeState.OverclockMaintenanceCurve) * 100));
                 __result = new MaintenanceCosts(
                     __result.Product,
                     __result.MaintenancePerMonth.ScaledBy(scale.Percent()),
@@ -126,10 +138,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         }
 
         /// <summary>
-        /// COI's AnimationWithPauseState has a fixed animation timeline, while Machine gives it
-        /// the speed-scaled recipe duration. At an overclock the latter can become shorter than
-        /// the former. Adjust only the state-local duration passed to this animation state; the
-        /// machine's RecipeResult remains the authoritative production timer.
+        ///     COI's AnimationWithPauseState has a fixed animation timeline, while Machine gives it
+        ///     the speed-scaled recipe duration. At an overclock the latter can become shorter than
+        ///     the former. Adjust only the state-local duration passed to this animation state; the
+        ///     machine's RecipeResult remains the authoritative production timer.
         /// </summary>
         internal static void AnimationWithPauseStartPrefix(
             AnimationWithPauseState __instance,

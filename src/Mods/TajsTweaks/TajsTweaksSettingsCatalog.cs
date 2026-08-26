@@ -182,16 +182,12 @@ namespace TajsCOI.Tweaks
 
         private static readonly IReadOnlyList<SettingChoice> s_parkingHqOffloadModes = new[]
         {
-            new SettingChoice("vanilla", "Vanilla / provider default"),
-            new SettingChoice("enabled", "Enabled"),
-            new SettingChoice("disabled", "Disabled"),
+            new SettingChoice("vanilla", "Vanilla / provider default"), new SettingChoice("enabled", "Enabled"), new SettingChoice("disabled", "Disabled"),
         };
 
         private static readonly IReadOnlyList<SettingChoice> s_bridgeScaleModes = new[]
         {
-            new SettingChoice("off", "Off"),
-            new SettingChoice("instant", "Instant"),
-            new SettingChoice("gradual", "Gradual"),
+            new SettingChoice("off", "Off"), new SettingChoice("instant", "Instant"), new SettingChoice("gradual", "Gradual"),
         };
 
         internal static IReadOnlyList<SettingDescriptor> All { get; } = new SettingDescriptor[]

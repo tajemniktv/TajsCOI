@@ -11,7 +11,6 @@ using Mafi.Core.Factory.ComputingPower;
 using Mafi.Core.Factory.ElectricPower;
 using Mafi.Core.Utils;
 using Mafi.Localization;
-using Mafi.Unity.Ui.Library;
 using Mafi.Unity.Ui.Statistics;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
@@ -59,11 +58,11 @@ namespace TajsCOI.Tweaks
         internal static void Install(Harmony harmony)
         {
             Type electricityView = typeof(ElectricityStatisticsTab).GetNestedType("BreakdownView", BindingFlags.NonPublic)
-                ?.GetNestedType("BreakdownListView", BindingFlags.NonPublic)
-                ?? throw new TypeLoadException("ElectricityStatisticsTab.BreakdownView.BreakdownListView");
+                                       ?.GetNestedType("BreakdownListView", BindingFlags.NonPublic)
+                                   ?? throw new TypeLoadException("ElectricityStatisticsTab.BreakdownView.BreakdownListView");
             Type computingView = typeof(ComputingStatisticsTab).GetNestedType("BreakdownView", BindingFlags.NonPublic)
-                ?.GetNestedType("BreakdownListView", BindingFlags.NonPublic)
-                ?? throw new TypeLoadException("ComputingStatisticsTab.BreakdownView.BreakdownListView");
+                                     ?.GetNestedType("BreakdownListView", BindingFlags.NonPublic)
+                                 ?? throw new TypeLoadException("ComputingStatisticsTab.BreakdownView.BreakdownListView");
 
             s_electricityShowConsumption = electricityView.GetField("m_showConsumption", BindingFlags.Instance | BindingFlags.NonPublic);
             s_electricityManager = electricityView.GetField("m_electricityManager", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -107,7 +106,7 @@ namespace TajsCOI.Tweaks
             {
                 return null;
             }
-            var widget = BuildWidget();
+            Widget widget = BuildWidget();
             row.InsertAt(0, widget.Container);
             store[instance] = widget;
             return widget;
@@ -170,7 +169,7 @@ namespace TajsCOI.Tweaks
 
         private static Texture2D Gradient(Color top, Color bottom)
         {
-            int key = top.GetHashCode() ^ (bottom.GetHashCode() << 16);
+            int key = top.GetHashCode() ^ bottom.GetHashCode() << 16;
             if (s_gradientCache.TryGetValue(key, out Texture2D? cached))
             {
                 return cached;

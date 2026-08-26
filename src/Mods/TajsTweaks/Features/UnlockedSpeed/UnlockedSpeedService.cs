@@ -66,7 +66,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
             GameSpeedController speedController,
             IInputScheduler inputScheduler,
             ShortcutsManager shortcuts,
-            Mafi.Core.GameLoop.IGameLoopEvents gameLoop,
+            IGameLoopEvents gameLoop,
             LazyResolve<IGameIdProvider> gameRunner,
             ITajsRuntime runtime,
             ITajsSettings settings)
@@ -130,7 +130,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
             try
             {
                 MethodInfo inputUpdate = AccessTools.Method(typeof(GameSpeedController), nameof(GameSpeedController.InputUpdate))
-                                          ?? throw new MissingMethodException(typeof(GameSpeedController).FullName, nameof(GameSpeedController.InputUpdate));
+                                         ?? throw new MissingMethodException(typeof(GameSpeedController).FullName, nameof(GameSpeedController.InputUpdate));
                 MethodInfo setSimSpeed = AccessTools.Method(typeof(SimLoopEvents), nameof(SimLoopEvents.SetSimSpeed), new[] { typeof(int) })
                                          ?? throw new MissingMethodException(typeof(SimLoopEvents).FullName, nameof(SimLoopEvents.SetSimSpeed));
                 MethodInfo setSpeed = AccessTools.Method(typeof(GameSpeedController), nameof(GameSpeedController.SetSpeed), new[] { typeof(int) })
@@ -434,7 +434,8 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
             {
                 return "Unlocked speed is unavailable on this game build.";
             }
-            return $"Game speed command queued for {speed}x (adaptive mode: {(speed > VanillaMaximum ? "Uncapped" : m_simLoop.AdaptiveSimSpeedMode.ToString())}).";
+            return
+                $"Game speed command queued for {speed}x (adaptive mode: {(speed > VanillaMaximum ? "Uncapped" : m_simLoop.AdaptiveSimSpeedMode.ToString())}).";
         }
 
         [ConsoleCommand(
@@ -447,13 +448,14 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
                 ? "paused"
                 : $"steps/update {m_simLoop.SimStepsPerUpdate}/{m_simLoop.BudgetedSimSteps}";
             string saturation = !m_simLoop.IsSimPaused &&
-                m_simLoop.BudgetedSimSteps > 0 &&
-                m_simLoop.SimStepsPerUpdate < m_simLoop.BudgetedSimSteps
+                                m_simLoop.BudgetedSimSteps > 0 &&
+                                m_simLoop.SimStepsPerUpdate < m_simLoop.BudgetedSimSteps
                 ? "budget not fully reached in the latest update"
                 : "no shortfall reported by the latest update";
             string overtime = ReadOvertimeStatus();
-            return $"Requested simulation speed: {m_simLoop.SimSpeedMult}x ({state}); configured max: {MaxSpeed}x; adaptive mode: {m_simLoop.AdaptiveSimSpeedMode}; {budget}; {saturation}.\n" +
-                   $"Speed sequence ({m_sequenceMode}): {string.Join(",", m_sequence)}; resume on selection: {m_resumeOnSelect}; {overtime}.";
+            return
+                $"Requested simulation speed: {m_simLoop.SimSpeedMult}x ({state}); configured max: {MaxSpeed}x; adaptive mode: {m_simLoop.AdaptiveSimSpeedMode}; {budget}; {saturation}.\n" +
+                $"Speed sequence ({m_sequenceMode}): {string.Join(",", m_sequence)}; resume on selection: {m_resumeOnSelect}; {overtime}.";
         }
 
         private string ReadOvertimeStatus()

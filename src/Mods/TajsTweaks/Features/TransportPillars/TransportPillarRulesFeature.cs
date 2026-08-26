@@ -9,11 +9,11 @@ using System.Reflection;
 using System.Reflection.Emit;
 using HarmonyLib;
 using Mafi;
-using Mafi.Core.Entities;
+using Mafi.Collections.ImmutableCollections;
 using Mafi.Core.Entities.Static.Layout;
-using Mafi.Core.Factory.Transports;
 using Mafi.Core.Factory.Lifts;
 using Mafi.Core.Factory.Sorters;
+using Mafi.Core.Factory.Transports;
 using Mafi.Core.Factory.Zippers;
 using Mafi.Core.Input;
 using Mafi.Core.Prototypes;
@@ -40,6 +40,7 @@ namespace TajsCOI.Tweaks
 
         private static readonly BindingFlags s_instanceMethods =
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+
         private static readonly BindingFlags s_staticPublic = BindingFlags.Static | BindingFlags.Public;
 
         private static FieldInfo? s_transportSupportRadiusField;
@@ -95,13 +96,13 @@ namespace TajsCOI.Tweaks
             }
 
             s_transportSupportRadiusField = typeof(TransportProto).GetField("MaxPillarSupportRadius", s_instanceMethods)
-                ?? throw new MissingFieldException(typeof(TransportProto).FullName, "MaxPillarSupportRadius");
+                                            ?? throw new MissingFieldException(typeof(TransportProto).FullName, "MaxPillarSupportRadius");
             s_transportPillarHeightField = typeof(TransportPillarProto).GetField("MAX_PILLAR_HEIGHT", s_staticPublic)
-                ?? throw new MissingFieldException(typeof(TransportPillarProto).FullName, "MAX_PILLAR_HEIGHT");
+                                           ?? throw new MissingFieldException(typeof(TransportPillarProto).FullName, "MAX_PILLAR_HEIGHT");
             s_trainPillarHeightField = typeof(TrainTrackPillarProto).GetField("MAX_PILLAR_HEIGHT", s_staticPublic)
-                ?? throw new MissingFieldException(typeof(TrainTrackPillarProto).FullName, "MAX_PILLAR_HEIGHT");
+                                       ?? throw new MissingFieldException(typeof(TrainTrackPillarProto).FullName, "MAX_PILLAR_HEIGHT");
             s_trainSupportDistanceField = typeof(TrainTrackConstants).GetField("PILLAR_SUPPORT_DISTANCE", s_staticPublic)
-                ?? throw new MissingFieldException(typeof(TrainTrackConstants).FullName, "PILLAR_SUPPORT_DISTANCE");
+                                          ?? throw new MissingFieldException(typeof(TrainTrackConstants).FullName, "PILLAR_SUPPORT_DISTANCE");
 
             s_transportSupportRadius = Math.Max(1, s_transportSupportRadius);
             s_transportPillarHeight = Math.Max(1, s_transportPillarHeight);
@@ -122,21 +123,28 @@ namespace TajsCOI.Tweaks
             s_occupiedTileConstraintPostfix = AccessTools.Method(typeof(TransportPillarRulesFeature), nameof(RemovePillarConstraintFromResult));
 
             MethodInfo transportBuild = AccessTools.Method(typeof(TransportsManager), "CanBuildOrJoinTransport")
-                ?? throw new MissingMethodException(typeof(TransportsManager).FullName, "CanBuildOrJoinTransport");
+                                        ?? throw new MissingMethodException(typeof(TransportsManager).FullName, "CanBuildOrJoinTransport");
             harmony.Patch(transportBuild, prefix: new HarmonyMethod(s_transportBuildPrefix));
 
             ConstructorInfo occupiedTileConstructor = AccessTools.Constructor(
-                typeof(OccupiedTileRelative),
-                new[]
-                {
-                    typeof(short), typeof(short), typeof(short), typeof(ushort), typeof(ushort),
-                    typeof(TileSurfaceSlimId), typeof(short),
-                }) ?? throw new MissingMethodException(typeof(OccupiedTileRelative).FullName, ".ctor");
+                                                          typeof(OccupiedTileRelative),
+                                                          new[]
+                                                          {
+                                                              typeof(short),
+                                                              typeof(short),
+                                                              typeof(short),
+                                                              typeof(ushort),
+                                                              typeof(ushort),
+                                                              typeof(TileSurfaceSlimId),
+                                                              typeof(short),
+                                                          }) ??
+                                                      throw new MissingMethodException(typeof(OccupiedTileRelative).FullName, ".ctor");
             harmony.Patch(occupiedTileConstructor, prefix: new HarmonyMethod(s_occupiedTileConstructorPrefix));
 
             MethodInfo occupiedTileConstraint = AccessTools.PropertyGetter(
-                typeof(OccupiedTileRelative), nameof(OccupiedTileRelative.Constraint))
-                ?? throw new MissingMethodException(typeof(OccupiedTileRelative).FullName, "Constraint");
+                                                    typeof(OccupiedTileRelative),
+                                                    nameof(OccupiedTileRelative.Constraint))
+                                                ?? throw new MissingMethodException(typeof(OccupiedTileRelative).FullName, "Constraint");
             harmony.Patch(occupiedTileConstraint, postfix: new HarmonyMethod(s_occupiedTileConstraintPostfix));
 
             PatchMethods(harmony, typeof(TransportsManager));
@@ -145,7 +153,9 @@ namespace TajsCOI.Tweaks
             PatchConstructor(harmony, typeof(TransportPillar));
 
             PatchMethods(harmony, typeof(TrainTracksPillarManager));
-            PatchMethods(harmony, typeof(TrainTracksGraphManager).BaseType
+            PatchMethods(
+                harmony,
+                typeof(TrainTracksGraphManager).BaseType
                 ?? throw new MissingMemberException(typeof(TrainTracksGraphManager).FullName, "BaseType"));
             PatchConstructor(harmony, typeof(TrainTrackPillar));
 
@@ -178,9 +188,9 @@ namespace TajsCOI.Tweaks
             }
 
             FieldInfo combinedConstraint = typeof(EntityLayout).GetField(
-                nameof(EntityLayout.CombinedConstraint),
-                BindingFlags.Instance | BindingFlags.Public)
-                ?? throw new MissingFieldException(typeof(EntityLayout).FullName, nameof(EntityLayout.CombinedConstraint));
+                                               nameof(EntityLayout.CombinedConstraint),
+                                               BindingFlags.Instance | BindingFlags.Public)
+                                           ?? throw new MissingFieldException(typeof(EntityLayout).FullName, nameof(EntityLayout.CombinedConstraint));
 
             foreach (LayoutEntityProto proto in GetPillarLayoutPrototypes(protosDb))
             {
@@ -264,7 +274,7 @@ namespace TajsCOI.Tweaks
             {
                 foreach (Transport transport in manager.Transports)
                 {
-                    var supportInfo = transport.Trajectory.TilesSupportInfo;
+                    ImmutableArray<TransportSupportInfo> supportInfo = transport.Trajectory.TilesSupportInfo;
                     for (int index = 0; index < supportInfo.Length; index++)
                     {
                         TransportSupportInfo support = supportInfo[index];
@@ -319,7 +329,7 @@ namespace TajsCOI.Tweaks
 
         private static void PatchOptionalType(Harmony harmony, string typeName)
         {
-            Type? type = Type.GetType(typeName, false);
+            var type = Type.GetType(typeName, false);
             if (type is not null)
             {
                 PatchMethods(harmony, type);
@@ -388,7 +398,8 @@ namespace TajsCOI.Tweaks
                     instruction.opcode = OpCodes.Call;
                     instruction.operand = s_getTransportPillarHeight;
                 }
-                else if (instruction.opcode == OpCodes.Ldsfld && instruction.operand is FieldInfo trainHeightField && trainHeightField == s_trainPillarHeightField)
+                else if (instruction.opcode == OpCodes.Ldsfld && instruction.operand is FieldInfo trainHeightField &&
+                         trainHeightField == s_trainPillarHeightField)
                 {
                     instruction.opcode = OpCodes.Call;
                     instruction.operand = s_getTrainPillarHeight;

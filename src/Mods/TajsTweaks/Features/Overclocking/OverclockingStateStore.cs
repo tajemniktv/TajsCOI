@@ -36,10 +36,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
     }
 
     /// <summary>
-    /// Save-scoped policy metadata. It deliberately lives outside the vanilla save serializer;
-    /// native Machine.m_speedFactorBase remains the persisted machine speed value, while this
-    /// file holds transport speed plus Auto/group intent and therefore cannot alter vanilla
-    /// object/class ID allocation.
+    ///     Save-scoped policy metadata. It deliberately lives outside the vanilla save serializer;
+    ///     native Machine.m_speedFactorBase remains the persisted machine speed value, while this
+    ///     file holds transport speed plus Auto/group intent and therefore cannot alter vanilla
+    ///     object/class ID allocation.
     /// </summary>
     internal sealed class OverclockingStateStore
     {
@@ -104,10 +104,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
         internal bool TryGetEntity(int entityId, out OverclockEntityPolicy? policy) => m_entities.TryGetValue(entityId, out policy);
 
-        internal void RemoveEntity(int entityId)
-        {
-            m_entities.Remove(entityId);
-        }
+        internal void RemoveEntity(int entityId) => m_entities.Remove(entityId);
 
         internal OverclockGroup? GetGroup(int groupId) => m_groups.FirstOrDefault(group => group.Id == groupId);
 
@@ -243,18 +240,38 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 foreach (KeyValuePair<int, OverclockEntityPolicy> pair in m_entities.OrderBy(pair => pair.Key))
                 {
                     OverclockEntityPolicy policy = pair.Value;
-                    lines.Add(string.Join("\t", "E", pair.Key, Bool(policy.HasManualOverride), policy.ManualPercent,
-                        Bool(policy.HasAutoOverride), Bool(policy.Auto), Bool(policy.HasBoundsOverride), policy.MinPercent,
-                        policy.MaxPercent));
+                    lines.Add(
+                        string.Join(
+                            "\t",
+                            "E",
+                            pair.Key,
+                            Bool(policy.HasManualOverride),
+                            policy.ManualPercent,
+                            Bool(policy.HasAutoOverride),
+                            Bool(policy.Auto),
+                            Bool(policy.HasBoundsOverride),
+                            policy.MinPercent,
+                            policy.MaxPercent));
                 }
 
                 foreach (OverclockGroup group in m_groups.OrderBy(group => group.Id))
                 {
                     string members = string.Join(",", group.Members.OrderBy(id => id));
                     string name = Convert.ToBase64String(Encoding.UTF8.GetBytes(CleanName(group.Name)));
-                    lines.Add(string.Join("\t", "G", group.Id, Bool(group.Locked), group.ColorIndex,
-                        group.HighlightAlpha, group.ManualDefault, Bool(group.Auto), group.MinPercent, group.MaxPercent,
-                        name, members));
+                    lines.Add(
+                        string.Join(
+                            "\t",
+                            "G",
+                            group.Id,
+                            Bool(group.Locked),
+                            group.ColorIndex,
+                            group.HighlightAlpha,
+                            group.ManualDefault,
+                            Bool(group.Auto),
+                            group.MinPercent,
+                            group.MaxPercent,
+                            name,
+                            members));
                 }
 
                 string temporaryPath = m_filePath + ".tmp";

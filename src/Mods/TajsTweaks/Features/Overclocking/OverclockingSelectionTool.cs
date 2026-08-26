@@ -2,10 +2,8 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
-using System;
 using System.Collections.Generic;
 using Mafi;
-using Mafi.Core;
 using Mafi.Core.Buildings.Offices;
 using Mafi.Core.Buildings.OreSorting;
 using Mafi.Core.Buildings.Waste;
@@ -19,9 +17,9 @@ using EntityId = Mafi.Core.EntityId;
 namespace TajsCOI.Tweaks.Features.Overclocking
 {
     /// <summary>
-    /// Lightweight screen-space group picker. It only enumerates selectable supported entities
-    /// while the user is actively dragging, never from the simulation tick, and applies
-    /// membership on mouse-up.
+    ///     Lightweight screen-space group picker. It only enumerates selectable supported entities
+    ///     while the user is actively dragging, never from the simulation tick, and applies
+    ///     membership on mouse-up.
     /// </summary>
     internal sealed class OverclockingSelectionTool
     {

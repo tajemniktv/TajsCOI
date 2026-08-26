@@ -16,7 +16,7 @@ namespace TajsCOI.Tests
         [Fact]
         public void PillarSettingsAreBoundedRestartScopedAndShowVanillaValues()
         {
-            var settings = TajsTweaksSettingsCatalog.All
+            SettingDescriptor[] settings = TajsTweaksSettingsCatalog.All
                 .Where(x => x.Key == TajsTweaksSettingsCatalog.TransportPillarSupportRadius ||
                             x.Key == TajsTweaksSettingsCatalog.TransportPillarMaxHeight ||
                             x.Key == TajsTweaksSettingsCatalog.TrainTrackPillarMaxHeight ||
@@ -25,18 +25,23 @@ namespace TajsCOI.Tests
                 .ToArray();
 
             Assert.Equal(5, settings.Length);
-            Assert.All(settings.Where(x => x.Key != TajsTweaksSettingsCatalog.IgnorePillarRequirements), setting =>
-            {
-                Assert.Equal(SettingApplyMode.RestartGame, setting.ApplyMode);
-                Assert.Contains("vanilla:", setting.DisplayName, StringComparison.OrdinalIgnoreCase);
-                Assert.Equal(SettingValueType.Integer, setting.ValueType);
-                Assert.Equal(1d, setting.Minimum);
-            });
-            Assert.Equal(TransportPillarRulesFeature.MaxConfiguredSupportRadius,
+            Assert.All(
+                settings.Where(x => x.Key != TajsTweaksSettingsCatalog.IgnorePillarRequirements),
+                setting =>
+                {
+                    Assert.Equal(SettingApplyMode.RestartGame, setting.ApplyMode);
+                    Assert.Contains("vanilla:", setting.DisplayName, StringComparison.OrdinalIgnoreCase);
+                    Assert.Equal(SettingValueType.Integer, setting.ValueType);
+                    Assert.Equal(1d, setting.Minimum);
+                });
+            Assert.Equal(
+                TransportPillarRulesFeature.MaxConfiguredSupportRadius,
                 settings.Single(x => x.Key == TajsTweaksSettingsCatalog.TransportPillarSupportRadius).Maximum);
-            Assert.Equal(TransportPillarRulesFeature.MaxConfiguredPillarHeight,
+            Assert.Equal(
+                TransportPillarRulesFeature.MaxConfiguredPillarHeight,
                 settings.Single(x => x.Key == TajsTweaksSettingsCatalog.TransportPillarMaxHeight).Maximum);
-            Assert.Equal(TransportPillarRulesFeature.MaxConfiguredTrainSupportDistance,
+            Assert.Equal(
+                TransportPillarRulesFeature.MaxConfiguredTrainSupportDistance,
                 settings.Single(x => x.Key == TajsTweaksSettingsCatalog.TrainTrackPillarSupportDistance).Maximum);
             SettingDescriptor ignore = settings.Single(x => x.Key == TajsTweaksSettingsCatalog.IgnorePillarRequirements);
             Assert.Equal(SettingApplyMode.RestartGame, ignore.ApplyMode);

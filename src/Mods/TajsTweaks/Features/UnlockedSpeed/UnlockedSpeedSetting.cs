@@ -76,10 +76,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
 
         internal static IReadOnlyList<SettingDescriptor> All { get; } = new[]
         {
-            Descriptor,
-            SequenceModeDescriptor,
-            CustomSequenceDescriptor,
-            ResumeOnSelectDescriptor,
+            Descriptor, SequenceModeDescriptor, CustomSequenceDescriptor, ResumeOnSelectDescriptor,
         };
     }
 }

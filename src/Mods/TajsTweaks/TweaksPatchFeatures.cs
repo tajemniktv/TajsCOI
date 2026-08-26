@@ -608,7 +608,7 @@ namespace TajsCOI.Tweaks
 
         private static void InstallUpgradeAreaSupport(Harmony harmony)
         {
-            Type? controller = Type.GetType(
+            var controller = Type.GetType(
                 "Mafi.Unity.Ui.Controllers.Tools.UpgradeToolInputController, Mafi.Unity",
                 false);
             MethodInfo? activate = controller is null ? null : AccessTools.Method(controller, "Activate", Type.EmptyTypes);
@@ -640,7 +640,7 @@ namespace TajsCOI.Tweaks
 
         private static void InstallPolygonAreaSupport(Harmony harmony)
         {
-            Type? polygonState = Type.GetType("Mafi.Unity.Ui.Controllers.PolygonEditState, Mafi.Unity", false);
+            var polygonState = Type.GetType("Mafi.Unity.Ui.Controllers.PolygonEditState, Mafi.Unity", false);
             MethodInfo? initialize = polygonState is null ? null : AccessTools.Method(polygonState, "Initialize");
             PropertyInfo? maxEdgeSize = polygonState?.GetProperty(
                 "MaxEdgeSize",
@@ -665,7 +665,8 @@ namespace TajsCOI.Tweaks
         {
             for (Type? current = type; current is not null; current = current.BaseType)
             {
-                FieldInfo? field = current.GetField(flags.HasFlag(BindingFlags.Static) ? name : name,
+                FieldInfo? field = current.GetField(
+                    flags.HasFlag(BindingFlags.Static) ? name : name,
                     flags | BindingFlags.DeclaredOnly);
                 if (field is not null)
                 {
@@ -793,11 +794,10 @@ namespace TajsCOI.Tweaks
                 ?.GetType("TweaksPP.DesignationVisualPatch", false);
 
         private static bool HasExpectedHarmonyOwner(IEnumerable<Patch> patches, string ownerId) =>
-            patches.Any(
-                patch => string.Equals(patch.owner, ownerId, StringComparison.Ordinal) &&
-                    patch.PatchMethod?.DeclaringType == typeof(TweaksDesignationFeature) &&
-                    (string.Equals(patch.PatchMethod.Name, nameof(ReplaceLimits), StringComparison.Ordinal) ||
-                     string.Equals(patch.PatchMethod.Name, nameof(RenderPrefix), StringComparison.Ordinal)));
+            patches.Any(patch => string.Equals(patch.owner, ownerId, StringComparison.Ordinal) &&
+                                 patch.PatchMethod?.DeclaringType == typeof(TweaksDesignationFeature) &&
+                                 (string.Equals(patch.PatchMethod.Name, nameof(ReplaceLimits), StringComparison.Ordinal) ||
+                                  string.Equals(patch.PatchMethod.Name, nameof(RenderPrefix), StringComparison.Ordinal)));
 
         private static bool UsesAreaLimit(MethodInfo method, IReadOnlyCollection<FieldInfo> fields)
         {
@@ -1120,7 +1120,7 @@ namespace TajsCOI.Tweaks
 
         private static bool Prefix(Vehicle vehicle, ref ILayoutEntity staticEntity, ref bool __result)
         {
-            if ((!TajsTweaksRuntimeState.RecoverTrucks && !TajsTweaksRuntimeState.DumpToShipyard) || vehicle is not Truck truck)
+            if (!TajsTweaksRuntimeState.RecoverTrucks && !TajsTweaksRuntimeState.DumpToShipyard || vehicle is not Truck truck)
             {
                 return true;
             }

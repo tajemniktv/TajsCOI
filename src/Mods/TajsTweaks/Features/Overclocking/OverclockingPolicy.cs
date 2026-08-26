@@ -40,10 +40,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
     internal static class OverclockingMath
     {
-        internal static int ClampPercent(int percent, int minimum, int maximum)
-        {
-            return Math.Max(Math.Min(minimum, maximum), Math.Min(Math.Max(minimum, maximum), percent));
-        }
+        internal static int ClampPercent(int percent, int minimum, int maximum) =>
+            Math.Max(Math.Min(minimum, maximum), Math.Min(Math.Max(minimum, maximum), percent));
 
         internal static float CostMultiplier(int percent, int curvePercent)
         {
@@ -83,10 +81,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         }
 
         /// <summary>
-        /// Keeps the process duration used by COI's ExtendPauseToFit animation state strictly
-        /// longer than the effective animation duration when a Tajs overclock shortens the
-        /// recipe below it. The returned value is only for the animation state; it must not be
-        /// fed back into recipe production timing.
+        ///     Keeps the process duration used by COI's ExtendPauseToFit animation state strictly
+        ///     longer than the effective animation duration when a Tajs overclock shortens the
+        ///     recipe below it. The returned value is only for the animation state; it must not be
+        ///     fed back into recipe production timing.
         /// </summary>
         internal static int EnsureAnimationProcessFits(int currentProcessTicks, int animationTicks, int overclockPercent)
         {
@@ -149,7 +147,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return bounds.Clamp(current);
             }
 
-            int limited = Math.Max(current - Math.Max(1, maximumStepPercent),
+            int limited = Math.Max(
+                current - Math.Max(1, maximumStepPercent),
                 Math.Min(current + Math.Max(1, maximumStepPercent), desired));
             int step = Math.Max(1, stepPercent);
             int quantized = (int)Math.Round(limited / (double)step) * step;
@@ -157,7 +156,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         }
 
         internal static bool HasDemandSignal(float? fillPercent) => fillPercent.HasValue &&
-            !float.IsNaN(fillPercent.Value) && !float.IsInfinity(fillPercent.Value);
+                                                                    !float.IsNaN(fillPercent.Value) && !float.IsInfinity(fillPercent.Value);
 
         internal static int RampedCapacityValue(int vanilla, int percent, int maxPercent, int bonusPercent, bool increase)
         {
@@ -174,8 +173,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return vanilla;
             }
 
-            float amount = percent >= rampEnd ? 1f :
-                (percent - rampStart) / (float)Math.Max(1, rampEnd - rampStart);
+            float amount = percent >= rampEnd ? 1f : (percent - rampStart) / (float)Math.Max(1, rampEnd - rampStart);
             int target;
             if (increase)
             {

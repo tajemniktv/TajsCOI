@@ -111,7 +111,7 @@ namespace TajsCOI.Tweaks
             const string capabilityId = "TajsTweaks.TweaksPlusPlusDesignationVisual";
             const string harmonyOwner = HarmonyId + ".DesignationControls";
             bool expectedOwnerInstalled = designationInstalled &&
-                TweaksDesignationFeature.HasExpectedHarmonyOwner(harmonyOwner);
+                                          TweaksDesignationFeature.HasExpectedHarmonyOwner(harmonyOwner);
             bool optionalTargetAvailable = TweaksDesignationFeature.HasTweaksPlusPlusDesignationVisualIntegration();
             bool available = expectedOwnerInstalled && optionalTargetAvailable;
             runtime.RegisterCapability(
@@ -298,13 +298,16 @@ namespace TajsCOI.Tweaks
             TryInstall(m_runtime, "SteamAndExhaustStorage", harmony => TweaksSteamStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "StorageOverrides", harmony => TweaksStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "GameplayPlusPlusBridge", harmony => TweaksGameplayPlusPlusFeature.Install(harmony, m_resolver));
-            TryInstallResolved(m_runtime, "PillarConstraintOverrides", () =>
-            {
-                if (TajsTweaksRuntimeState.IgnorePillarRequirements && m_resolver.TryResolve(out ProtosDb protosDb))
+            TryInstallResolved(
+                m_runtime,
+                "PillarConstraintOverrides",
+                () =>
                 {
-                    TransportPillarRulesFeature.ApplyPillarConstraintOverrides(protosDb);
-                }
-            });
+                    if (TajsTweaksRuntimeState.IgnorePillarRequirements && m_resolver.TryResolve(out ProtosDb protosDb))
+                    {
+                        TransportPillarRulesFeature.ApplyPillarConstraintOverrides(protosDb);
+                    }
+                });
         }
 
         private void EnsureOverclockingFeature()
@@ -430,8 +433,8 @@ namespace TajsCOI.Tweaks
             int parsedMinimum = 0;
             int parsedMaximum = 0;
             if (!int.TryParse(entityId, out int parsedId) || !bool.TryParse(enabled, out bool parsedEnabled) ||
-                (minimum is not null && !int.TryParse(minimum, out parsedMinimum)) ||
-                (maximum is not null && !int.TryParse(maximum, out parsedMaximum)))
+                minimum is not null && !int.TryParse(minimum, out parsedMinimum) ||
+                maximum is not null && !int.TryParse(maximum, out parsedMaximum))
             {
                 return "Usage: tajs_overclock_auto <entity-id> <true|false> [min-percent] [max-percent]";
             }
@@ -488,9 +491,11 @@ namespace TajsCOI.Tweaks
                 return "No overclock groups exist.";
             }
 
-            return string.Join(" | ", m_overclocking.Groups.Select(group =>
-                group.Id + ":" + group.Name + " members=" + group.Members.Count + " locked=" + group.Locked +
-                " default=" + (group.ManualDefault == 0 ? "global" : group.ManualDefault + "%") + " auto=" + group.Auto));
+            return string.Join(
+                " | ",
+                m_overclocking.Groups.Select(group =>
+                    group.Id + ":" + group.Name + " members=" + group.Members.Count + " locked=" + group.Locked +
+                    " default=" + (group.ManualDefault == 0 ? "global" : group.ManualDefault + "%") + " auto=" + group.Auto));
         }
 
         [ConsoleCommand(
@@ -578,7 +583,7 @@ namespace TajsCOI.Tweaks
             }
 
             return int.TryParse(groupId, out int parsedGroup) && bool.TryParse(locked, out bool parsedLocked) &&
-                m_overclocking.SetGroupLocked(parsedGroup, parsedLocked)
+                   m_overclocking.SetGroupLocked(parsedGroup, parsedLocked)
                 ? "Group " + parsedGroup + " locked=" + parsedLocked + "."
                 : "Usage: tajs_overclock_group_lock <group-id> <true|false>";
         }
@@ -594,7 +599,7 @@ namespace TajsCOI.Tweaks
             }
 
             return int.TryParse(groupId, out int parsedGroup) && int.TryParse(colorIndex, out int parsedColor) &&
-                m_overclocking.SetGroupColor(parsedGroup, parsedColor)
+                   m_overclocking.SetGroupColor(parsedGroup, parsedColor)
                 ? "Group " + parsedGroup + " color updated."
                 : "Usage: tajs_overclock_group_color <group-id> <0-8>";
         }
@@ -688,8 +693,8 @@ namespace TajsCOI.Tweaks
             int parsedMinimum = 0;
             int parsedMaximum = 0;
             if (!int.TryParse(groupId, out int parsedGroup) || !bool.TryParse(enabled, out bool parsedEnabled) ||
-                (minimum is not null && !int.TryParse(minimum, out parsedMinimum)) ||
-                (maximum is not null && !int.TryParse(maximum, out parsedMaximum)))
+                minimum is not null && !int.TryParse(minimum, out parsedMinimum) ||
+                maximum is not null && !int.TryParse(maximum, out parsedMaximum))
             {
                 return "Usage: tajs_overclock_group_auto <group-id> <true|false> [min-percent] [max-percent]";
             }
@@ -711,10 +716,22 @@ namespace TajsCOI.Tweaks
         {
             SettingSetResult[] results =
             {
-                m_settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TransportPillarSupportRadius, TransportPillarRulesFeature.VanillaTransportSupportRadius),
-                m_settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TransportPillarMaxHeight, TransportPillarRulesFeature.VanillaTransportPillarHeight),
-                m_settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainTrackPillarMaxHeight, TransportPillarRulesFeature.VanillaTrainPillarHeight),
-                m_settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainTrackPillarSupportDistance, TransportPillarRulesFeature.VanillaTrainSupportDistance),
+                m_settings.TrySet(
+                    TajsTweaksSettingsCatalog.ModId,
+                    TajsTweaksSettingsCatalog.TransportPillarSupportRadius,
+                    TransportPillarRulesFeature.VanillaTransportSupportRadius),
+                m_settings.TrySet(
+                    TajsTweaksSettingsCatalog.ModId,
+                    TajsTweaksSettingsCatalog.TransportPillarMaxHeight,
+                    TransportPillarRulesFeature.VanillaTransportPillarHeight),
+                m_settings.TrySet(
+                    TajsTweaksSettingsCatalog.ModId,
+                    TajsTweaksSettingsCatalog.TrainTrackPillarMaxHeight,
+                    TransportPillarRulesFeature.VanillaTrainPillarHeight),
+                m_settings.TrySet(
+                    TajsTweaksSettingsCatalog.ModId,
+                    TajsTweaksSettingsCatalog.TrainTrackPillarSupportDistance,
+                    TransportPillarRulesFeature.VanillaTrainSupportDistance),
                 m_settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.IgnorePillarRequirements, false),
             };
             return results.All(x => x.Success)

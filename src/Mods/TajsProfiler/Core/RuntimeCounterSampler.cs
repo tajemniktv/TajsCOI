@@ -461,9 +461,10 @@ namespace TajsCOI.Profiler.Core
                 .Append(", mono-used=").Append(UnityStatus(m_monoUsed, "Profiler.GetMonoUsedSizeLong"))
                 .Append(", mono-heap=").Append(UnityStatus(m_monoHeap, "Profiler.GetMonoHeapSizeLong"))
                 .Append("; profiler: gpu-frame=").Append(RecorderStatus(m_gpuFrame, "Render/GPU Frame Time"))
-                .Append(", frame-timing-gpu=").Append(m_frameTimingGpu is null
-                    ? "unavailable"
-                    : "UnityEngine.FrameTimingManager (requires player Frame Timing Stats)")
+                .Append(", frame-timing-gpu=").Append(
+                    m_frameTimingGpu is null
+                        ? "unavailable"
+                        : "UnityEngine.FrameTimingManager (requires player Frame Timing Stats)")
                 .Append(", main-thread=").Append(RecorderStatus(m_mainThread, "Internal/Main Thread"))
                 .Append(", render-thread=").Append(RecorderStatus(m_renderThread, "Internal/Render Thread"))
                 .Append(", draw-calls=").Append(RecorderStatus(m_drawCalls, "Render/Draw Calls Count"))

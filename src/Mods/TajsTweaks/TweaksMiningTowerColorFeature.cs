@@ -11,7 +11,6 @@ using HarmonyLib;
 using Mafi;
 using Mafi.Core.Entities;
 using Mafi.Localization;
-using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Settings;
@@ -27,11 +26,18 @@ namespace TajsCOI.Tweaks
     internal static class TweaksMiningTowerColorFeature
     {
         private static readonly string[] s_names = { "Default", "Green", "Yellow", "Blue", "Orange", "Red", "Purple", "Cyan", "White" };
+
         private static readonly Color[] s_palette =
         {
-            new(0f, 0f, 0f, 0f), new(0.31f, 0.86f, 0.31f, 1f), new(1f, 0.86f, 0.2f, 1f),
-            new(0.31f, 0.55f, 1f, 1f), new(1f, 0.65f, 0f, 1f), new(1f, 0.31f, 0.31f, 1f),
-            new(0.71f, 0.39f, 1f, 1f), new(0.2f, 0.85f, 0.9f, 1f), new(1f, 1f, 1f, 1f),
+            new(0f, 0f, 0f, 0f),
+            new(0.31f, 0.86f, 0.31f, 1f),
+            new(1f, 0.86f, 0.2f, 1f),
+            new(0.31f, 0.55f, 1f, 1f),
+            new(1f, 0.65f, 0f, 1f),
+            new(1f, 0.31f, 0.31f, 1f),
+            new(0.71f, 0.39f, 1f, 1f),
+            new(0.2f, 0.85f, 0.9f, 1f),
+            new(1f, 1f, 1f, 1f),
         };
 
         private static WeakReference<ITajsSettings>? s_settings;
@@ -213,7 +219,9 @@ namespace TajsCOI.Tweaks
             {
                 colors[entity.Id.Value] = Mathf.Clamp(index, 0, 8);
             }
-            settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceTowerColors,
+            settings.TrySet(
+                TajsTweaksSettingsCatalog.ModId,
+                TajsTweaksSettingsCatalog.ResourceTowerColors,
                 TajsTweaksRuntimeState.FormatTowerColors(colors));
             if (s_rendererField?.GetValue(inspector) is object renderer)
             {
@@ -270,10 +278,7 @@ namespace TajsCOI.Tweaks
             }
         }
 
-        private static void ApplyColorNow(object renderer, int towerId)
-        {
-            ApplyAll(renderer);
-        }
+        private static void ApplyColorNow(object renderer, int towerId) => ApplyAll(renderer);
 
         private static LocStrFormatted Localize(string text) =>
             LocalizationManager.CreateAlreadyLocalizedStr("TajsTweaksTowerColor_" + text.GetHashCode().ToString("X"), text).AsFormatted;

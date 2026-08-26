@@ -101,7 +101,7 @@ namespace TajsCOI.Tweaks
             {
                 return state.Value;
             }
-            SoundCategory category = SoundCategory.Machine;
+            var category = SoundCategory.Machine;
             try
             {
                 s_desc ??= typeof(EntitySoundMb).GetProperty("Desc", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);

@@ -1579,7 +1579,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
             return lines.Count == 0
                 ? "TajsCOI Harmony audit: no TajsCOI-owned patches found."
-                : $"TajsCOI Harmony audit: {lines.Count} patch entries across {snapshot.TajsPatchedTargetCount} Tajs target(s), shared targets={snapshot.SharedTargetCount}, attention={snapshot.AttentionCount}, duplicate registrations={duplicateGroups.Count}.\n" + string.Join("\n", lines);
+                : $"TajsCOI Harmony audit: {lines.Count} patch entries across {snapshot.TajsPatchedTargetCount} Tajs target(s), shared targets={snapshot.SharedTargetCount}, attention={snapshot.AttentionCount}, duplicate registrations={duplicateGroups.Count}.\n" +
+                  string.Join("\n", lines);
         }
 
         private static string FormatOwners(IReadOnlyList<string> owners) =>

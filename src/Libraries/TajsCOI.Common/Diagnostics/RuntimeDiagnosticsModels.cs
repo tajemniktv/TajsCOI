@@ -86,7 +86,8 @@ namespace TajsCOI.Common.Diagnostics
         public bool ReturnsBoolean { get; }
 
         private static IReadOnlyList<string> CopyStrings(IEnumerable<string>? values) =>
-            Array.AsReadOnly((values ?? Enumerable.Empty<string>())
+            Array.AsReadOnly(
+                (values ?? Enumerable.Empty<string>())
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .Select(value => value.Trim())
                 .Distinct(StringComparer.Ordinal)
@@ -133,7 +134,8 @@ namespace TajsCOI.Common.Diagnostics
         public int TajsPatchCount => Patches.Count(patch => patch.IsTajsOwned);
 
         private static IReadOnlyList<string> CopyStrings(IEnumerable<string>? values) =>
-            Array.AsReadOnly((values ?? Enumerable.Empty<string>())
+            Array.AsReadOnly(
+                (values ?? Enumerable.Empty<string>())
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .Select(value => value.Trim())
                 .Distinct(StringComparer.Ordinal)
@@ -250,7 +252,8 @@ namespace TajsCOI.Common.Diagnostics
         }
 
         private static IReadOnlyList<string> CopyStrings(IEnumerable<string>? values) =>
-            Array.AsReadOnly((values ?? Enumerable.Empty<string>())
+            Array.AsReadOnly(
+                (values ?? Enumerable.Empty<string>())
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .Select(value => value.Trim())
                 .Distinct(StringComparer.Ordinal)

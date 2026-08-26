@@ -347,7 +347,7 @@ namespace TajsCOI.Tweaks
         private static void ApplyFullscreenVisibility()
         {
             s_fullscreenWindows.RemoveAll(reference => !reference.TryGetTarget(out _));
-            bool hidden = !s_uiVisible || (!TajsTweaksRuntimeState.ShowHudOnFullscreenViews && s_fullscreenWindows.Count > 0);
+            bool hidden = !s_uiVisible || !TajsTweaksRuntimeState.ShowHudOnFullscreenViews && s_fullscreenWindows.Count > 0;
             foreach (HudElementState state in s_elements.Values)
             {
                 if (hidden)

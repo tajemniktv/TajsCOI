@@ -76,10 +76,7 @@ namespace TajsCOI.Core.Diagnostics
             }
         }
 
-        internal static string FormatHarmonyMethod(MethodBase method)
-        {
-            return RuntimeMethodFormatter.Format(method);
-        }
+        internal static string FormatHarmonyMethod(MethodBase method) => RuntimeMethodFormatter.Format(method);
 
         private static void AddEntries(
             ICollection<HarmonyPatchSnapshot> destination,

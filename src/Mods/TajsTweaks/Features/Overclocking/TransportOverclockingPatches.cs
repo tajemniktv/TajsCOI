@@ -10,9 +10,7 @@ using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using HarmonyLib;
 using Mafi;
-using Mafi.Core;
 using Mafi.Core.Entities;
-using Mafi.Core.Entities.Static;
 using Mafi.Core.Factory.Transports;
 using Mafi.Core.Ports;
 using Mafi.Core.Products;
@@ -20,8 +18,8 @@ using Mafi.Core.Products;
 namespace TajsCOI.Tweaks.Features.Overclocking
 {
     /// <summary>
-    /// Adds the transport-specific seams for issue #146. Belts and pipes share COI's Transport
-    /// entity, but only solid transports receive the optional inventory-density compensation.
+    ///     Adds the transport-specific seams for issue #146. Belts and pipes share COI's Transport
+    ///     entity, but only solid transports receive the optional inventory-density compensation.
     /// </summary>
     internal static class TransportOverclockingPatches
     {
@@ -81,10 +79,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
         internal static void TransportConstructedPostfix(Transport __instance) => RegisterTransport(__instance);
 
-        internal static void TransportSimUpdatePostfix(Transport __instance)
-        {
-            TajsOverclockingFeature.Current?.AdvanceExtraCycles(__instance);
-        }
+        internal static void TransportSimUpdatePostfix(Transport __instance) => TajsOverclockingFeature.Current?.AdvanceExtraCycles(__instance);
 
         internal static bool IsBelt(Transport transport)
         {
@@ -108,8 +103,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
             int percent = TajsOverclockingFeature.GetPercentFor(transport);
             int maxPercent = Math.Max(100, TajsTweaksRuntimeState.OverclockMaxPercent);
-            return OverclockingMath.RampedCapacityValue(vanillaSpacing, percent, maxPercent,
-                TajsTweaksRuntimeState.OverclockTransportSpacingBonus, increase: false);
+            return OverclockingMath.RampedCapacityValue(
+                vanillaSpacing,
+                percent,
+                maxPercent,
+                TajsTweaksRuntimeState.OverclockTransportSpacingBonus,
+                increase: false);
         }
 
         internal static Quantity EffectiveStackMin(ref Quantity productMax, Quantity protoMax, Transport transport)
@@ -127,8 +126,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
             int percent = TajsOverclockingFeature.GetPercentFor(transport);
             int maxPercent = Math.Max(100, TajsTweaksRuntimeState.OverclockMaxPercent);
-            int value = OverclockingMath.RampedCapacityValue(protoMax.Value, percent, maxPercent,
-                TajsTweaksRuntimeState.OverclockTransportStackBonus, increase: true);
+            int value = OverclockingMath.RampedCapacityValue(
+                protoMax.Value,
+                percent,
+                maxPercent,
+                TajsTweaksRuntimeState.OverclockTransportStackBonus,
+                increase: true);
             return value <= protoMax.Value ? protoMax : new Quantity(value);
         }
 
@@ -147,7 +150,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             int effectiveStack = EffectiveStackFor(transport);
             int maxProducts = transport.Trajectory.MaxProducts;
             return "belt capacity: spacing " + effectiveSpacing + "/" + vanillaSpacing +
-                ", stack " + effectiveStack + ", trajectory slots " + maxProducts;
+                   ", stack " + effectiveStack + ", trajectory slots " + maxProducts;
         }
 
         internal static void MaxProductsPostfix(TransportTrajectory __instance, ref int __result)
@@ -179,9 +182,15 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             s_spacingField = typeof(TransportProto).GetField("ProductSpacingWaypoints", instanceAll);
             s_stackField = typeof(TransportProto).GetField("MaxQuantityPerTransportedProduct", instanceAll);
             s_quantityMin = typeof(Quantity).GetMethod("Min", instanceAll, null, new[] { typeof(Quantity) }, null);
-            s_effectiveSpacing = typeof(TransportOverclockingPatches).GetMethod(nameof(EffectiveSpacing), BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            s_effectiveStackMin = typeof(TransportOverclockingPatches).GetMethod(nameof(EffectiveStackMin), BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            s_effectiveStackValue = typeof(TransportOverclockingPatches).GetMethod(nameof(EffectiveStackValue), BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            s_effectiveSpacing = typeof(TransportOverclockingPatches).GetMethod(
+                nameof(EffectiveSpacing),
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            s_effectiveStackMin = typeof(TransportOverclockingPatches).GetMethod(
+                nameof(EffectiveStackMin),
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            s_effectiveStackValue = typeof(TransportOverclockingPatches).GetMethod(
+                nameof(EffectiveStackValue),
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
 
             MethodInfo? moveProducts = typeof(Transport).GetMethod("tryMoveProducts", instancePrivate);
             TryPatchTranspiler(harmony, moveProducts);
@@ -249,7 +258,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 }
 
                 bool followedByMin = s_quantityMin is not null && index + 1 < source.Count &&
-                    source[index + 1].opcode == OpCodes.Call && source[index + 1].operand as MethodInfo == s_quantityMin;
+                                     source[index + 1].opcode == OpCodes.Call && source[index + 1].operand as MethodInfo == s_quantityMin;
                 if (followedByMin && s_effectiveStackMin is not null)
                 {
                     result.Add(new CodeInstruction(OpCodes.Ldarg_0));

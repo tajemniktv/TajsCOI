@@ -8,9 +8,8 @@ using System.Reflection;
 using HarmonyLib;
 using Mafi;
 using Mafi.Core;
-using Mafi.Core.Entities;
 using Mafi.Core.Buildings.Shipyard;
-using Mafi.Core.Products;
+using Mafi.Core.Entities;
 using Mafi.Core.Prototypes;
 using Mafi.Core.Vehicles.Trucks;
 using UnityEngine;
@@ -196,10 +195,7 @@ namespace TajsCOI.Tweaks
         private static bool s_searched;
         private static int s_assemblyCountAtSearch = -1;
 
-        internal static void Install(Harmony _)
-        {
-            FindScaleField();
-        }
+        internal static void Install(Harmony _) => FindScaleField();
 
         internal static void Apply()
         {
@@ -253,7 +249,7 @@ namespace TajsCOI.Tweaks
         private static void FindScaleField()
         {
             Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
-            if (s_scaleField is not null || (s_searched && assemblies.Length == s_assemblyCountAtSearch))
+            if (s_scaleField is not null || s_searched && assemblies.Length == s_assemblyCountAtSearch)
             {
                 return;
             }

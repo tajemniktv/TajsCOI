@@ -28,9 +28,9 @@ using UiTextField = Mafi.Unity.UiToolkit.Library.TextField;
 namespace TajsCOI.Tweaks.Features.Overclocking
 {
     /// <summary>
-    /// Small native-inspector panel. It intentionally exposes bounded +/- controls instead of
-    /// duplicating the entire vanilla machine inspector; commands still go through the normal
-    /// input scheduler and the label displays the native effective speed after the command lands.
+    ///     Small native-inspector panel. It intentionally exposes bounded +/- controls instead of
+    ///     duplicating the entire vanilla machine inspector; commands still go through the normal
+    ///     input scheduler and the label displays the native effective speed after the command lands.
     /// </summary>
     internal static class OverclockingInspectorPatch
     {
@@ -55,11 +55,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             Assembly assembly = typeof(PanelWithHeader).Assembly;
             string[] inspectorNames =
             {
-                "MachineInspector",
-                "OreSortingPlantInspector",
-                "OfficeBuildingInspector",
-                "WasteSortingPlantInspector",
-                "TransportInspector",
+                "MachineInspector", "OreSortingPlantInspector", "OfficeBuildingInspector", "WasteSortingPlantInspector", "TransportInspector",
             };
             int patched = 0;
             foreach (string inspectorName in inspectorNames)
@@ -72,7 +68,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
                 PropertyInfo? entityProperty = FindProperty(inspectorType, "Entity");
                 MethodInfo? addPanel = FindAddPanelMethod(inspectorType);
-                ConstructorInfo? constructor = inspectorType.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).FirstOrDefault();
+                ConstructorInfo? constructor = inspectorType.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .FirstOrDefault();
                 if (entityProperty is null || addPanel is null || constructor is null)
                 {
                     continue;
@@ -104,10 +101,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
         }
 
-        internal static void ConstructorPostfix(object __instance)
-        {
-            EnsurePanel(__instance);
-        }
+        internal static void ConstructorPostfix(object __instance) => EnsurePanel(__instance);
 
         internal static void ActivatedPostfix(object __instance)
         {
@@ -199,7 +193,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 {
                     IEntity? previous = existing.Entity;
                     existing.Entity = TryGetEntity(inspector, out IEntity? rebound) &&
-                        TajsOverclockingFeature.Current?.CanControl(rebound!.Id) == true
+                                      TajsOverclockingFeature.Current?.CanControl(rebound!.Id) == true
                         ? rebound
                         : null;
                     if (previous?.Id != existing.Entity?.Id)
@@ -222,10 +216,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 // Keep the panel at its intrinsic height. Ore sorting inspectors contain several
                 // variable-height sections and shrink children when the inspector is constrained.
                 PanelWithHeader panel = new PanelWithHeader("Overclocking".AsLoc()).FlexShrink(0f);
-                var rate = new UiLabel((current + "%").AsLoc()).FontBold().Width(48.px());
+                UiLabel rate = new UiLabel((current + "%").AsLoc()).FontBold().Width(48.px());
                 var mode = new UiLabel(string.Empty.AsLoc());
                 var costs = new UiLabel(string.Empty.AsLoc());
-                var slider = new UiSlider()
+                Slider slider = new UiSlider()
                     .Range(policy.MinPercent, policy.MaxPercent)
                     .ValueFormatter(Option<Func<Percent, LocStrFormatted>>.Create(_ => LocStrFormatted.Empty))
                     .Value(current);
@@ -233,25 +227,33 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 slider.RootElement.style.flexShrink = 1f;
                 slider.RootElement.style.minWidth = 120f;
 
-                var input = new UiTextField()
+                TextField input = new UiTextField()
                     .Text(current.ToString())
                     .CharLimit(5)
                     .PositiveIntegersOnly();
                 input.RootElement.style.width = 62f;
                 input.RootElement.style.flexShrink = 0f;
-                var rateRow = new Row(3.pt()).AlignItemsCenter();
+                Row rateRow = new Row(3.pt()).AlignItemsCenter();
                 rateRow.Add(new UiLabel("Requested rate".AsLoc()).Width(95.px()), rate, slider, input);
 
-                var buttonRow = new Row(3.pt()).Wrap().AlignItemsCenter();
+                Row buttonRow = new Row(3.pt()).Wrap().AlignItemsCenter();
                 buttonRow.Add(new ButtonText(UiButton.General, ("-" + step + "%").AsLoc(), () => QueueRelative(inspector, -step)));
                 buttonRow.Add(new ButtonText(UiButton.General, ("+" + step + "%").AsLoc(), () => QueueRelative(inspector, step)));
                 buttonRow.Add(new ButtonText(UiButton.General, "Default".AsLoc(), () => Reset(inspector)));
                 buttonRow.Add(new ButtonText(UiButton.General, "Auto".AsLoc(), () => ToggleAuto(inspector)));
 
-                var content = new UiColumn(2.pt()).AlignItemsStretch();
+                UiColumn content = new UiColumn(2.pt()).AlignItemsStretch();
                 content.Add(rateRow, buttonRow, mode, costs);
                 panel.BodyAdd(content);
-                var state = new State { Entity = entity, Rate = rate, Mode = mode, Costs = costs, Slider = slider, Input = input };
+                var state = new State
+                {
+                    Entity = entity,
+                    Rate = rate,
+                    Mode = mode,
+                    Costs = costs,
+                    Slider = slider,
+                    Input = input,
+                };
                 s_states[inspector] = state;
                 if (s_mainBodyFields.TryGetValue(inspector.GetType(), out FieldInfo? mainBodyField) &&
                     mainBodyField.GetValue(inspector) is UiColumn mainBody)
@@ -409,8 +411,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         {
             for (Type? current = type; current is not null; current = current.BaseType)
             {
-                MethodInfo? method = current.GetMethod("AddPanelWithHeader", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                    null, new[] { typeof(UiComponent[]) }, null);
+                MethodInfo? method = current.GetMethod(
+                    "AddPanelWithHeader",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                    null,
+                    new[] { typeof(UiComponent[]) },
+                    null);
                 if (method is not null)
                 {
                     return method;

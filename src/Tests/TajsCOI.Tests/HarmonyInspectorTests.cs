@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using HarmonyLib;
 using TajsCOI.Common.Diagnostics;
 using TajsCOI.Core.Diagnostics;
@@ -22,7 +23,7 @@ namespace TajsCOI.Tests
             var foreign = new Harmony("OtherMod.Tests.HarmonyInspector");
             try
             {
-                var target = AccessTools.Method(typeof(HarmonyInspectorTests), nameof(InspectorTarget))!;
+                MethodInfo target = AccessTools.Method(typeof(HarmonyInspectorTests), nameof(InspectorTarget))!;
                 tajs.Patch(target, prefix: new HarmonyMethod(typeof(HarmonyInspectorTests), nameof(TajsPrefix)));
                 foreign.Patch(target, postfix: new HarmonyMethod(typeof(HarmonyInspectorTests), nameof(ForeignPostfix)));
 

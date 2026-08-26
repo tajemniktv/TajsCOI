@@ -90,24 +90,24 @@ namespace TajsCOI.Tweaks
     {
         private static readonly ColorRgba[] s_colors =
         {
-            new ColorRgba(153, 153, 153, 128),
-            new ColorRgba(255, 221, 40, 128),
-            new ColorRgba(255, 140, 30, 128),
-            new ColorRgba(235, 60, 60, 128),
-            new ColorRgba(255, 120, 190, 128),
-            new ColorRgba(170, 90, 230, 128),
-            new ColorRgba(70, 195, 80, 128),
-            new ColorRgba(170, 230, 60, 128),
-            new ColorRgba(245, 245, 245, 128),
+            new(153, 153, 153, 128),
+            new(255, 221, 40, 128),
+            new(255, 140, 30, 128),
+            new(235, 60, 60, 128),
+            new(255, 120, 190, 128),
+            new(170, 90, 230, 128),
+            new(70, 195, 80, 128),
+            new(170, 230, 60, 128),
+            new(245, 245, 245, 128),
         };
 
         internal static void Install(Harmony harmony)
         {
             MethodInfo? method = typeof(InstancedChunkBasedLayoutEntitiesRenderer).GetMethods(BindingFlags.Static | BindingFlags.Public)
                 .FirstOrDefault(candidate => candidate.Name == "GetBlueprintColor" &&
-                                              candidate.GetParameters().Length == 2 &&
-                                              candidate.GetParameters()[0].ParameterType == typeof(IStaticEntity) &&
-                                              candidate.GetParameters()[1].ParameterType == typeof(ColorRgba).MakeByRefType());
+                                             candidate.GetParameters().Length == 2 &&
+                                             candidate.GetParameters()[0].ParameterType == typeof(IStaticEntity) &&
+                                             candidate.GetParameters()[1].ParameterType == typeof(ColorRgba).MakeByRefType());
             if (method is null)
             {
                 throw new MissingMethodException(typeof(InstancedChunkBasedLayoutEntitiesRenderer).FullName, "GetBlueprintColor");
@@ -189,7 +189,7 @@ namespace TajsCOI.Tweaks
 
             try
             {
-                var value = new Display().Value(ReadBattleScore(fleetManager).ToString().AsLoc());
+                Display value = new Display().Value(ReadBattleScore(fleetManager).ToString().AsLoc());
                 var row = new Row(1.pt())
                 {
                     (Action<Row>)(item => item.JustifyItemsCenter().FlexGrow(1f).Padding(2.pt())),
@@ -241,6 +241,7 @@ namespace TajsCOI.Tweaks
         {
             "Product_SteamSp", "Product_SteamHi", "Product_SteamLP", "Product_SteamDepleted",
         };
+
         private static readonly HashSet<string> s_exhaustIds = new(StringComparer.Ordinal) { "Product_Exhaust" };
 
         internal static void Install(Harmony harmony, DependencyResolver resolver)
@@ -273,8 +274,8 @@ namespace TajsCOI.Tweaks
         }
 
         private static bool IsEnabledProduct(string id) =>
-            (TajsTweaksRuntimeState.AllowSteam && s_steamIds.Contains(id)) ||
-            (TajsTweaksRuntimeState.AllowExhaust && s_exhaustIds.Contains(id));
+            TajsTweaksRuntimeState.AllowSteam && s_steamIds.Contains(id) ||
+            TajsTweaksRuntimeState.AllowExhaust && s_exhaustIds.Contains(id);
 
         private static void PatchProducts(ProtosDb protosDb)
         {
@@ -421,11 +422,7 @@ namespace TajsCOI.Tweaks
                 s_setVisible ??= FindSetVisible(row.GetType());
                 if (s_setVisible is not null)
                 {
-                    s_entries.Add(new Entry
-                    {
-                        Row = new WeakReference<UiComponent>(row),
-                        Inspector = new WeakReference<object>(__instance),
-                    });
+                    s_entries.Add(new Entry { Row = new WeakReference<UiComponent>(row), Inspector = new WeakReference<object>(__instance) });
                 }
             }
             catch
@@ -483,7 +480,7 @@ namespace TajsCOI.Tweaks
 
         private static bool LooksLikeBellRow(UiComponent row)
         {
-            UiComponent? body = AccessTools.Property(row.GetType(), "Body")?.GetValue(row) as UiComponent;
+            var body = AccessTools.Property(row.GetType(), "Body")?.GetValue(row) as UiComponent;
             if (body is null)
             {
                 return false;
@@ -568,7 +565,7 @@ namespace TajsCOI.Tweaks
             // 0.8.7a used a private m_durationContainer field. In 0.8.7b the same
             // presentation container is exposed as a protected DurationContainer field.
             s_durationContainer = type.GetField("DurationContainer", s_any) ??
-                                   type.GetField("m_durationContainer", s_any);
+                                  type.GetField("m_durationContainer", s_any);
             s_inputs = type.GetField("m_inputs", s_any);
             s_outputs = type.GetField("m_outputs", s_any);
             s_duration = type.GetField("m_duration", s_any);
@@ -584,7 +581,8 @@ namespace TajsCOI.Tweaks
             s_createStaticCopy = s_recipeProductUi?.GetMethods().FirstOrDefault(method => method.Name == "CreateStaticCopy");
             Type? floating = type.Assembly.GetTypes().FirstOrDefault(candidate => candidate.Name == "FloatingPanelExtensions");
             s_floater = floating?.GetMethods(BindingFlags.Static | BindingFlags.Public)
-                .FirstOrDefault(method => method.Name == "Floater" && method.GetParameters().Length >= 2 && method.GetParameters()[1].ParameterType.Name.Contains("Func"));
+                .FirstOrDefault(method =>
+                    method.Name == "Floater" && method.GetParameters().Length >= 2 && method.GetParameters()[1].ParameterType.Name.Contains("Func"));
             s_initialized = s_durationContainer is not null && s_inputs is not null && s_outputs is not null &&
                             s_duration is not null && s_speed is not null && s_boosted is not null && s_doNotNormalize is not null;
             if (!s_initialized)

@@ -9,15 +9,13 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using HarmonyLib;
 using Mafi;
-using Mafi.Core.Entities;
 using Mafi.Core.Factory.Transports;
 using Mafi.Core.Terrain.Designation;
 using Mafi.Localization;
+using Mafi.Unity;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
-using Mafi.Unity;
 using UnityEngine;
-using TajsCOI.Common.Runtime;
 
 namespace TajsCOI.Tweaks
 {
@@ -132,7 +130,7 @@ namespace TajsCOI.Tweaks
                 {
                     return;
                 }
-                var line = new Row(6.pt()).AlignItemsCenter();
+                Row line = new Row(6.pt()).AlignItemsCenter();
                 var toggle = new Toggle(standalone: true);
                 toggle.Value(TajsTweaksRuntimeState.StackerDesignationOverlay);
                 toggle.OnValueChanged(value =>
@@ -233,8 +231,12 @@ namespace TajsCOI.Tweaks
         {
             m_dirty = false;
             m_lastTowerId = tower.Id.Value;
-            int radius = Math.Min(512, Math.Max(8, tower.Prototype.MaxDumpRadius.Value +
-                tower.ConnectedRailSegmentsCount * tower.Prototype.RailProto.SegmentLength.Value + 4));
+            int radius = Math.Min(
+                512,
+                Math.Max(
+                    8,
+                    tower.Prototype.MaxDumpRadius.Value +
+                    tower.ConnectedRailSegmentsCount * tower.Prototype.RailProto.SegmentLength.Value + 4));
             Tile2i center = tower.CenterTile.Xy;
             IEnumerable<TerrainDesignation> designations;
             try

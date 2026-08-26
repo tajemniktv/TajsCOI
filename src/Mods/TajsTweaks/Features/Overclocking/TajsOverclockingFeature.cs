@@ -9,24 +9,18 @@ using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using Mafi;
-using Mafi.Core;
 using Mafi.Core.Buildings.Offices;
 using Mafi.Core.Buildings.OreSorting;
 using Mafi.Core.Buildings.Waste;
 using Mafi.Core.Entities;
-using Mafi.Core.Entities.Static;
-using Mafi.Core.Factory.ComputingPower;
 using Mafi.Core.Factory.ElectricPower;
 using Mafi.Core.Factory.Machines;
 using Mafi.Core.Factory.Recipes;
 using Mafi.Core.Factory.Transports;
 using Mafi.Core.Input;
-using Mafi.Core.Maintenance;
 using Mafi.Core.Population;
 using Mafi.Core.Products;
 using Mafi.Core.SaveGame;
-using Mafi.Logging;
-using Mafi.Unity;
 using Mafi.Unity.Entities;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
@@ -37,10 +31,10 @@ using EntityId = Mafi.Core.EntityId;
 namespace TajsCOI.Tweaks.Features.Overclocking
 {
     /// <summary>
-    /// Owns the gameplay parts of issues #65 and #146. Machine speed is changed through the
-    /// native private base-speed seam, while transport speed is represented by save-scoped policy
-    /// metadata and bounded extra movement calls. No policy metadata participates in vanilla
-    /// object deserialization.
+    ///     Owns the gameplay parts of issues #65 and #146. Machine speed is changed through the
+    ///     native private base-speed seam, while transport speed is represented by save-scoped policy
+    ///     metadata and bounded extra movement calls. No policy metadata participates in vanilla
+    ///     object deserialization.
     /// </summary>
     internal sealed class TajsOverclockingFeature
     {
@@ -122,14 +116,15 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
             BindingFlags privateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
             m_machineSpeedBase = typeof(Machine).GetField("m_speedFactorBase", privateInstance)
-                ?? throw new MissingFieldException(typeof(Machine).FullName, "m_speedFactorBase");
+                                 ?? throw new MissingFieldException(typeof(Machine).FullName, "m_speedFactorBase");
             m_machineUpdateSpeed = typeof(Machine).GetMethod("updateSpeedFactor", privateInstance)
-                ?? throw new MissingMethodException(typeof(Machine).FullName, "updateSpeedFactor");
+                                   ?? throw new MissingMethodException(typeof(Machine).FullName, "updateSpeedFactor");
             m_transportTryMoveProducts = typeof(Transport).GetMethod("tryMoveProducts", privateInstance);
 
             m_oreSorterUpdateCapacity = FindMethod("Mafi.Core.Buildings.OreSorting.OreSortingPlant", "updateCapacity", privateInstance);
             m_oreSorterSortedPerDuration = FindType("Mafi.Core.Buildings.OreSorting.OreSortingPlant")?.GetProperty(
-                "SortedPerDuration", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                "SortedPerDuration",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             m_officeRecipeTimer = FindField("Mafi.Core.Buildings.Offices.OfficeBuilding", "m_recipeStepsLeft", privateInstance);
             m_officeTimerDecrement = FindTimerMethod(m_officeRecipeTimer, "DecrementOnly");
             m_wasteRecipeTimer = FindField("Mafi.Core.Buildings.Waste.WasteSortingPlant", "m_recyclingTimer", privateInstance);
@@ -261,10 +256,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return effective.Auto ? DefaultPercent : effective.ManualPercent;
         }
 
-        internal bool IsAuto(EntityId id)
-        {
-            return TajsTweaksRuntimeState.Overclocking && GetEffectivePolicy(id.Value).Auto;
-        }
+        internal bool IsAuto(EntityId id) => TajsTweaksRuntimeState.Overclocking && GetEffectivePolicy(id.Value).Auto;
 
         internal OverclockEffectivePolicy GetEffectivePolicy(int entityId)
         {
@@ -272,10 +264,14 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             m_store.TryGetEntity(entityId, out OverclockEntityPolicy? entity);
             int min = entity is not null && entity.HasBoundsOverride
                 ? entity.MinPercent
-                : group is not null ? group.MinPercent : TajsTweaksRuntimeState.OverclockMinPercent;
+                : group is not null
+                    ? group.MinPercent
+                    : TajsTweaksRuntimeState.OverclockMinPercent;
             int max = entity is not null && entity.HasBoundsOverride
                 ? entity.MaxPercent
-                : group is not null ? group.MaxPercent : TajsTweaksRuntimeState.OverclockMaxPercent;
+                : group is not null
+                    ? group.MaxPercent
+                    : TajsTweaksRuntimeState.OverclockMaxPercent;
             min = Math.Max(10, Math.Min(100, min));
             max = Math.Max(min, Math.Min(1000, max));
             // COI's non-machine production timers only have a safe accelerated path. Keep
@@ -288,7 +284,9 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
             int manual = entity is not null && entity.HasManualOverride
                 ? entity.ManualPercent
-                : group is not null && group.ManualDefault > 0 ? group.ManualDefault : DefaultPercent;
+                : group is not null && group.ManualDefault > 0
+                    ? group.ManualDefault
+                    : DefaultPercent;
             bool auto = entity is not null && entity.HasAutoOverride ? entity.Auto : group?.Auto == true;
             return new OverclockEffectivePolicy(
                 OverclockingMath.ClampPercent(manual, min, max),
@@ -502,9 +500,15 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             ClearHighlights();
             var colors = new[]
             {
-                new ColorRgba(153, 153, 153, 96), new ColorRgba(255, 221, 40, 96), new ColorRgba(255, 140, 30, 96),
-                new ColorRgba(235, 60, 60, 96), new ColorRgba(255, 120, 190, 96), new ColorRgba(170, 90, 230, 96),
-                new ColorRgba(70, 195, 80, 96), new ColorRgba(170, 230, 60, 96), new ColorRgba(245, 245, 245, 96),
+                new ColorRgba(153, 153, 153, 96),
+                new ColorRgba(255, 221, 40, 96),
+                new ColorRgba(255, 140, 30, 96),
+                new ColorRgba(235, 60, 60, 96),
+                new ColorRgba(255, 120, 190, 96),
+                new ColorRgba(170, 90, 230, 96),
+                new ColorRgba(70, 195, 80, 96),
+                new ColorRgba(170, 230, 60, 96),
+                new ColorRgba(245, 245, 245, 96),
             };
             ColorRgba color = colors[Math.Max(0, Math.Min(colors.Length - 1, group.ColorIndex))].SetA((byte)(group.HighlightAlpha * 255 / 100));
             foreach (int id in group.Members)
@@ -595,18 +599,22 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
-            int clamped = OverclockingMath.ClampPercent(percent, TajsTweaksRuntimeState.OverclockMinPercent,
+            int clamped = OverclockingMath.ClampPercent(
+                percent,
+                TajsTweaksRuntimeState.OverclockMinPercent,
                 TajsTweaksRuntimeState.OverclockMaxPercent);
             group.ManualDefault = clamped;
             group.Auto = false;
-            ApplyGroupMembers(group, entity =>
-            {
-                int entityId = ((IEntity)entity).Id.Value;
-                if (!m_store.TryGetEntity(entityId, out OverclockEntityPolicy? p) || !p!.HasManualOverride)
+            ApplyGroupMembers(
+                group,
+                entity =>
                 {
-                    ApplyRate(entity, clamped);
-                }
-            });
+                    int entityId = ((IEntity)entity).Id.Value;
+                    if (!m_store.TryGetEntity(entityId, out OverclockEntityPolicy? p) || !p!.HasManualOverride)
+                    {
+                        ApplyRate(entity, clamped);
+                    }
+                });
             m_store.Save();
             message = "Group " + groupId + " default set to " + clamped + "%.";
             return true;
@@ -621,7 +629,9 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
-            int clamped = OverclockingMath.ClampPercent(percent, TajsTweaksRuntimeState.OverclockMinPercent,
+            int clamped = OverclockingMath.ClampPercent(
+                percent,
+                TajsTweaksRuntimeState.OverclockMinPercent,
                 TajsTweaksRuntimeState.OverclockMaxPercent);
             group.ManualDefault = clamped;
             group.Auto = false;
@@ -692,7 +702,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
             OverclockEffectivePolicy policy = GetEffectivePolicy(id.Value);
             return "Entity " + id.Value + ": rate=" + GetPercent(id) + "%, auto=" + policy.Auto +
-                ", bounds=" + policy.MinPercent + "-" + policy.MaxPercent + "%, group=" + policy.GroupId + ".";
+                   ", bounds=" + policy.MinPercent + "-" + policy.MaxPercent + "%, group=" + policy.GroupId + ".";
         }
 
         internal string ListEntities(string? typeFilter, string? stateFilter, int? groupId, string? sort)
@@ -718,11 +728,11 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 int rate = GetPercent(entity.Id);
                 bool inGroup = policy.GroupId >= 0;
                 bool stateMatches = state == "all" ||
-                    state == "auto" && policy.Auto ||
-                    state == "manual" && !policy.Auto ||
-                    state == "boosted" && rate != DefaultPercent ||
-                    state == "default" && rate == DefaultPercent ||
-                    state == "group" && inGroup;
+                                    state == "auto" && policy.Auto ||
+                                    state == "manual" && !policy.Auto ||
+                                    state == "boosted" && rate != DefaultPercent ||
+                                    state == "default" && rate == DefaultPercent ||
+                                    state == "group" && inGroup;
                 if (!stateMatches || groupId.HasValue && policy.GroupId != groupId.Value)
                 {
                     continue;
@@ -755,10 +765,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return DefaultPercent;
         }
 
-        internal static bool IsAutoFor(object instance)
-        {
-            return instance is IEntity entity && s_current?.IsAuto(entity.Id) == true;
-        }
+        internal static bool IsAutoFor(object instance) => instance is IEntity entity && s_current?.IsAuto(entity.Id) == true;
 
         internal void AdvanceExtraCycles(object entity)
         {
@@ -961,15 +968,16 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     TajsTweaksRuntimeState.OverclockAutoMaxStepPercent,
                     TajsTweaksRuntimeState.OverclockAutoStepPercent);
 
-                plans.Add(new AutoPlan
-                {
-                    Id = id,
-                    Machine = machine,
-                    Current = current,
-                    Target = next,
-                    Minimum = policy.MinPercent,
-                    HasDemandSignal = hasDemandSignal,
-                });
+                plans.Add(
+                    new AutoPlan
+                    {
+                        Id = id,
+                        Machine = machine,
+                        Current = current,
+                        Target = next,
+                        Minimum = policy.MinPercent,
+                        HasDemandSignal = hasDemandSignal,
+                    });
             }
 
             if (plans.Count == 0)
@@ -1098,10 +1106,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 }
 
                 powerDelta = OverclockingMath.RoundCost(basePower, toPercent, TajsTweaksRuntimeState.OverclockPowerCurve) -
-                    OverclockingMath.RoundCost(basePower, fromPercent, TajsTweaksRuntimeState.OverclockPowerCurve);
+                             OverclockingMath.RoundCost(basePower, fromPercent, TajsTweaksRuntimeState.OverclockPowerCurve);
                 int baseWorkers = machine.Prototype.Costs.Workers;
                 workerDelta = OverclockingMath.WorkersAt(baseWorkers, toPercent, TajsTweaksRuntimeState.OverclockWorkerCurve) -
-                    OverclockingMath.WorkersAt(baseWorkers, fromPercent, TajsTweaksRuntimeState.OverclockWorkerCurve);
+                              OverclockingMath.WorkersAt(baseWorkers, fromPercent, TajsTweaksRuntimeState.OverclockWorkerCurve);
                 return true;
             }
             catch
@@ -1128,7 +1136,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
         private void ForceTrimAutoPlans(List<AutoPlan> plans, ref int powerBudget, ref int workerBudget)
         {
-            var order = plans.Where(plan => plan.Current > plan.Minimum)
+            AutoPlan[] order = plans.Where(plan => plan.Current > plan.Minimum)
                 .OrderByDescending(plan => plan.Current)
                 .ThenBy(plan => plan.Id)
                 .ToArray();
@@ -1166,7 +1174,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             {
                 if (entity is Machine machine)
                 {
-                    Percent oldBaseSpeed = (Percent)m_machineSpeedBase.GetValue(machine)!;
+                    var oldBaseSpeed = (Percent)m_machineSpeedBase.GetValue(machine)!;
                     m_machineSpeedBase.SetValue(machine, percent.Percent());
                     m_machineUpdateSpeed.Invoke(machine, null);
                     if (oldBaseSpeed.ToIntPercentRounded() != percent && machine.WorkedThisTick)
@@ -1198,10 +1206,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                         m_extraCycleAccumulators.Remove(identified.Id.Value);
                     }
 
-                    return (type.FullName == "Mafi.Core.Buildings.Offices.OfficeBuilding" &&
-                            m_officeRecipeTimer is not null && m_officeTimerDecrement is not null) ||
-                        (type.FullName == "Mafi.Core.Buildings.Waste.WasteSortingPlant" &&
-                            m_wasteRecipeTimer is not null && m_wasteTimerDecrement is not null);
+                    return type.FullName == "Mafi.Core.Buildings.Offices.OfficeBuilding" &&
+                           m_officeRecipeTimer is not null && m_officeTimerDecrement is not null ||
+                           type.FullName == "Mafi.Core.Buildings.Waste.WasteSortingPlant" &&
+                           m_wasteRecipeTimer is not null && m_wasteTimerDecrement is not null;
                 }
 
                 if (entity is Transport transport && m_transportTryMoveProducts is not null)
@@ -1236,10 +1244,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 }
 
                 FieldInfo? recipeResultField = typeof(Machine).GetField(
-                    "m_recipeResult", BindingFlags.Instance | BindingFlags.NonPublic);
+                    "m_recipeResult",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
                 object? recipeResult = recipeResultField?.GetValue(machine);
                 FieldInfo? durationField = recipeResult?.GetType().GetField(
-                    "Duration", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    "Duration",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 if (durationField?.GetValue(recipeResult) is Duration duration && duration.IsPositive)
                 {
                     machine.AnimationStatesProvider.Start(duration);
@@ -1371,13 +1381,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             try
             {
                 string saveName = Sanitize(GetSaveName());
-                string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "Captain of Industry", "Mori++ Saved settings", "Boost++ Saved settings");
-                string[] candidates =
-                {
-                    Path.Combine(root, saveName, "transports.txt"),
-                    Path.Combine(root, "transports.txt"),
-                };
+                string root = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Captain of Industry",
+                    "Mori++ Saved settings",
+                    "Boost++ Saved settings");
+                string[] candidates = { Path.Combine(root, saveName, "transports.txt"), Path.Combine(root, "transports.txt") };
                 string? legacy = candidates.FirstOrDefault(File.Exists);
                 if (legacy is null)
                 {
@@ -1389,8 +1398,11 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 {
                     string[] fields = line.Split('=');
                     if (fields.Length != 2 || !int.TryParse(fields[0], out int id) ||
-                        !float.TryParse(fields[1], System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture, out float multiplier) ||
+                        !float.TryParse(
+                            fields[1],
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            out float multiplier) ||
                         multiplier <= 1f || !TryGetSupportedEntity(new EntityId(id), out object? entity) ||
                         entity is not Transport || m_store.TryGetEntity(id, out OverclockEntityPolicy? existing) && existing!.HasManualOverride)
                     {
@@ -1400,7 +1412,9 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     OverclockEntityPolicy policy = m_store.GetOrCreateEntity(id);
                     policy.HasManualOverride = true;
                     policy.ManualPercent = OverclockingMath.ClampPercent(
-                        (int)Math.Round(multiplier * 100f), 100, TajsTweaksRuntimeState.OverclockMaxPercent);
+                        (int)Math.Round(multiplier * 100f),
+                        100,
+                        TajsTweaksRuntimeState.OverclockMaxPercent);
                     imported++;
                 }
 
@@ -1483,7 +1497,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             {
                 PropertyInfo? maintenance = entity.GetType().GetProperty("Maintenance", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 object? provider = maintenance?.GetValue(entity);
-                provider?.GetType().GetMethod("OnCostModifierChanged", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.Invoke(provider, null);
+                provider?.GetType().GetMethod("OnCostModifierChanged", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    ?.Invoke(provider, null);
             }
             catch
             {
@@ -1507,7 +1522,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             {
                 FieldInfo? field = FindField(entity.GetType(), fieldName);
                 object? optional = field?.GetValue(entity);
-                object? consumer = optional?.GetType().GetProperty("ValueOrNull", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(optional);
+                object? consumer = optional?.GetType().GetProperty("ValueOrNull", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    ?.GetValue(optional);
                 consumer?.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.Invoke(consumer, null);
             }
             catch
@@ -1526,13 +1542,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             {
                 string saveName = GetSaveName();
                 string safeName = Sanitize(saveName);
-                string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "Captain of Industry", "Mori++ Saved settings", "Boost++ Saved settings");
-                string[] candidates =
-                {
-                    Path.Combine(root, safeName, "boosts.txt"),
-                    Path.Combine(root, "boosts.txt"),
-                };
+                string root = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Captain of Industry",
+                    "Mori++ Saved settings",
+                    "Boost++ Saved settings");
+                string[] candidates = { Path.Combine(root, safeName, "boosts.txt"), Path.Combine(root, "boosts.txt") };
                 string? legacy = candidates.FirstOrDefault(File.Exists);
                 if (legacy is null)
                 {
@@ -1613,17 +1628,17 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return type?.GetMethod(name, flags);
         }
 
-        private static MethodInfo? FindTimerMethod(FieldInfo? timerField, string name)
-        {
-            return timerField?.FieldType.GetMethod(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        }
+        private static MethodInfo? FindTimerMethod(FieldInfo? timerField, string name) => timerField?.FieldType.GetMethod(
+            name,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
         private bool TryGetEntityByType(EntityId id, Type entityType, out object? entity)
         {
             try
             {
                 MethodInfo? method = m_entities.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public)
-                    .FirstOrDefault(candidate => candidate.Name == "TryGetEntity" && candidate.IsGenericMethodDefinition && candidate.GetParameters().Length == 2);
+                    .FirstOrDefault(candidate =>
+                        candidate.Name == "TryGetEntity" && candidate.IsGenericMethodDefinition && candidate.GetParameters().Length == 2);
                 if (method is not null)
                 {
                     object[] args = { id, null! };

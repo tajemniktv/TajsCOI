@@ -222,7 +222,9 @@ namespace TajsCOI.Tweaks
             FleetManager = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.FleetManager);
             FleetBatchLimit = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.FleetBatchLimit);
             Overclocking = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.Overclocking);
-            OverclockTransportCapacityCompensation = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockTransportCapacityCompensation);
+            OverclockTransportCapacityCompensation = settings.Get<bool>(
+                TajsTweaksSettingsCatalog.ModId,
+                TajsTweaksSettingsCatalog.OverclockTransportCapacityCompensation);
             OverclockTransportSpacingBonus = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockTransportSpacingBonus);
             OverclockTransportStackBonus = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockTransportStackBonus);
             OverclockMaxPercent = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockMaxPercent);
@@ -332,8 +334,10 @@ namespace TajsCOI.Tweaks
 
         internal static string FormatTowerColors(IReadOnlyDictionary<int, int> colors)
         {
-            return string.Join(",", colors.OrderBy(x => x.Key).Take(256).Select(x =>
-                x.Key.ToString(CultureInfo.InvariantCulture) + "=" + x.Value.ToString(CultureInfo.InvariantCulture)));
+            return string.Join(
+                ",",
+                colors.OrderBy(x => x.Key).Take(256).Select(x =>
+                    x.Key.ToString(CultureInfo.InvariantCulture) + "=" + x.Value.ToString(CultureInfo.InvariantCulture)));
         }
 
         private static void SetBoolean(string key, bool value)

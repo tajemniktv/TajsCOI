@@ -27,12 +27,7 @@ namespace TajsCOI.Tests
         [Fact]
         public void TowerColorOverridesFormatInStableTowerOrder()
         {
-            var colors = new Dictionary<int, int>
-            {
-                [42] = 2,
-                [3] = 7,
-                [19] = 1,
-            };
+            var colors = new Dictionary<int, int> { [42] = 2, [3] = 7, [19] = 1 };
 
             Assert.Equal("3=7,19=1,42=2", TajsTweaksRuntimeState.FormatTowerColors(colors));
         }

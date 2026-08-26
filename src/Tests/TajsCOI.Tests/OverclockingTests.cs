@@ -57,8 +57,12 @@ namespace TajsCOI.Tests
             int overclockPercent,
             int expectedTicks)
         {
-            Assert.Equal(expectedTicks, OverclockingMath.EnsureAnimationProcessFits(
-                currentProcessTicks, animationTicks, overclockPercent));
+            Assert.Equal(
+                expectedTicks,
+                OverclockingMath.EnsureAnimationProcessFits(
+                    currentProcessTicks,
+                    animationTicks,
+                    overclockPercent));
         }
 
         [Fact]
