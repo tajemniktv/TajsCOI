@@ -104,6 +104,9 @@ namespace TajsCOI.Tweaks
         internal static bool FleetManager;
         internal static int FleetBatchLimit;
         internal static bool Overclocking;
+        internal static bool OverclockTransportCapacityCompensation;
+        internal static int OverclockTransportSpacingBonus;
+        internal static int OverclockTransportStackBonus;
         internal static int OverclockMaxPercent;
         internal static int OverclockMinPercent;
         internal static int OverclockPowerCurve;
@@ -209,6 +212,9 @@ namespace TajsCOI.Tweaks
             FleetManager = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.FleetManager);
             FleetBatchLimit = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.FleetBatchLimit);
             Overclocking = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.Overclocking);
+            OverclockTransportCapacityCompensation = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockTransportCapacityCompensation);
+            OverclockTransportSpacingBonus = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockTransportSpacingBonus);
+            OverclockTransportStackBonus = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockTransportStackBonus);
             OverclockMaxPercent = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockMaxPercent);
             OverclockMinPercent = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockMinPercent);
             OverclockPowerCurve = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockPowerCurve);
@@ -366,6 +372,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.BattleScoreOnMap: BattleScoreOnMap = value; break;
                 case TajsTweaksSettingsCatalog.FleetManager: FleetManager = value; break;
                 case TajsTweaksSettingsCatalog.Overclocking: Overclocking = value; break;
+                case TajsTweaksSettingsCatalog.OverclockTransportCapacityCompensation: OverclockTransportCapacityCompensation = value; break;
             }
         }
 
@@ -386,6 +393,8 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.DesignationLimit: DesignationLimit = value; break;
                 case TajsTweaksSettingsCatalog.FleetBatchLimit: FleetBatchLimit = value; break;
                 case TajsTweaksSettingsCatalog.OverclockMaxPercent: OverclockMaxPercent = value; break;
+                case TajsTweaksSettingsCatalog.OverclockTransportSpacingBonus: OverclockTransportSpacingBonus = value; break;
+                case TajsTweaksSettingsCatalog.OverclockTransportStackBonus: OverclockTransportStackBonus = value; break;
                 case TajsTweaksSettingsCatalog.OverclockMinPercent: OverclockMinPercent = value; break;
                 case TajsTweaksSettingsCatalog.OverclockPowerCurve: OverclockPowerCurve = value; break;
                 case TajsTweaksSettingsCatalog.OverclockWorkerCurve: OverclockWorkerCurve = value; break;

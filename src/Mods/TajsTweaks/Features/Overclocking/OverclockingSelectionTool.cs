@@ -12,14 +12,16 @@ using Mafi.Core.Buildings.Waste;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Static;
 using Mafi.Core.Factory.Machines;
+using Mafi.Core.Factory.Transports;
 using UnityEngine;
 using EntityId = Mafi.Core.EntityId;
 
 namespace TajsCOI.Tweaks.Features.Overclocking
 {
     /// <summary>
-    /// Lightweight screen-space group picker. It only enumerates machines while the user is
-    /// actively dragging, never from the simulation tick, and applies membership on mouse-up.
+    /// Lightweight screen-space group picker. It only enumerates selectable supported entities
+    /// while the user is actively dragging, never from the simulation tick, and applies
+    /// membership on mouse-up.
     /// </summary>
     internal sealed class OverclockingSelectionTool
     {
@@ -56,7 +58,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             m_groupId = groupId;
             m_active = true;
             m_dragging = false;
-            return "Drag a rectangle over machines; release the mouse to add them to group " + groupId + ". Escape or right-click cancels.";
+            return "Drag a rectangle over machines, belts, and pipes; release the mouse to add them to group " + groupId + ". Escape or right-click cancels.";
         }
 
         internal void UpdateInput()
@@ -102,7 +104,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 }
 
                 Deactivate();
-                m_feature.SelectionStatus = "Added " + added + " machine(s) to group " + m_groupId + ".";
+                m_feature.SelectionStatus = "Added " + added + " entity/entities to group " + m_groupId + ".";
             }
         }
 
@@ -132,6 +134,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 AddMatches(m_entities.GetAllEntitiesOfType<OreSortingPlant>(), camera, minX, maxX, minY, maxY);
                 AddMatches(m_entities.GetAllEntitiesOfType<OfficeBuilding>(), camera, minX, maxX, minY, maxY);
                 AddMatches(m_entities.GetAllEntitiesOfType<WasteSortingPlant>(), camera, minX, maxX, minY, maxY);
+                AddMatches(m_entities.GetAllEntitiesOfType<Transport>(), camera, minX, maxX, minY, maxY);
             }
             catch
             {

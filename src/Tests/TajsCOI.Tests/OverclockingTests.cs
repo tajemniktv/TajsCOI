@@ -37,6 +37,16 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void TransportCapacityCompensationIsBoundedAndRamped()
+        {
+            Assert.Equal(10, OverclockingMath.RampedCapacityValue(10, 100, 300, 100, increase: false));
+            Assert.Equal(10, OverclockingMath.RampedCapacityValue(10, 200, 300, 100, increase: false));
+            Assert.Equal(5, OverclockingMath.RampedCapacityValue(10, 300, 300, 100, increase: false));
+            Assert.Equal(30, OverclockingMath.RampedCapacityValue(10, 300, 300, 200, increase: true));
+            Assert.Equal(1, OverclockingMath.RampedCapacityValue(1, 300, 300, 300, increase: false));
+        }
+
+        [Fact]
         public void GroupsEnforceSingleMembershipAndCanBeLocked()
         {
             var store = new OverclockingStateStore();

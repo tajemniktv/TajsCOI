@@ -253,6 +253,9 @@ namespace TajsCOI.Tweaks
                 TweaksKeepFullEmptyMarkerFeature.Apply();
             }
             if (change.Descriptor.Key == TajsTweaksSettingsCatalog.Overclocking ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockTransportCapacityCompensation ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockTransportSpacingBonus ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockTransportStackBonus ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockMaxPercent ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockMinPercent ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockAutoIntervalSeconds ||

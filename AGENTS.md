@@ -429,7 +429,6 @@ Before addressing review comments:
 
 End long work at a coherent commit or handoff boundary with the current diff, completed behavior, canonical owners, remaining acceptance criteria, known failures, validation, and excluded scope. A PR description SHOULD state what changed, root cause, impact, ownership decisions, validation run, local-only authored changes, and missing proof. After big changes, such as finishing implementing a feature, please commit it to the repository. If there are subsequent changes to said feature, commit them too. Try not to commit everything as one big commit, unless it's all related to one system/feature.
 
-
 ## Architectural anti-patterns
 
 Do not introduce:
@@ -441,18 +440,6 @@ Do not introduce:
 - giant global `Managers`, `Services`, `Patches`, or `Interop` buckets.
 
 When uncertain, prefer the smallest local implementation with a clean boundary. Extract only after real reuse or a real cross-mod runtime need appears.
-
-## Memory is non-authoritative
-
-Agent memory and rollout summaries are routing hints, not current project truth.
-
-- Revalidate remembered class ownership, file paths, schema numbers, test names, asset names, and implementation details against the current repository.
-- Do not revive old migrations, prototype classes, UI ownership, compatibility layers, or exact test assumptions unless current source or the task requires them.
-- When memory conflicts with current source or documentation, current source and documentation win.
-
-### Read the canonical task source first
-
-Before editing, read the current request and any linked issue, comments, attachment, plan, or explicitly referenced document in full. A summary, memory entry, previous handoff, or nearby code is not a substitute for the current task source.
 
 ## Efficient reasoning and tool use
 

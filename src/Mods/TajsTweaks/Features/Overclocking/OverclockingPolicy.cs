@@ -137,5 +137,38 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
         internal static bool HasDemandSignal(float? fillPercent) => fillPercent.HasValue &&
             !float.IsNaN(fillPercent.Value) && !float.IsInfinity(fillPercent.Value);
+
+        internal static int RampedCapacityValue(int vanilla, int percent, int maxPercent, int bonusPercent, bool increase)
+        {
+            if (vanilla <= 0 || percent <= 100 || maxPercent <= 100 || bonusPercent <= 0)
+            {
+                return vanilla;
+            }
+
+            int range = maxPercent - 100;
+            int rampStart = 100 + range / 2;
+            int rampEnd = 100 + Math.Max(range / 2 + 1, range * 9 / 10);
+            if (percent <= rampStart)
+            {
+                return vanilla;
+            }
+
+            float amount = percent >= rampEnd ? 1f :
+                (percent - rampStart) / (float)Math.Max(1, rampEnd - rampStart);
+            int target;
+            if (increase)
+            {
+                int bonus = Math.Max(0, vanilla * Math.Min(500, bonusPercent) / 100);
+                target = vanilla + bonus;
+            }
+            else
+            {
+                int boundedBonus = Math.Min(300, bonusPercent);
+                target = Math.Max(1, (vanilla * 100 + 100 + boundedBonus / 2) / (100 + boundedBonus));
+            }
+
+            int delta = target - vanilla;
+            return vanilla + (int)Math.Round(delta * amount, MidpointRounding.AwayFromZero);
+        }
     }
 }

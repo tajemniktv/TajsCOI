@@ -37,8 +37,9 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
     /// <summary>
     /// Save-scoped policy metadata. It deliberately lives outside the vanilla save serializer;
-    /// native Machine.m_speedFactorBase remains the persisted speed value, while this file holds
-    /// Auto/group intent and therefore cannot alter vanilla object/class ID allocation.
+    /// native Machine.m_speedFactorBase remains the persisted machine speed value, while this
+    /// file holds transport speed plus Auto/group intent and therefore cannot alter vanilla
+    /// object/class ID allocation.
     /// </summary>
     internal sealed class OverclockingStateStore
     {

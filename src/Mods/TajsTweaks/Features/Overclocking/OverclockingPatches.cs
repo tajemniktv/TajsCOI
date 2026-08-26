@@ -15,6 +15,7 @@ using Mafi.Core.Factory.ComputingPower;
 using Mafi.Core.Factory.ElectricPower;
 using Mafi.Core.Factory.Machines;
 using Mafi.Core.Entities.Static;
+using Mafi.Core.Factory.Transports;
 using Mafi.Core.Maintenance;
 using Mafi.Core.Population;
 
@@ -38,6 +39,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             PatchOptionalCostInterfaces(harmony, typeof(OreSortingPlant));
             PatchOptionalCostInterfaces(harmony, typeof(OfficeBuilding));
             PatchOptionalCostInterfaces(harmony, typeof(WasteSortingPlant));
+            PatchOptionalCostInterfaces(harmony, typeof(Transport));
 
             PatchSimUpdate(harmony, typeof(Machine), nameof(MachineSimUpdatePostfix), required: true);
             PatchSimUpdate(harmony, typeof(OfficeBuilding), nameof(ExtraWorkSimUpdatePostfix), required: false);
@@ -49,6 +51,14 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 ?? throw new MissingMethodException(typeof(Machine).FullName, "ApplyConfig");
             harmony.Patch(addToConfig, postfix: new HarmonyMethod(typeof(OverclockingPatches), nameof(AddToConfigPostfix)));
             harmony.Patch(applyConfig, postfix: new HarmonyMethod(typeof(OverclockingPatches), nameof(ApplyConfigPostfix)));
+
+            MethodInfo? transportAddToConfig = AccessTools.Method(typeof(Transport), "AddToConfig");
+            MethodInfo? transportApplyConfig = AccessTools.Method(typeof(Transport), "ApplyConfig");
+            if (transportAddToConfig is not null && transportApplyConfig is not null)
+            {
+                harmony.Patch(transportAddToConfig, postfix: new HarmonyMethod(typeof(OverclockingPatches), nameof(TransportAddToConfigPostfix)));
+                harmony.Patch(transportApplyConfig, postfix: new HarmonyMethod(typeof(OverclockingPatches), nameof(TransportApplyConfigPostfix)));
+            }
         }
 
         internal static void PowerPostfix(object __instance, ref Electricity __result)
@@ -155,6 +165,63 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         }
 
         internal static void ApplyConfigPostfix(Machine __instance, EntityConfigData data)
+        {
+            if (!TajsTweaksRuntimeState.Overclocking || TajsOverclockingFeature.Current is not TajsOverclockingFeature feature)
+            {
+                return;
+            }
+
+            int? percent = data.GetInt(ConfigKey);
+            bool? auto = data.GetBool(AutoConfigKey);
+            int? minimum = data.GetInt(MinConfigKey);
+            int? maximum = data.GetInt(MaxConfigKey);
+            if (percent.HasValue)
+            {
+                feature.ApplyManual(__instance.Id, percent.Value, out _);
+            }
+
+            if (auto.HasValue || minimum.HasValue || maximum.HasValue)
+            {
+                feature.SetAuto(__instance.Id, auto == true, minimum, maximum, out _);
+            }
+        }
+
+        internal static void TransportAddToConfigPostfix(Transport __instance, EntityConfigData data)
+        {
+            if (!TajsTweaksRuntimeState.Overclocking || TajsOverclockingFeature.Current is not TajsOverclockingFeature feature)
+            {
+                return;
+            }
+
+            if (feature.TryGetEntityPolicy(__instance.Id, out OverclockEntityPolicy? policy) && policy is not null)
+            {
+                if (policy.HasManualOverride)
+                {
+                    data.SetInt(ConfigKey, policy.ManualPercent);
+                }
+
+                if (policy.HasAutoOverride && policy.Auto)
+                {
+                    data.SetBool(AutoConfigKey, true);
+                }
+
+                if (policy.HasBoundsOverride)
+                {
+                    data.SetInt(MinConfigKey, policy.MinPercent);
+                    data.SetInt(MaxConfigKey, policy.MaxPercent);
+                }
+
+                return;
+            }
+
+            int percent = feature.GetPercent(__instance.Id);
+            if (percent != 100)
+            {
+                data.SetInt(ConfigKey, percent);
+            }
+        }
+
+        internal static void TransportApplyConfigPostfix(Transport __instance, EntityConfigData data)
         {
             if (!TajsTweaksRuntimeState.Overclocking || TajsOverclockingFeature.Current is not TajsOverclockingFeature feature)
             {

@@ -168,7 +168,7 @@ namespace TajsCOI.Core.Settings
             // Console commands can run while UI Toolkit is traversing the current panel. Defer
             // attaching the completed window by one UI tick so the panel's internal change sets
             // are not mutated during that traversal.
-            m_pageContent.Schedule.Execute(() =>
+            uiRoot.Schedule.Execute(() =>
             {
                 if (!IsOpen)
                 {

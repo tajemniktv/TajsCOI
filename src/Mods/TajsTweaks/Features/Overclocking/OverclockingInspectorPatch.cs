@@ -13,13 +13,21 @@ using Mafi.Core.Entities;
 using Mafi.Core.Factory.ComputingPower;
 using Mafi.Core.Factory.ElectricPower;
 using Mafi.Core.Factory.Machines;
+using Mafi.Core.Factory.Transports;
 using Mafi.Localization;
 using Mafi.Core.Maintenance;
 using Mafi.Core.Population;
 using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
+using UnityEngine;
+using UnityEngine.UIElements;
 using EntityId = Mafi.Core.EntityId;
+using UiButton = Mafi.Unity.UiToolkit.Library.Button;
+using UiColumn = Mafi.Unity.UiToolkit.Library.Column;
+using UiLabel = Mafi.Unity.UiToolkit.Library.Label;
+using UiSlider = UnityEngine.UIElements.Slider;
+using NativeTextField = UnityEngine.UIElements.TextField;
 
 namespace TajsCOI.Tweaks.Features.Overclocking
 {
@@ -33,14 +41,17 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         private sealed class State
         {
             internal IEntity? Entity;
-            internal Label Rate = null!;
-            internal Label Mode = null!;
-            internal Label Costs = null!;
+            internal UiLabel Rate = null!;
+            internal UiLabel Mode = null!;
+            internal UiLabel Costs = null!;
+            internal UiSlider Slider = null!;
+            internal NativeTextField Input = null!;
         }
 
         private static readonly Dictionary<object, State> s_states = new();
         private static readonly Dictionary<Type, PropertyInfo> s_entityProperties = new();
         private static readonly Dictionary<Type, MethodInfo> s_addPanelMethods = new();
+        private static readonly Dictionary<Type, FieldInfo> s_mainBodyFields = new();
 
         internal static void Install(Harmony harmony)
         {
@@ -51,6 +62,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 "OreSortingPlantInspector",
                 "OfficeBuildingInspector",
                 "WasteSortingPlantInspector",
+                "TransportInspector",
             };
             int patched = 0;
             foreach (string inspectorName in inspectorNames)
@@ -71,11 +83,19 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
                 s_entityProperties[inspectorType] = entityProperty;
                 s_addPanelMethods[inspectorType] = addPanel;
+                FieldInfo? mainBody = FindField(inspectorType, "MainBody");
+                if (mainBody is not null)
+                {
+                    s_mainBodyFields[inspectorType] = mainBody;
+                }
                 harmony.Patch(constructor, postfix: new HarmonyMethod(typeof(OverclockingInspectorPatch), nameof(ConstructorPostfix)));
                 MethodInfo? activate = FindLifecycleMethod(inspectorType, "Activate") ?? FindLifecycleMethod(inspectorType, "OnActivated");
                 if (activate is not null)
                 {
-                    harmony.Patch(activate, postfix: new HarmonyMethod(typeof(OverclockingInspectorPatch), nameof(ActivatedPostfix)));
+                    // Inspector implementations inherit the generic BaseInspector lifecycle
+                    // method. Harmony must receive the declared/base definition, not the
+                    // inherited dispatch view returned by reflection on the concrete inspector.
+                    harmony.Patch(activate.GetBaseDefinition(), postfix: new HarmonyMethod(typeof(OverclockingInspectorPatch), nameof(ActivatedPostfix)));
                 }
 
                 patched++;
@@ -120,7 +140,6 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
             int current = TajsOverclockingFeature.Current.GetPercent(entity!.Id);
             TajsOverclockingFeature.Current.QueueSetManual(entity.Id, current + delta, out _);
-            Refresh(inspector);
         }
 
         private static void Reset(object inspector)
@@ -151,8 +170,14 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
             try
             {
-                state.Rate.Value((TajsOverclockingFeature.Current.GetPercent(state.Entity.Id) + "%").AsLoc());
-                OverclockEffectivePolicy policy = TajsOverclockingFeature.Current.GetEffectivePolicy(state.Entity.Id.Value);
+                TajsOverclockingFeature feature = TajsOverclockingFeature.Current;
+                int current = feature.GetPercent(state.Entity.Id);
+                OverclockEffectivePolicy policy = feature.GetEffectivePolicy(state.Entity.Id.Value);
+                state.Rate.Value((current + "%").AsLoc());
+                state.Slider.lowValue = policy.MinPercent;
+                state.Slider.highValue = policy.MaxPercent;
+                state.Slider.SetValueWithoutNotify(current);
+                state.Input.SetValueWithoutNotify(current.ToString());
                 string group = policy.GroupId < 0 ? string.Empty : " / group " + policy.GroupId;
                 state.Mode.Value(((policy.Auto ? "Auto" : "Manual") + group).AsLoc());
                 state.Costs.Value(FormatCosts(state.Entity).AsLoc());
@@ -172,25 +197,103 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     return;
                 }
 
+                TajsOverclockingFeature feature = TajsOverclockingFeature.Current;
+                OverclockEffectivePolicy policy = feature.GetEffectivePolicy(entity!.Id.Value);
+                int current = feature.GetPercent(entity.Id);
+                int step = Math.Max(1, TajsTweaksRuntimeState.OverclockAutoStepPercent);
                 var panel = new PanelWithHeader("Overclocking".AsLoc());
-                var rate = new Label("100%".AsLoc()).FontBold();
-                var mode = new Label(string.Empty.AsLoc());
-                var costs = new Label(string.Empty.AsLoc());
-                var row = new Row(4.pt()).Wrap();
-                row.Add(new Label("Requested rate".AsLoc()));
-                row.Add(rate);
-                row.Add(new ButtonText(Button.General, "-5%".AsLoc(), () => QueueRelative(inspector, -5)));
-                row.Add(new ButtonText(Button.General, "+5%".AsLoc(), () => QueueRelative(inspector, 5)));
-                row.Add(new ButtonText(Button.General, "Default".AsLoc(), () => Reset(inspector)));
-                row.Add(new ButtonText(Button.General, "Auto".AsLoc(), () => ToggleAuto(inspector)));
-                panel.BodyAdd(row, mode, costs);
-                s_states[inspector] = new State { Entity = entity, Rate = rate, Mode = mode, Costs = costs };
-                s_addPanelMethods[inspector.GetType()].Invoke(inspector, new object[] { new UiComponent[] { panel } });
+                var rate = new UiLabel((current + "%").AsLoc()).FontBold().Width(48.px());
+                var mode = new UiLabel(string.Empty.AsLoc());
+                var costs = new UiLabel(string.Empty.AsLoc());
+                var slider = new UiSlider(policy.MinPercent, policy.MaxPercent)
+                {
+                    value = current,
+                    pageSize = step,
+                };
+                slider.style.flexGrow = 1f;
+                slider.style.flexShrink = 1f;
+                slider.style.minWidth = 80f;
+                slider.style.height = 22f;
+                var sliderHost = new UiComponent();
+                sliderHost.RootElement.style.flexGrow = 1f;
+                sliderHost.RootElement.style.flexShrink = 1f;
+                sliderHost.RootElement.style.minWidth = 80f;
+                sliderHost.RootElement.Add(slider);
+
+                var input = new NativeTextField
+                {
+                    value = current.ToString(),
+                    maxLength = 5,
+                };
+                input.style.width = 62f;
+                input.style.flexShrink = 0f;
+                input.style.height = 24f;
+                var rateRow = new Row(3.pt()).AlignItemsCenter();
+                rateRow.Add(new UiLabel("Requested rate".AsLoc()).Width(95.px()));
+                rateRow.Add(rate);
+                rateRow.RootElement.Add(sliderHost.RootElement);
+                rateRow.RootElement.Add(input);
+
+                var buttonRow = new Row(3.pt()).Wrap().AlignItemsCenter();
+                buttonRow.Add(new ButtonText(UiButton.General, ("-" + step + "%").AsLoc(), () => QueueRelative(inspector, -step)));
+                buttonRow.Add(new ButtonText(UiButton.General, ("+" + step + "%").AsLoc(), () => QueueRelative(inspector, step)));
+                buttonRow.Add(new ButtonText(UiButton.General, "Default".AsLoc(), () => Reset(inspector)));
+                buttonRow.Add(new ButtonText(UiButton.General, "Auto".AsLoc(), () => ToggleAuto(inspector)));
+
+                var content = new UiColumn(2.pt()).AlignItemsStretch();
+                content.Add(rateRow, buttonRow, mode, costs);
+                panel.BodyAdd(content);
+                var state = new State { Entity = entity, Rate = rate, Mode = mode, Costs = costs, Slider = slider, Input = input };
+                s_states[inspector] = state;
+                if (s_mainBodyFields.TryGetValue(inspector.GetType(), out FieldInfo? mainBodyField) &&
+                    mainBodyField.GetValue(inspector) is UiColumn mainBody)
+                {
+                    mainBody.InsertAt(0, panel);
+                }
+                else
+                {
+                    s_addPanelMethods[inspector.GetType()].Invoke(inspector, new object[] { new UiComponent[] { panel } });
+                }
+
+                slider.RegisterValueChangedCallback(change =>
+                {
+                    int value = Mathf.RoundToInt(change.newValue);
+                    input.SetValueWithoutNotify(value.ToString());
+                    rate.Value((value + "%").AsLoc());
+                });
+                slider.RegisterCallback<MouseUpEvent>(_ => ApplyExact(inspector, Mathf.RoundToInt(slider.value)));
+                input.RegisterCallback<KeyDownEvent>(evt =>
+                {
+                    if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+                    {
+                        if (int.TryParse(input.value.Trim().TrimEnd('%'), out int value))
+                        {
+                            ApplyExact(inspector, value);
+                        }
+
+                        evt.StopPropagation();
+                    }
+                }, TrickleDown.TrickleDown);
+                input.RegisterCallback<FocusOutEvent>(_ =>
+                {
+                    if (int.TryParse(input.value.Trim().TrimEnd('%'), out int value))
+                    {
+                        ApplyExact(inspector, value);
+                    }
+                });
                 Refresh(inspector);
             }
             catch
             {
                 // The inspector is optional; a UI seam failure must not disable gameplay patches.
+            }
+        }
+
+        private static void ApplyExact(object inspector, int percent)
+        {
+            if (TajsOverclockingFeature.Current is not null && TryGetEntity(inspector, out IEntity? entity))
+            {
+                TajsOverclockingFeature.Current.QueueSetManual(entity!.Id, percent, out _);
             }
         }
 
@@ -210,6 +313,11 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             if (entity is IEntityWithWorkers workers)
             {
                 values.Add("workers " + workers.WorkersNeeded);
+            }
+
+            if (entity is Transport transport)
+            {
+                values.Add(TransportOverclockingPatches.DescribeCapacity(transport));
             }
 
             if (entity is IMaintainedEntity maintenance && maintenance.MaintenanceCosts.MaintenancePerMonth.IsPositive)
@@ -240,6 +348,20 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 if (property is not null)
                 {
                     return property;
+                }
+            }
+
+            return null;
+        }
+
+        private static FieldInfo? FindField(Type type, string name)
+        {
+            for (Type? current = type; current is not null; current = current.BaseType)
+            {
+                FieldInfo? field = current.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (field is not null)
+                {
+                    return field;
                 }
             }
 

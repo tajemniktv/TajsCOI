@@ -112,6 +112,9 @@ namespace TajsCOI.Tweaks
         internal const string FleetBatchLimit = "fleet_batch_limit";
 
         internal const string Overclocking = "overclocking";
+        internal const string OverclockTransportCapacityCompensation = "overclock_transport_capacity_compensation";
+        internal const string OverclockTransportSpacingBonus = "overclock_transport_spacing_bonus_percent";
+        internal const string OverclockTransportStackBonus = "overclock_transport_stack_bonus_percent";
         internal const string OverclockMaxPercent = "overclock_max_percent";
         internal const string OverclockMinPercent = "overclock_min_percent";
         internal const string OverclockPowerCurve = "overclock_power_curve";
@@ -1164,11 +1167,50 @@ namespace TajsCOI.Tweaks
                 DisplayName,
                 Overclocking,
                 "Per-machine overclocking",
-                "Enables per-machine speed policies, Auto mode, group controls, and matching power, worker, computing, and maintenance costs. Values are stored per save outside the vanilla save blob.",
+                "Enables per-entity speed policies for machines, belts, and pipes, Auto mode, group controls, and matching operating costs. Values are stored per save outside the vanilla save blob.",
                 false,
                 "Overclocking",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                OverclockTransportCapacityCompensation,
+                "Transport capacity compensation",
+                "For solid belts only, gradually reduces product spacing and increases per-position stack capacity as speed rises. Fluid and molten pipes are never changed by this option.",
+                true,
+                "Overclocking",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: Overclocking),
+            SettingDescriptor.Integer(
+                ModId,
+                DisplayName,
+                OverclockTransportSpacingBonus,
+                "Belt spacing compensation",
+                "Maximum percentage reduction in solid-belt product spacing at the configured maximum speed.",
+                100,
+                0,
+                300,
+                1,
+                "Overclocking",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: Overclocking),
+            SettingDescriptor.Integer(
+                ModId,
+                DisplayName,
+                OverclockTransportStackBonus,
+                "Belt stack compensation",
+                "Maximum percentage increase in solid-belt per-position stack capacity at the configured maximum speed.",
+                200,
+                0,
+                500,
+                1,
+                "Overclocking",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: Overclocking),
             SettingDescriptor.Integer(
                 ModId,
                 DisplayName,

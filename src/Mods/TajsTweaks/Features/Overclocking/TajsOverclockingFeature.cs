@@ -19,6 +19,7 @@ using Mafi.Core.Factory.ComputingPower;
 using Mafi.Core.Factory.ElectricPower;
 using Mafi.Core.Factory.Machines;
 using Mafi.Core.Factory.Recipes;
+using Mafi.Core.Factory.Transports;
 using Mafi.Core.Input;
 using Mafi.Core.Maintenance;
 using Mafi.Core.Population;
@@ -36,14 +37,17 @@ using EntityId = Mafi.Core.EntityId;
 namespace TajsCOI.Tweaks.Features.Overclocking
 {
     /// <summary>
-    /// Owns the gameplay part of issue #65. Machine speed is changed through the native private
-    /// base-speed seam, which is already serialized by the game. Auto/group metadata is external,
-    /// save-scoped, and never participates in vanilla object deserialization.
+    /// Owns the gameplay parts of issues #65 and #146. Machine speed is changed through the
+    /// native private base-speed seam, while transport speed is represented by save-scoped policy
+    /// metadata and bounded extra movement calls. No policy metadata participates in vanilla
+    /// object deserialization.
     /// </summary>
     internal sealed class TajsOverclockingFeature
     {
         internal const string HarmonyId = "TajsCOI.Tweaks.Overclocking";
         private const int DefaultPercent = 100;
+        private const int MaxTransportExtraMovesPerTick = 8;
+        private const float MaxTransportPendingMoves = MaxTransportExtraMovesPerTick;
         private const int MaxLegacyImportRecords = 100000;
 
         private sealed class AutoPlan
@@ -78,6 +82,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         private readonly EntitiesRenderingManager? m_rendering;
         private readonly FieldInfo m_machineSpeedBase;
         private readonly MethodInfo m_machineUpdateSpeed;
+        private readonly MethodInfo? m_transportTryMoveProducts;
         private readonly PropertyInfo? m_oreSorterSortedPerDuration;
         private readonly MethodInfo? m_oreSorterUpdateCapacity;
         private readonly FieldInfo? m_officeRecipeTimer;
@@ -87,6 +92,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         private float m_nextAutoTime;
         private int m_maintenanceTick;
         private readonly Dictionary<int, float> m_extraCycleAccumulators = new();
+        private readonly Dictionary<int, float> m_transportExtraMoveAccumulators = new();
+        private readonly HashSet<int> m_transportSpeedDisabled = new();
         private readonly Dictionary<int, ulong> m_highlights = new();
         private readonly OverclockingSelectionTool m_selection;
         private bool m_installed;
@@ -118,6 +125,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 ?? throw new MissingFieldException(typeof(Machine).FullName, "m_speedFactorBase");
             m_machineUpdateSpeed = typeof(Machine).GetMethod("updateSpeedFactor", privateInstance)
                 ?? throw new MissingMethodException(typeof(Machine).FullName, "updateSpeedFactor");
+            m_transportTryMoveProducts = typeof(Transport).GetMethod("tryMoveProducts", privateInstance);
 
             m_oreSorterUpdateCapacity = FindMethod("Mafi.Core.Buildings.OreSorting.OreSortingPlant", "updateCapacity", privateInstance);
             m_oreSorterSortedPerDuration = FindType("Mafi.Core.Buildings.OreSorting.OreSortingPlant")?.GetProperty(
@@ -137,7 +145,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
 
             m_store.LoadForSave(GetSaveName());
+            OverclockingPatches.Install(harmony, this);
+            TransportOverclockingPatches.Install(harmony);
             ImportLegacyBoostsIfNeeded();
+            ImportLegacyTransportBoostsIfNeeded();
             if (TajsTweaksRuntimeState.Overclocking)
             {
                 ReconcileLoadedMachines();
@@ -146,7 +157,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             {
                 ResetLoadedRates();
             }
-            OverclockingPatches.Install(harmony, this);
+            foreach (Transport transport in m_entities.GetAllEntitiesOfType<Transport>())
+            {
+                TransportOverclockingPatches.RegisterTransport(transport);
+            }
             try
             {
                 // The gameplay patches remain useful when the optional inspector UI moves in a
@@ -191,6 +205,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
 
             m_store.Save();
+            m_transportExtraMoveAccumulators.Clear();
+            m_transportSpeedDisabled.Clear();
             ClearHighlights();
             m_selection.Deactivate();
             m_installed = false;
@@ -209,6 +225,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             if (TajsTweaksRuntimeState.Overclocking)
             {
                 ReconcileLoadedMachines();
+                ReconcileKnownNonMachineEntities();
             }
             else
             {
@@ -747,6 +764,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         {
             try
             {
+                if (entity is Transport transport)
+                {
+                    AdvanceTransport(transport);
+                    return;
+                }
+
                 if (!TajsTweaksRuntimeState.Overclocking || entity is not IEntity identified || GetPercent(identified.Id) <= 100)
                 {
                     return;
@@ -778,6 +801,59 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             catch
             {
                 // Non-standard timer semantics are optional; unsupported versions remain vanilla.
+            }
+        }
+
+        private void AdvanceTransport(Transport transport)
+        {
+            if (!TajsTweaksRuntimeState.Overclocking || m_transportTryMoveProducts is null ||
+                m_transportSpeedDisabled.Contains(transport.Id.Value))
+            {
+                return;
+            }
+
+            int percent = GetPercent(transport.Id);
+            if (percent <= DefaultPercent)
+            {
+                m_transportExtraMoveAccumulators.Remove(transport.Id.Value);
+                return;
+            }
+
+            try
+            {
+                if (transport.IsProductsRemovalInProgress || !transport.FirstProduct.HasValue || transport.IsTooLong)
+                {
+                    return;
+                }
+
+                int id = transport.Id.Value;
+                m_transportExtraMoveAccumulators.TryGetValue(id, out float accumulator);
+                accumulator += percent / 100f - 1f;
+                int moves = 0;
+                while (accumulator >= 1f && moves < MaxTransportExtraMovesPerTick)
+                {
+                    if (transport.IsProductsRemovalInProgress || !transport.FirstProduct.HasValue || transport.IsTooLong)
+                    {
+                        break;
+                    }
+
+                    bool moved = (bool)m_transportTryMoveProducts.Invoke(transport, null)!;
+                    if (!moved)
+                    {
+                        break;
+                    }
+
+                    accumulator -= 1f;
+                    moves++;
+                }
+
+                m_transportExtraMoveAccumulators[id] = Math.Min(MaxTransportPendingMoves, Math.Max(0f, accumulator));
+            }
+            catch (Exception exception)
+            {
+                m_transportSpeedDisabled.Add(transport.Id.Value);
+                m_transportExtraMoveAccumulators.Remove(transport.Id.Value);
+                m_log.Exception(exception, "Transport speed boosting disabled for entity " + transport.Id.Value + ".");
             }
         }
 
@@ -1123,6 +1199,19 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                             m_wasteRecipeTimer is not null && m_wasteTimerDecrement is not null);
                 }
 
+                if (entity is Transport transport && m_transportTryMoveProducts is not null)
+                {
+                    TransportOverclockingPatches.RegisterTransport(transport);
+                    if (percent <= DefaultPercent)
+                    {
+                        m_transportExtraMoveAccumulators.Remove(transport.Id.Value);
+                        m_transportSpeedDisabled.Remove(transport.Id.Value);
+                    }
+
+                    RefreshConsumers(transport);
+                    return true;
+                }
+
                 return false;
             }
             catch (Exception exception)
@@ -1158,6 +1247,13 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 m_entities.TryGetEntity<WasteSortingPlant>(id, out WasteSortingPlant? waste))
             {
                 entity = waste;
+                return true;
+            }
+
+            if (m_transportTryMoveProducts is not null && TransportOverclockingPatches.SpeedSeamAvailable &&
+                m_entities.TryGetEntity<Transport>(id, out Transport? transport))
+            {
+                entity = transport;
                 return true;
             }
 
@@ -1216,6 +1312,14 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     yield return waste;
                 }
             }
+
+            if (m_transportTryMoveProducts is not null && TransportOverclockingPatches.SpeedSeamAvailable)
+            {
+                foreach (Transport transport in m_entities.GetAllEntitiesOfType<Transport>())
+                {
+                    yield return transport;
+                }
+            }
         }
 
         private static string GetEntityType(IEntity entity)
@@ -1226,8 +1330,59 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 OreSortingPlant => "ore",
                 OfficeBuilding => "office",
                 WasteSortingPlant => "waste",
+                Transport transport => TransportOverclockingPatches.IsBelt(transport) ? "belt" : "pipe",
                 _ => "other",
             };
+        }
+
+        private void ImportLegacyTransportBoostsIfNeeded()
+        {
+            try
+            {
+                string saveName = Sanitize(GetSaveName());
+                string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Captain of Industry", "Mori++ Saved settings", "Boost++ Saved settings");
+                string[] candidates =
+                {
+                    Path.Combine(root, saveName, "transports.txt"),
+                    Path.Combine(root, "transports.txt"),
+                };
+                string? legacy = candidates.FirstOrDefault(File.Exists);
+                if (legacy is null)
+                {
+                    return;
+                }
+
+                int imported = 0;
+                foreach (string line in File.ReadAllLines(legacy).Take(MaxLegacyImportRecords))
+                {
+                    string[] fields = line.Split('=');
+                    if (fields.Length != 2 || !int.TryParse(fields[0], out int id) ||
+                        !float.TryParse(fields[1], System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out float multiplier) ||
+                        multiplier <= 1f || !TryGetSupportedEntity(new EntityId(id), out object? entity) ||
+                        entity is not Transport || m_store.TryGetEntity(id, out OverclockEntityPolicy? existing) && existing!.HasManualOverride)
+                    {
+                        continue;
+                    }
+
+                    OverclockEntityPolicy policy = m_store.GetOrCreateEntity(id);
+                    policy.HasManualOverride = true;
+                    policy.ManualPercent = OverclockingMath.ClampPercent(
+                        (int)Math.Round(multiplier * 100f), 100, TajsTweaksRuntimeState.OverclockMaxPercent);
+                    imported++;
+                }
+
+                if (imported > 0)
+                {
+                    m_store.Save();
+                    m_log.Info("Imported " + imported + " legacy Boost++ belt/pipe policies into TajsTweaks.");
+                }
+            }
+            catch (Exception exception)
+            {
+                m_log.Exception(exception, "Legacy Boost++ belt/pipe policy import failed open.");
+            }
         }
 
         private bool IsKnownSupportedEntity(int id) => TryGetSupportedEntity(new EntityId(id), out _);
