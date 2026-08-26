@@ -3,7 +3,6 @@
 // All Rights Reserved.
 
 using System;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using HarmonyLib;
@@ -105,10 +104,10 @@ namespace TajsCOI.Tweaks
                 return;
             }
 
-            PanelBottom speedPanel = hud.AllChildren.OfType<PanelBottom>().FirstOrDefault()
-                                     ?? throw new MissingMemberException(
-                                         typeof(CalendarControlsHud).FullName,
-                                         "native speed-control panel");
+            UiComponent speedRow = FindSpeedButtonsRow(hud)
+                                   ?? throw new MissingMemberException(
+                                       typeof(CalendarControlsHud).FullName,
+                                       "native speed-control row");
 
             var display = new UiLabel(SimulationSpeedDisplayText.Format(speedController.SimSpeedMult).AsLoc())
                 .Name(DisplayName)
@@ -124,7 +123,7 @@ namespace TajsCOI.Tweaks
                 .MarginTopBottom(new Px(0f))
                 .Tooltip("Current simulation speed".AsLoc());
             display.RootElement.style.flexShrink = 0f;
-            speedPanel.BodyAdd(display);
+            speedRow.Add(display);
 
             var state = new DisplayState
             {
@@ -140,5 +139,48 @@ namespace TajsCOI.Tweaks
         {
             state.Display.Value(SimulationSpeedDisplayText.Format(state.SpeedController.SimSpeedMult).AsLoc());
         }
+
+        private static UiComponent? FindSpeedButtonsRow(UiComponent root)
+        {
+            UiComponent? best = null;
+            int bestCount = 0;
+            FindSpeedButtonsRow(root, ref best, ref bestCount, 0, 6);
+            return bestCount >= 3 ? best : null;
+        }
+
+        private static void FindSpeedButtonsRow(
+            UiComponent node,
+            ref UiComponent? best,
+            ref int bestCount,
+            int depth,
+            int maxDepth)
+        {
+            if (depth > maxDepth)
+            {
+                return;
+            }
+
+            int buttonCount = 0;
+            foreach (UiComponent child in node.AllChildren)
+            {
+                if (IsButtonIcon(child))
+                {
+                    buttonCount++;
+                }
+            }
+            if (buttonCount > bestCount)
+            {
+                best = node;
+                bestCount = buttonCount;
+            }
+
+            foreach (UiComponent child in node.AllChildren)
+            {
+                FindSpeedButtonsRow(child, ref best, ref bestCount, depth + 1, maxDepth);
+            }
+        }
+
+        private static bool IsButtonIcon(UiComponent component) =>
+            component.GetType().Name.StartsWith("ButtonIcon", StringComparison.Ordinal);
     }
 }
