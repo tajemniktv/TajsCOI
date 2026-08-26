@@ -133,11 +133,16 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
                                           ?? throw new MissingMethodException(typeof(GameSpeedController).FullName, nameof(GameSpeedController.InputUpdate));
                 MethodInfo setSimSpeed = AccessTools.Method(typeof(SimLoopEvents), nameof(SimLoopEvents.SetSimSpeed), new[] { typeof(int) })
                                          ?? throw new MissingMethodException(typeof(SimLoopEvents).FullName, nameof(SimLoopEvents.SetSimSpeed));
+                MethodInfo setSpeed = AccessTools.Method(typeof(GameSpeedController), nameof(GameSpeedController.SetSpeed), new[] { typeof(int) })
+                                      ?? throw new MissingMethodException(typeof(GameSpeedController).FullName, nameof(GameSpeedController.SetSpeed));
 
                 m_harmony = new Harmony(HarmonyId);
                 m_harmony.Patch(
                     inputUpdate,
                     prefix: new HarmonyMethod(typeof(UnlockedSpeedService), nameof(InputUpdatePrefix)));
+                m_harmony.Patch(
+                    setSpeed,
+                    prefix: new HarmonyMethod(typeof(UnlockedSpeedService), nameof(SetSpeedPrefix)));
                 m_harmony.Patch(
                     setSimSpeed,
                     postfix: new HarmonyMethod(typeof(UnlockedSpeedService), nameof(SetSimSpeedPostfix)));
@@ -217,6 +222,39 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
             {
                 service.OnVanillaSpeedCommandApplied(__instance, speedMult);
             }
+        }
+
+        private static void SetSpeedPrefix(GameSpeedController __instance, int speedMult)
+        {
+            if (s_current is not null && s_current.TryGetTarget(out UnlockedSpeedService? service))
+            {
+                service.OnSpeedRequested(__instance, speedMult);
+            }
+        }
+
+        private void OnSpeedRequested(GameSpeedController controller, int speed)
+        {
+            if (!m_installed || !ReferenceEquals(controller, m_speedController) || speed <= VanillaMaximum || speed > MaxSpeed)
+            {
+                if (m_installed && ReferenceEquals(controller, m_speedController) && speed > 0 && speed <= VanillaMaximum)
+                {
+                    Volatile.Write(ref m_pendingHighSpeed, 0);
+                    RestoreAdaptiveModeIfNeeded();
+                }
+                return;
+            }
+
+            if (!m_highSpeedMode)
+            {
+                m_originalAdaptiveModeForTransition = m_simLoop.AdaptiveSimSpeedMode;
+                if (!SimLoopAccess.TrySetAdaptiveSpeedMode(m_simLoop, SimAdaptiveSpeedMode.Uncapped, out string modeError))
+                {
+                    m_log.ErrorOnce("Failed to enable uncapped adaptive speed: " + modeError);
+                    return;
+                }
+                m_highSpeedMode = true;
+            }
+            Volatile.Write(ref m_pendingHighSpeed, speed);
         }
 
         private bool TryHandleInput(GameSpeedController controller)
@@ -326,14 +364,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
             else
             {
                 Volatile.Write(ref m_pendingHighSpeed, 0);
-                if (m_highSpeedMode)
-                {
-                    if (!SimLoopAccess.TrySetAdaptiveSpeedMode(m_simLoop, m_originalAdaptiveModeForTransition, out string restoreError))
-                    {
-                        m_log.Warning("Could not restore the pre-unlocked-speed adaptive mode: " + restoreError);
-                    }
-                    m_highSpeedMode = false;
-                }
+                RestoreAdaptiveModeIfNeeded();
             }
 
             try
@@ -357,6 +388,20 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
                 m_log.Exception(exception, "Unlocked speed could not schedule the normal game-speed command.");
                 return false;
             }
+        }
+
+        private void RestoreAdaptiveModeIfNeeded()
+        {
+            if (!m_highSpeedMode)
+            {
+                return;
+            }
+
+            if (!SimLoopAccess.TrySetAdaptiveSpeedMode(m_simLoop, m_originalAdaptiveModeForTransition, out string restoreError))
+            {
+                m_log.Warning("Could not restore the pre-unlocked-speed adaptive mode: " + restoreError);
+            }
+            m_highSpeedMode = false;
         }
 
         private void OnVanillaSpeedCommandApplied(SimLoopEvents simLoop, int speedMult)
@@ -478,8 +523,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
 
             if (m_highSpeedMode)
             {
-                SimLoopAccess.TrySetAdaptiveSpeedMode(m_simLoop, m_originalAdaptiveModeForTransition, out _);
-                m_highSpeedMode = false;
+                RestoreAdaptiveModeIfNeeded();
             }
             Volatile.Write(ref m_pendingHighSpeed, 0);
             if (m_simLoop.SimSpeedMult > VanillaMaximum)
