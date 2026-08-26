@@ -27,6 +27,27 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
             $"requested-speed setter={DescribeSetter(s_simSpeedProperty, typeof(int))}, " +
             $"requested-speed backing field={DescribeField(s_rawSimSpeedBackingField, typeof(int))}";
 
+        internal static bool TrySetAdaptiveSpeedMode(SimLoopEvents simLoop, SimAdaptiveSpeedMode mode, out string error)
+        {
+            if (s_adaptiveModeSetter is null)
+            {
+                error = "AdaptiveSimSpeedMode setter was not found.";
+                return false;
+            }
+
+            try
+            {
+                s_adaptiveModeSetter.Invoke(simLoop, [mode]);
+                error = string.Empty;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.GetBaseException().Message;
+                return false;
+            }
+        }
+
         internal static bool TrySetRequestedSpeedUncapped(SimLoopEvents simLoop, int speed, out string error)
         {
             if (s_adaptiveModeSetter is null)

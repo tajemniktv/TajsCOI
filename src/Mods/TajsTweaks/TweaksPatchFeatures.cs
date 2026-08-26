@@ -532,6 +532,11 @@ namespace TajsCOI.Tweaks
 
     internal static class TweaksDesignationFeature
     {
+        private static FieldInfo? s_upgradeAreaSelectionField;
+        private static MethodInfo? s_upgradeSetEdgeSizeLimit;
+        private static RelTile1i? s_upgradeVanillaLimit;
+        private static MethodInfo? s_polygonMaxEdgeSizeSetter;
+
         private static readonly string[] s_types =
         {
             "Mafi.Unity.Ui.Controllers.Designations.TerrainDesignationController, Mafi.Unity",
@@ -577,6 +582,9 @@ namespace TajsCOI.Tweaks
                 }
             }
 
+            InstallUpgradeAreaSupport(harmony);
+            InstallPolygonAreaSupport(harmony);
+
             var renderer = Type.GetType("Mafi.Unity.Terrain.Designation.TerrainDesignationsRenderer, Mafi.Unity", false);
             // Gate the renderer's single per-frame update rather than each private chunk. This
             // leaves the native draw path untouched when hiding is off and avoids depending on
@@ -588,6 +596,121 @@ namespace TajsCOI.Tweaks
             }
 
             InstallTweaksPlusPlusCompatibility(harmony);
+        }
+
+        private static void InstallUpgradeAreaSupport(Harmony harmony)
+        {
+            Type? controller = Type.GetType(
+                "Mafi.Unity.Ui.Controllers.Tools.UpgradeToolInputController, Mafi.Unity",
+                false);
+            MethodInfo? activate = controller is null ? null : AccessTools.Method(controller, "Activate", Type.EmptyTypes);
+            Type? baseType = controller?.BaseType;
+            FieldInfo? areaSelection = FindField(baseType, "m_areaSelectionTool", BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo? setEdgeSizeLimit = baseType is null
+                ? null
+                : AccessTools.Method(baseType, "SetEdgeSizeLimit", new[] { typeof(RelTile1i) });
+            FieldInfo? vanillaLimit = FindField(
+                baseType,
+                "MAX_AREA_EDGE_SIZE",
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+
+            if (activate is null || areaSelection is null || setEdgeSizeLimit is null ||
+                vanillaLimit?.GetValue(null) is not RelTile1i limit)
+            {
+                // This is an optional version-specific extension. The existing designation
+                // patches remain usable when the upgrade controller shape changes.
+                return;
+            }
+
+            s_upgradeAreaSelectionField = areaSelection;
+            s_upgradeSetEdgeSizeLimit = setEdgeSizeLimit;
+            s_upgradeVanillaLimit = limit;
+            harmony.Patch(
+                activate,
+                postfix: new HarmonyMethod(typeof(TweaksDesignationFeature), nameof(UpgradeActivatePostfix)));
+        }
+
+        private static void InstallPolygonAreaSupport(Harmony harmony)
+        {
+            Type? polygonState = Type.GetType("Mafi.Unity.Ui.Controllers.PolygonEditState, Mafi.Unity", false);
+            MethodInfo? initialize = polygonState is null ? null : AccessTools.Method(polygonState, "Initialize");
+            PropertyInfo? maxEdgeSize = polygonState?.GetProperty(
+                "MaxEdgeSize",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            MethodInfo? setter = maxEdgeSize?.GetSetMethod(true);
+            ParameterInfo[] setterParameters = setter?.GetParameters() ?? Array.Empty<ParameterInfo>();
+            if (initialize is null || setter is null || setter.IsStatic || setter.ReturnType != typeof(void) ||
+                setterParameters.Length != 1 || setterParameters[0].ParameterType != typeof(Fix32))
+            {
+                // Mine and forestry inspectors continue using their native polygon bounds if
+                // this shared editor changes in a future game build.
+                return;
+            }
+
+            s_polygonMaxEdgeSizeSetter = setter;
+            harmony.Patch(
+                initialize,
+                postfix: new HarmonyMethod(typeof(TweaksDesignationFeature), nameof(PolygonInitializePostfix)));
+        }
+
+        private static FieldInfo? FindField(Type? type, string name, BindingFlags flags)
+        {
+            for (Type? current = type; current is not null; current = current.BaseType)
+            {
+                FieldInfo? field = current.GetField(flags.HasFlag(BindingFlags.Static) ? name : name,
+                    flags | BindingFlags.DeclaredOnly);
+                if (field is not null)
+                {
+                    return field;
+                }
+            }
+            return null;
+        }
+
+        private static void UpgradeActivatePostfix(object __instance)
+        {
+            if (s_upgradeAreaSelectionField is null || s_upgradeSetEdgeSizeLimit is null ||
+                s_upgradeVanillaLimit is not RelTile1i vanillaLimit)
+            {
+                return;
+            }
+
+            try
+            {
+                object? areaSelection = s_upgradeAreaSelectionField.GetValue(__instance);
+                if (areaSelection is null)
+                {
+                    return;
+                }
+                RelTile1i limit = TajsTweaksRuntimeState.DesignationControls
+                    ? new RelTile1i(TajsTweaksRuntimeState.DesignationLimit)
+                    : vanillaLimit;
+                s_upgradeSetEdgeSizeLimit.Invoke(__instance, new object[] { limit });
+            }
+            catch
+            {
+                // A changed private UI seam must never prevent the vanilla upgrade tool from
+                // activating. Its constructor already supplied the native limit.
+            }
+        }
+
+        private static void PolygonInitializePostfix(object __instance)
+        {
+            if (!TajsTweaksRuntimeState.DesignationControls || s_polygonMaxEdgeSizeSetter is null)
+            {
+                return;
+            }
+
+            try
+            {
+                s_polygonMaxEdgeSizeSetter.Invoke(
+                    __instance,
+                    new object[] { Fix32.FromInt(TajsTweaksRuntimeState.DesignationLimit) });
+            }
+            catch
+            {
+                // The native polygon bounds remain in effect when the setter changes shape.
+            }
         }
 
         internal static bool HasTweaksPlusPlusDesignationVisualIntegration()
