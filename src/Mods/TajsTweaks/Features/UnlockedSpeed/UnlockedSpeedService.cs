@@ -49,6 +49,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
         private Harmony? m_harmony;
         private int m_maxSpeed;
         private int m_pendingHighSpeed;
+        private int m_clampedHighSpeed;
         private bool m_highSpeedMode;
         private bool m_resumeOnSelect;
         private string m_sequenceMode = UnlockedSpeedSetting.VanillaSequenceMode;
@@ -145,6 +146,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
                     prefix: new HarmonyMethod(typeof(UnlockedSpeedService), nameof(SetSpeedPrefix)));
                 m_harmony.Patch(
                     setSimSpeed,
+                    prefix: new HarmonyMethod(typeof(UnlockedSpeedService), nameof(SetSimSpeedPrefix)),
                     postfix: new HarmonyMethod(typeof(UnlockedSpeedService), nameof(SetSimSpeedPostfix)));
                 m_installed = true;
             }
@@ -221,6 +223,17 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
             if (s_current is not null && s_current.TryGetTarget(out UnlockedSpeedService? service))
             {
                 service.OnVanillaSpeedCommandApplied(__instance, speedMult);
+            }
+        }
+
+        private static void SetSimSpeedPrefix(SimLoopEvents __instance, ref int speedMult)
+        {
+            if (s_current is not null && s_current.TryGetTarget(out UnlockedSpeedService? service))
+            {
+                // SimLoopEvents.SetSimSpeed retains the vanilla 1-20 assertion even when the
+                // adaptive mode is Uncapped. Let that native command complete with a safe value;
+                // the postfix replaces it with the validated pending unlocked value afterward.
+                service.ClampVanillaSpeedArgument(__instance, ref speedMult);
             }
         }
 
@@ -406,18 +419,42 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
 
         private void OnVanillaSpeedCommandApplied(SimLoopEvents simLoop, int speedMult)
         {
-            int pending = Volatile.Read(ref m_pendingHighSpeed);
-            if (!ReferenceEquals(simLoop, m_simLoop) || pending == 0 || speedMult != pending || speedMult <= VanillaMaximum)
+            int clamped = Volatile.Read(ref m_clampedHighSpeed);
+            if (!ReferenceEquals(simLoop, m_simLoop) || clamped <= VanillaMaximum || speedMult != VanillaMaximum)
             {
                 return;
             }
 
-            if (!SimLoopAccess.TrySetRequestedSpeedUncapped(simLoop, speedMult, out string error))
+            int pending = Volatile.Read(ref m_pendingHighSpeed);
+            if (pending != clamped)
             {
-                m_log.ErrorOnce("Failed to apply queued unlocked simulation speed: " + error);
+                Volatile.Write(ref m_clampedHighSpeed, 0);
                 return;
             }
+
+            if (!SimLoopAccess.TrySetRequestedSpeedUncapped(simLoop, clamped, out string error))
+            {
+                m_log.ErrorOnce("Failed to apply queued unlocked simulation speed: " + error);
+                Volatile.Write(ref m_clampedHighSpeed, 0);
+                return;
+            }
+            Volatile.Write(ref m_clampedHighSpeed, 0);
             Volatile.Write(ref m_pendingHighSpeed, 0);
+        }
+
+        private void ClampVanillaSpeedArgument(SimLoopEvents simLoop, ref int speedMult)
+        {
+            if (!ReferenceEquals(simLoop, m_simLoop) || speedMult <= VanillaMaximum)
+            {
+                return;
+            }
+
+            int pending = Volatile.Read(ref m_pendingHighSpeed);
+            if (pending == speedMult)
+            {
+                Volatile.Write(ref m_clampedHighSpeed, pending);
+            }
+            speedMult = VanillaMaximum;
         }
 
         [ConsoleCommand(
@@ -528,6 +565,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
                 RestoreAdaptiveModeIfNeeded();
             }
             Volatile.Write(ref m_pendingHighSpeed, 0);
+            Volatile.Write(ref m_clampedHighSpeed, 0);
             if (m_simLoop.SimSpeedMult > VanillaMaximum)
             {
                 QueueSpeed(12, resumeOverride: false);
@@ -539,6 +577,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
         {
             m_settings.Changed -= OnSettingChanged;
             Volatile.Write(ref m_pendingHighSpeed, 0);
+            Volatile.Write(ref m_clampedHighSpeed, 0);
             try
             {
                 m_harmony?.UnpatchAll(HarmonyId);
