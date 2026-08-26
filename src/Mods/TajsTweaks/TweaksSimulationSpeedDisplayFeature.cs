@@ -33,6 +33,7 @@ namespace TajsCOI.Tweaks
         }
 
         private static readonly ConditionalWeakTable<CalendarControlsHud, DisplayState> s_states = new();
+        private static FieldInfo? s_calendarControlsField;
         private static bool s_installed;
 
         internal static void Install(Harmony harmony)
@@ -57,7 +58,7 @@ namespace TajsCOI.Tweaks
         internal static void Apply(DependencyResolver resolver)
         {
             if (!s_installed ||
-                !resolver.TryResolve(out CalendarControlsHud hud) ||
+                !resolver.TryResolve(out HudController hudController) ||
                 !resolver.TryResolve(out GameSpeedController speedController))
             {
                 return;
@@ -65,6 +66,13 @@ namespace TajsCOI.Tweaks
 
             try
             {
+                s_calendarControlsField ??= typeof(HudController).GetField(
+                    "m_calendarControls",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (s_calendarControlsField?.GetValue(hudController) is not CalendarControlsHud hud)
+                {
+                    return;
+                }
                 EnsureDisplay(hud, speedController);
             }
             catch

@@ -95,6 +95,7 @@ namespace TajsCOI.Tweaks
         internal static bool BattleScoreOnMap;
         internal static bool ElectricityComputingTotals;
         internal static bool StackerDesignationOverlay;
+        internal static bool TerrainGrid;
         internal static bool EfficiencyOverlay;
         internal static string EfficiencyOverlayMode = "percentage";
         internal static bool EfficiencyOverlayBuildings;
@@ -215,6 +216,7 @@ namespace TajsCOI.Tweaks
             BattleScoreOnMap = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.BattleScoreOnMap);
             ElectricityComputingTotals = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ElectricityComputingTotals);
             StackerDesignationOverlay = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StackerDesignationOverlay);
+            TerrainGrid = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TerrainGrid);
             EfficiencyOverlay = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlay);
             EfficiencyOverlayMode = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlayMode);
             EfficiencyOverlayBuildings = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlayBuildings);
@@ -403,6 +405,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.FarmFullToggleAlways: FarmFullToggleAlways = value; break;
                 case TajsTweaksSettingsCatalog.BattleScoreOnMap: BattleScoreOnMap = value; break;
                 case TajsTweaksSettingsCatalog.FleetManager: FleetManager = value; break;
+                case TajsTweaksSettingsCatalog.TerrainGrid: TerrainGrid = value; break;
                 case TajsTweaksSettingsCatalog.Overclocking: Overclocking = value; break;
                 case TajsTweaksSettingsCatalog.OverclockTransportCapacityCompensation: OverclockTransportCapacityCompensation = value; break;
             }

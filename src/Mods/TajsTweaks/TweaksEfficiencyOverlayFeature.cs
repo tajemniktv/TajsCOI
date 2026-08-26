@@ -245,8 +245,12 @@ namespace TajsCOI.Tweaks
         // transform scale in the same range as the working resource-overlay
         // labels; the previous 0.045-0.22 range made these labels effectively
         // microscopic at normal camera distances.
+        // Counter perspective shrinkage so labels remain readable as the
+        // camera zooms out. The bounded cap still protects against huge
+        // labels during close-up inspection.
         private const float MinimumScale = 0.5f;
-        private const float MaximumScale = 2.5f;
+        private const float MaximumScale = 12f;
+        private const float ReferenceDistance = 100f;
 
         private sealed class LabelSlot
         {
@@ -279,7 +283,7 @@ namespace TajsCOI.Tweaks
         private bool m_dirty = true;
         private float m_nextRefresh;
         private float m_updateSeconds = 0.5f;
-        private float m_renderDistance = 250f;
+        private float m_renderDistance = 1500f;
         private float m_labelScale = 1f;
 
         internal void Initialize(IEntitiesManager entities, Type textMeshType)
@@ -312,7 +316,7 @@ namespace TajsCOI.Tweaks
         internal void ApplySettings()
         {
             m_updateSeconds = Mathf.Clamp((float)TajsTweaksRuntimeState.EfficiencyOverlayUpdateSeconds, 0.1f, 5f);
-            m_renderDistance = Mathf.Clamp((float)TajsTweaksRuntimeState.EfficiencyOverlayRenderDistance, 50f, 1000f);
+            m_renderDistance = Mathf.Clamp((float)TajsTweaksRuntimeState.EfficiencyOverlayRenderDistance, 100f, 2000f);
             m_labelScale = Mathf.Clamp((float)TajsTweaksRuntimeState.EfficiencyOverlayLabelScale, 0.5f, 2f);
             m_dirty = true;
         }
@@ -371,7 +375,7 @@ namespace TajsCOI.Tweaks
                 label.Object.transform.position = snapshot.Position;
                 label.Object.transform.rotation = camera.transform.rotation;
                 float distance = delta.magnitude;
-                float scale = Mathf.Clamp(m_labelScale * (1f + distance * 0.0025f), MinimumScale, MaximumScale);
+                float scale = Mathf.Clamp(m_labelScale * distance / ReferenceDistance, MinimumScale, MaximumScale);
                 label.Object.transform.localScale = Vector3.one * scale;
             }
 

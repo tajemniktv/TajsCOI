@@ -100,6 +100,7 @@ namespace TajsCOI.Tweaks
         internal const string BattleScoreOnMap = "battle_score_on_map";
         internal const string ElectricityComputingTotals = "electricity_computing_totals";
         internal const string StackerDesignationOverlay = "stacker_designation_overlay";
+        internal const string TerrainGrid = "terrain_grid";
         internal const string EfficiencyOverlay = "efficiency_overlay";
         internal const string EfficiencyOverlayMode = "efficiency_overlay_mode";
         internal const string EfficiencyOverlayBuildings = "efficiency_overlay_buildings";
@@ -1090,6 +1091,16 @@ namespace TajsCOI.Tweaks
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,
+                TerrainGrid,
+                "Terrain grid",
+                "Keeps the game's native terrain grid visible through the dedicated toolbar toggle. The preference is remembered across gameplay-scene recreation.",
+                false,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
                 EfficiencyOverlay,
                 "World efficiency overlay",
                 "Shows bounded, camera-culled utilization labels above buildings and supported vehicles. The toolbar toggle is reversible and immediate.",
@@ -1151,10 +1162,10 @@ namespace TajsCOI.Tweaks
                 EfficiencyOverlayRenderDistance,
                 "Efficiency overlay render distance",
                 "Maximum world distance for labels. This cap protects large islands from excessive label work.",
-                250,
-                50,
-                1000,
-                25,
+                1500,
+                100,
+                2000,
+                100,
                 "Overlays",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced,

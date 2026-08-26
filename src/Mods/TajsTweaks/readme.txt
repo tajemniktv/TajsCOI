@@ -13,6 +13,9 @@ Current feature:
 - Optional world operations, ship preload/auto-delivery, and native management windows for
   repairs, mines/rigs, settlements, ship cargo, and fleet status/order/scrap/replacement.
   All world, vehicle, and depot mutations use normal game commands/jobs.
+- The optional terrain-grid toolbar toggle uses the game's native counted grid activator,
+  remembers its enabled preference across gameplay-scene recreation, and remains independent
+  while switching tools and overlays.
 - The optional world efficiency overlay adds a toolbar toggle and toolbox for percentage, status,
   or compact colored-marker labels above buildings and supported vehicles. Labels use native
   productivity history, bounded refresh cadence, pooling, camera culling, and independent filters.
