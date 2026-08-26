@@ -8,20 +8,16 @@ using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using Mafi;
-using Mafi.Core;
 using Mafi.Core.Entities;
 using Mafi.Core.Factory.ComputingPower;
 using Mafi.Core.Factory.ElectricPower;
-using Mafi.Core.Factory.Machines;
 using Mafi.Core.Factory.Transports;
-using Mafi.Localization;
 using Mafi.Core.Maintenance;
 using Mafi.Core.Population;
-using Mafi.Unity.UiToolkit;
+using Mafi.Localization;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
 using UnityEngine;
-using UnityEngine.UIElements;
 using EntityId = Mafi.Core.EntityId;
 using UiButton = Mafi.Unity.UiToolkit.Library.Button;
 using UiColumn = Mafi.Unity.UiToolkit.Library.Column;
@@ -223,7 +219,9 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 OverclockEffectivePolicy policy = feature.GetEffectivePolicy(entity!.Id.Value);
                 int current = feature.GetPercent(entity.Id);
                 int step = Math.Max(1, TajsTweaksRuntimeState.OverclockAutoStepPercent);
-                var panel = new PanelWithHeader("Overclocking".AsLoc());
+                // Keep the panel at its intrinsic height. Ore sorting inspectors contain several
+                // variable-height sections and shrink children when the inspector is constrained.
+                PanelWithHeader panel = new PanelWithHeader("Overclocking".AsLoc()).FlexShrink(0f);
                 var rate = new UiLabel((current + "%").AsLoc()).FontBold().Width(48.px());
                 var mode = new UiLabel(string.Empty.AsLoc());
                 var costs = new UiLabel(string.Empty.AsLoc());
@@ -258,7 +256,9 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 if (s_mainBodyFields.TryGetValue(inspector.GetType(), out FieldInfo? mainBodyField) &&
                     mainBodyField.GetValue(inspector) is UiColumn mainBody)
                 {
-                    mainBody.InsertAt(0, panel);
+                    // Native inspector panels are appended to MainBody; keeping the same order puts
+                    // overclocking below the machine-specific controls instead of in the middle.
+                    mainBody.Add(panel);
                 }
                 else
                 {
