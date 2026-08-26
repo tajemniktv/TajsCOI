@@ -194,14 +194,11 @@ namespace TajsCOI.Tweaks
         private static FieldInfo? s_scaleField;
         private static float? s_original;
         private static bool s_searched;
+        private static int s_assemblyCountAtSearch = -1;
 
         internal static void Install(Harmony _)
         {
             FindScaleField();
-            if (s_scaleField is null)
-            {
-                throw new TypeLoadException("optional Keep Full/Keep Empty marker provider");
-            }
         }
 
         internal static void Apply()
@@ -232,16 +229,39 @@ namespace TajsCOI.Tweaks
             }
         }
 
+        internal static void Reset()
+        {
+            if (s_scaleField is null || !s_original.HasValue || s_scaleField.FieldType != typeof(float))
+            {
+                return;
+            }
+
+            try
+            {
+                s_scaleField.SetValue(null, s_original.Value);
+            }
+            catch
+            {
+                // The provider may have been unloaded before gameplay teardown completed.
+            }
+            finally
+            {
+                s_original = null;
+            }
+        }
+
         private static void FindScaleField()
         {
-            if (s_searched)
+            Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            if (s_scaleField is not null || (s_searched && assemblies.Length == s_assemblyCountAtSearch))
             {
                 return;
             }
             s_searched = true;
+            s_assemblyCountAtSearch = assemblies.Length;
             try
             {
-                foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                foreach (Assembly assembly in assemblies)
                 {
                     string name = assembly.GetName().Name ?? string.Empty;
                     if (name.IndexOf("Tweaks", StringComparison.OrdinalIgnoreCase) < 0 &&
@@ -249,7 +269,16 @@ namespace TajsCOI.Tweaks
                     {
                         continue;
                     }
-                    foreach (Type type in assembly.GetTypes())
+                    Type[] types;
+                    try
+                    {
+                        types = assembly.GetTypes();
+                    }
+                    catch (ReflectionTypeLoadException exception)
+                    {
+                        types = exception.Types.Where(type => type is not null).Cast<Type>().ToArray();
+                    }
+                    foreach (Type type in types)
                     {
                         FieldInfo? field = type.GetField("KfKeLabelScale", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic) ??
                                            type.GetField("KeepFullEmptyLabelScale", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);

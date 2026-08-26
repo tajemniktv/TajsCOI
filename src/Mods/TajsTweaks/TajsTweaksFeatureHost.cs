@@ -269,6 +269,7 @@ namespace TajsCOI.Tweaks
             TweaksResourceDepositFeature.Dispose();
             TweaksStackerDesignationFeature.Dispose();
             TweaksStuckTruckRecoveryFeature.ClearDestinations();
+            TweaksKeepFullEmptyMarkerFeature.Reset();
             TweaksHudLayoutFeature.ClearFullscreenState();
             CloseWorldOperationsWindow();
             CloseFleetManagementWindow();
