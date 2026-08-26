@@ -34,6 +34,10 @@
       <HintPath>$(COIManagedDir)\UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(COIManagedDir)\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="UnityEngine.UIElementsModule">
       <HintPath>$(COIManagedDir)\UnityEngine.UIElementsModule.dll</HintPath>
       <Private>false</Private>

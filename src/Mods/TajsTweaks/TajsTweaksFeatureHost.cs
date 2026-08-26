@@ -23,6 +23,7 @@ using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
+using TajsCOI.Tweaks.Features.Overclocking;
 
 namespace TajsCOI.Tweaks
 {
@@ -35,10 +36,14 @@ namespace TajsCOI.Tweaks
     internal sealed class TajsTweaksFeatureHost
     {
         private const string HarmonyId = "TajsCOI.Tweaks";
+        private const string OverclockingUnavailableMessage = "Per-machine overclocking is unavailable in this scene.";
         private readonly DependencyResolver m_resolver;
+        private readonly ITajsRuntime m_runtime;
         private readonly ITajsSettings m_settings;
         private readonly ITajsLogger m_log;
         private readonly TweaksInfiniteGroundwaterFeature m_infiniteGroundwater;
+        private TajsOverclockingFeature? m_overclocking;
+        private bool m_overclockingInitializationAttempted;
         private Option<TajsWorldOperationsWindow> m_worldOperationsWindow;
         private Option<TajsFleetManagementWindow> m_fleetManagementWindow;
         private int m_renderTick;
@@ -46,6 +51,7 @@ namespace TajsCOI.Tweaks
         public TajsTweaksFeatureHost(DependencyResolver resolver, IGameLoopEvents gameLoop, ITajsRuntime runtime, ITajsSettings settings)
         {
             m_resolver = resolver;
+            m_runtime = runtime;
             m_settings = settings;
             m_log = runtime.GetLogger(TajsTweaksSettingsCatalog.ModId, "FeatureHost");
             m_infiniteGroundwater = new TweaksInfiniteGroundwaterFeature(resolver, gameLoop, m_log);
@@ -246,10 +252,27 @@ namespace TajsCOI.Tweaks
             {
                 TweaksKeepFullEmptyMarkerFeature.Apply();
             }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.Overclocking ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockMaxPercent ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockMinPercent ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockAutoIntervalSeconds ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockAutoPowerReserve ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockAutoWorkerReserve ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockAutoStepPercent ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockAutoDeadbandPercent ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockAutoMaxStepPercent ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockAutoLowFill ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockAutoNeutralFill ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockAutoHighFill)
+            {
+                m_overclocking?.RefreshSettings();
+            }
         }
 
         private void OnRenderUpdateEnd(GameTime _)
         {
+            EnsureOverclockingFeature();
+            m_overclocking?.UpdateSelectionInput();
             if (++m_renderTick % 15 == 0)
             {
                 TweaksPinnedProductsFeature.Tick();
@@ -258,6 +281,42 @@ namespace TajsCOI.Tweaks
                 TweaksResourceDepositFeature.Tick(m_resolver);
                 TweaksKeepFullEmptyMarkerFeature.Apply();
                 TweaksHudLayoutFeature.Apply(m_resolver, m_settings);
+                m_overclocking?.Tick();
+            }
+        }
+
+        private void EnsureOverclockingFeature()
+        {
+            if (m_overclockingInitializationAttempted)
+            {
+                return;
+            }
+
+            // The host itself is constructed while DependencyResolver is locking. Resolving
+            // IEntitiesManager from the overclocking constructor at that point recursively
+            // enters the resolver and aborts the whole game initialization. Defer this optional
+            // feature until the first render callback, after global dependency construction has
+            // completed, and keep it fail-open if the scene has no compatible seam.
+            m_overclockingInitializationAttempted = true;
+            try
+            {
+                var feature = new TajsOverclockingFeature(m_resolver, m_settings, m_runtime);
+                if (TryInstall(m_runtime, "Overclocking", feature.Install))
+                {
+                    m_overclocking = feature;
+                }
+            }
+            catch (Exception exception)
+            {
+                m_log.Exception(exception, "Feature 'Overclocking' failed during deferred setup.");
+                m_runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsTweaksSettingsCatalog.ModId,
+                        "Overclocking",
+                        CompatibilityState.Disabled,
+                        "0.8.7b target or native fallback",
+                        exception.GetType().Name,
+                        "No behavior was changed for this feature; vanilla behavior remains active."));
             }
         }
 
@@ -266,6 +325,7 @@ namespace TajsCOI.Tweaks
             m_settings.Changed -= OnSettingChanged;
             TweaksAutoShipDeliveryFeature.Reset();
             m_infiniteGroundwater.Dispose();
+            m_overclocking?.Dispose();
             TweaksResourceDepositFeature.Dispose();
             TweaksStackerDesignationFeature.Dispose();
             TweaksStuckTruckRecoveryFeature.ClearDestinations();
@@ -273,6 +333,348 @@ namespace TajsCOI.Tweaks
             TweaksHudLayoutFeature.ClearFullscreenState();
             CloseWorldOperationsWindow();
             CloseFleetManagementWindow();
+        }
+
+        [ConsoleCommand(
+            documentation: "Shows the current per-entity overclock rate and effective policy.",
+            customCommandName: "tajs_overclock_status")]
+        public string OverclockStatus(string entityId)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            if (!int.TryParse(entityId, out int parsedId))
+            {
+                return "Usage: tajs_overclock_status <entity-id>";
+            }
+
+            return m_overclocking.Status(new EntityId(parsedId));
+        }
+
+        [ConsoleCommand(
+            documentation: "Lists supported overclocking entities with optional type/state/group filters and deterministic sorting.",
+            customCommandName: "tajs_overclock_list")]
+        public string OverclockList(string? type = null, string? state = null, string? groupId = null, string? sort = null)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            int? parsedGroup = null;
+            if (groupId is not null)
+            {
+                if (!int.TryParse(groupId, out int value))
+                {
+                    return "Usage: tajs_overclock_list [all|machine|ore|office|waste] [all|auto|manual|boosted|default|group] [group-id] [id|rate|type|state]";
+                }
+
+                parsedGroup = value;
+            }
+
+            return m_overclocking.ListEntities(type, state, parsedGroup, sort);
+        }
+
+        [ConsoleCommand(
+            documentation: "Queues a bounded per-entity overclock command through the normal input scheduler.",
+            customCommandName: "tajs_overclock_set")]
+        public string OverclockSet(string entityId, string percent)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            if (!int.TryParse(entityId, out int parsedId) || !int.TryParse(percent, out int parsedPercent))
+            {
+                return "Usage: tajs_overclock_set <entity-id> <percent>";
+            }
+
+            return m_overclocking.QueueSetManual(new EntityId(parsedId), parsedPercent, out string message) ? message : "Not queued: " + message;
+        }
+
+        [ConsoleCommand(
+            documentation: "Enables or disables per-entity demand-based Auto mode; optional min/max bounds override the group.",
+            customCommandName: "tajs_overclock_auto")]
+        public string OverclockAuto(string entityId, string enabled, string? minimum = null, string? maximum = null)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            int parsedMinimum = 0;
+            int parsedMaximum = 0;
+            if (!int.TryParse(entityId, out int parsedId) || !bool.TryParse(enabled, out bool parsedEnabled) ||
+                (minimum is not null && !int.TryParse(minimum, out parsedMinimum)) ||
+                (maximum is not null && !int.TryParse(maximum, out parsedMaximum)))
+            {
+                return "Usage: tajs_overclock_auto <entity-id> <true|false> [min-percent] [max-percent]";
+            }
+
+            int? min = minimum is null ? null : parsedMinimum;
+            int? max = maximum is null ? null : parsedMaximum;
+            return m_overclocking.SetAuto(new EntityId(parsedId), parsedEnabled, min, max, out string message) ? message : "Not changed: " + message;
+        }
+
+        [ConsoleCommand(
+            documentation: "Returns one supported entity to its group or global overclock policy.",
+            customCommandName: "tajs_overclock_reset")]
+        public string OverclockReset(string entityId)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            if (!int.TryParse(entityId, out int parsedId))
+            {
+                return "Usage: tajs_overclock_reset <entity-id>";
+            }
+
+            return m_overclocking.Reset(new EntityId(parsedId), out string message) ? message : "Not reset: " + message;
+        }
+
+        [ConsoleCommand(
+            documentation: "Creates a save-scoped named overclock group.",
+            customCommandName: "tajs_overclock_group_create")]
+        public string OverclockGroupCreate(string? name = null)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            OverclockGroup group = m_overclocking.CreateGroup(name);
+            return "Created overclock group " + group.Id + " ('" + group.Name + "').";
+        }
+
+        [ConsoleCommand(
+            documentation: "Lists save-scoped overclock groups and their members.",
+            customCommandName: "tajs_overclock_group_list")]
+        public string OverclockGroupList()
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            if (m_overclocking.Groups.Count == 0)
+            {
+                return "No overclock groups exist.";
+            }
+
+            return string.Join(" | ", m_overclocking.Groups.Select(group =>
+                group.Id + ":" + group.Name + " members=" + group.Members.Count + " locked=" + group.Locked +
+                " default=" + (group.ManualDefault == 0 ? "global" : group.ManualDefault + "%") + " auto=" + group.Auto));
+        }
+
+        [ConsoleCommand(
+            documentation: "Renames a save-scoped overclock group.",
+            customCommandName: "tajs_overclock_group_rename")]
+        public string OverclockGroupRename(string groupId, string name)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            return int.TryParse(groupId, out int parsedGroup) && m_overclocking.RenameGroup(parsedGroup, name)
+                ? "Renamed overclock group " + parsedGroup + "."
+                : "Group is missing, locked, or the name is empty.";
+        }
+
+        [ConsoleCommand(
+            documentation: "Deletes a save-scoped overclock group without changing entity policies.",
+            customCommandName: "tajs_overclock_group_delete")]
+        public string OverclockGroupDelete(string groupId)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            return int.TryParse(groupId, out int parsedGroup) && m_overclocking.DeleteGroup(parsedGroup)
+                ? "Deleted overclock group " + parsedGroup + "."
+                : "Group is missing.";
+        }
+
+        [ConsoleCommand(
+            documentation: "Starts a screen-space rectangle picker for a save-scoped overclock group.",
+            customCommandName: "tajs_overclock_group_pick")]
+        public string OverclockGroupPick(string groupId)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            return int.TryParse(groupId, out int parsedGroup)
+                ? m_overclocking.StartGroupSelection(parsedGroup)
+                : "Usage: tajs_overclock_group_pick <group-id>";
+        }
+
+        [ConsoleCommand(
+            documentation: "Highlights all supported members of an overclock group in the world.",
+            customCommandName: "tajs_overclock_group_show")]
+        public string OverclockGroupShow(string groupId)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            return int.TryParse(groupId, out int parsedGroup) && m_overclocking.ShowGroup(parsedGroup)
+                ? "Showing overclock group " + parsedGroup + "."
+                : "Group is missing or world highlighting is unavailable.";
+        }
+
+        [ConsoleCommand(
+            documentation: "Clears overclock group world highlights.",
+            customCommandName: "tajs_overclock_group_hide")]
+        public string OverclockGroupHide()
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            m_overclocking.ClearHighlights();
+            return "Overclock group highlights cleared.";
+        }
+
+        [ConsoleCommand(
+            documentation: "Locks or unlocks a group so bulk and rectangle operations cannot change it while locked.",
+            customCommandName: "tajs_overclock_group_lock")]
+        public string OverclockGroupLock(string groupId, string locked)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            return int.TryParse(groupId, out int parsedGroup) && bool.TryParse(locked, out bool parsedLocked) &&
+                m_overclocking.SetGroupLocked(parsedGroup, parsedLocked)
+                ? "Group " + parsedGroup + " locked=" + parsedLocked + "."
+                : "Usage: tajs_overclock_group_lock <group-id> <true|false>";
+        }
+
+        [ConsoleCommand(
+            documentation: "Sets the highlight color index for a group (0 through 8).",
+            customCommandName: "tajs_overclock_group_color")]
+        public string OverclockGroupColor(string groupId, string colorIndex)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            return int.TryParse(groupId, out int parsedGroup) && int.TryParse(colorIndex, out int parsedColor) &&
+                m_overclocking.SetGroupColor(parsedGroup, parsedColor)
+                ? "Group " + parsedGroup + " color updated."
+                : "Usage: tajs_overclock_group_color <group-id> <0-8>";
+        }
+
+        [ConsoleCommand(
+            documentation: "Adds one supported entity to a named overclock group.",
+            customCommandName: "tajs_overclock_group_add")]
+        public string OverclockGroupAdd(string groupId, string entityId)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            if (!int.TryParse(groupId, out int parsedGroup) || !int.TryParse(entityId, out int parsedEntity))
+            {
+                return "Usage: tajs_overclock_group_add <group-id> <entity-id>";
+            }
+
+            return m_overclocking.AddToGroup(parsedGroup, new EntityId(parsedEntity))
+                ? "Added entity " + parsedEntity + " to group " + parsedGroup + "."
+                : "Entity/group missing, locked, or unsupported.";
+        }
+
+        [ConsoleCommand(
+            documentation: "Removes one entity from a named overclock group.",
+            customCommandName: "tajs_overclock_group_remove")]
+        public string OverclockGroupRemove(string groupId, string entityId)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            if (!int.TryParse(groupId, out int parsedGroup) || !int.TryParse(entityId, out int parsedEntity))
+            {
+                return "Usage: tajs_overclock_group_remove <group-id> <entity-id>";
+            }
+
+            return m_overclocking.RemoveFromGroup(parsedGroup, new EntityId(parsedEntity))
+                ? "Removed entity " + parsedEntity + " from group " + parsedGroup + "."
+                : "Entity/group missing, locked, or not a member.";
+        }
+
+        [ConsoleCommand(
+            documentation: "Sets a group's default rate for members without an entity override.",
+            customCommandName: "tajs_overclock_group_default")]
+        public string OverclockGroupDefault(string groupId, string percent)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            if (!int.TryParse(groupId, out int parsedGroup) || !int.TryParse(percent, out int parsedPercent))
+            {
+                return "Usage: tajs_overclock_group_default <group-id> <percent>";
+            }
+
+            return m_overclocking.SetGroupDefault(parsedGroup, parsedPercent, out string message) ? message : "Not changed: " + message;
+        }
+
+        [ConsoleCommand(
+            documentation: "Applies a group rate as an explicit entity override to every supported member.",
+            customCommandName: "tajs_overclock_group_apply")]
+        public string OverclockGroupApply(string groupId, string percent)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            if (!int.TryParse(groupId, out int parsedGroup) || !int.TryParse(percent, out int parsedPercent))
+            {
+                return "Usage: tajs_overclock_group_apply <group-id> <percent>";
+            }
+
+            return m_overclocking.ApplyGroupToMembers(parsedGroup, parsedPercent, out string message) ? message : "Not changed: " + message;
+        }
+
+        [ConsoleCommand(
+            documentation: "Enables or disables Auto mode for a named group; optional min/max bounds apply to members without overrides.",
+            customCommandName: "tajs_overclock_group_auto")]
+        public string OverclockGroupAuto(string groupId, string enabled, string? minimum = null, string? maximum = null)
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            int parsedMinimum = 0;
+            int parsedMaximum = 0;
+            if (!int.TryParse(groupId, out int parsedGroup) || !bool.TryParse(enabled, out bool parsedEnabled) ||
+                (minimum is not null && !int.TryParse(minimum, out parsedMinimum)) ||
+                (maximum is not null && !int.TryParse(maximum, out parsedMaximum)))
+            {
+                return "Usage: tajs_overclock_group_auto <group-id> <true|false> [min-percent] [max-percent]";
+            }
+
+            int? min = minimum is null ? null : parsedMinimum;
+            int? max = maximum is null ? null : parsedMaximum;
+            return m_overclocking.SetGroupAuto(parsedGroup, parsedEnabled, min, max, out string message) ? message : "Not changed: " + message;
         }
 
         [ConsoleCommand(

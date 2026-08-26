@@ -103,6 +103,22 @@ namespace TajsCOI.Tweaks
         internal static bool CenterDriving;
         internal static bool FleetManager;
         internal static int FleetBatchLimit;
+        internal static bool Overclocking;
+        internal static int OverclockMaxPercent;
+        internal static int OverclockMinPercent;
+        internal static int OverclockPowerCurve;
+        internal static int OverclockWorkerCurve;
+        internal static int OverclockComputingCurve;
+        internal static int OverclockMaintenanceCurve;
+        internal static int OverclockAutoIntervalSeconds;
+        internal static int OverclockAutoPowerReserve;
+        internal static int OverclockAutoWorkerReserve;
+        internal static int OverclockAutoStepPercent;
+        internal static int OverclockAutoDeadbandPercent;
+        internal static int OverclockAutoMaxStepPercent;
+        internal static int OverclockAutoLowFill;
+        internal static int OverclockAutoNeutralFill;
+        internal static int OverclockAutoHighFill;
 
         internal static void Load(ITajsSettings settings)
         {
@@ -192,6 +208,22 @@ namespace TajsCOI.Tweaks
             CenterDriving = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.CenterDriving);
             FleetManager = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.FleetManager);
             FleetBatchLimit = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.FleetBatchLimit);
+            Overclocking = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.Overclocking);
+            OverclockMaxPercent = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockMaxPercent);
+            OverclockMinPercent = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockMinPercent);
+            OverclockPowerCurve = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockPowerCurve);
+            OverclockWorkerCurve = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockWorkerCurve);
+            OverclockComputingCurve = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockComputingCurve);
+            OverclockMaintenanceCurve = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockMaintenanceCurve);
+            OverclockAutoIntervalSeconds = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockAutoIntervalSeconds);
+            OverclockAutoPowerReserve = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockAutoPowerReserve);
+            OverclockAutoWorkerReserve = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockAutoWorkerReserve);
+            OverclockAutoStepPercent = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockAutoStepPercent);
+            OverclockAutoDeadbandPercent = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockAutoDeadbandPercent);
+            OverclockAutoMaxStepPercent = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockAutoMaxStepPercent);
+            OverclockAutoLowFill = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockAutoLowFill);
+            OverclockAutoNeutralFill = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockAutoNeutralFill);
+            OverclockAutoHighFill = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockAutoHighFill);
             s_mutedNotificationData = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.MutedNotifications);
             RebuildParsedValues();
         }
@@ -333,6 +365,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.FarmFullToggleAlways: FarmFullToggleAlways = value; break;
                 case TajsTweaksSettingsCatalog.BattleScoreOnMap: BattleScoreOnMap = value; break;
                 case TajsTweaksSettingsCatalog.FleetManager: FleetManager = value; break;
+                case TajsTweaksSettingsCatalog.Overclocking: Overclocking = value; break;
             }
         }
 
@@ -352,6 +385,21 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.ResourceOverlayLabelAlpha: ResourceOverlayLabelAlpha = value; break;
                 case TajsTweaksSettingsCatalog.DesignationLimit: DesignationLimit = value; break;
                 case TajsTweaksSettingsCatalog.FleetBatchLimit: FleetBatchLimit = value; break;
+                case TajsTweaksSettingsCatalog.OverclockMaxPercent: OverclockMaxPercent = value; break;
+                case TajsTweaksSettingsCatalog.OverclockMinPercent: OverclockMinPercent = value; break;
+                case TajsTweaksSettingsCatalog.OverclockPowerCurve: OverclockPowerCurve = value; break;
+                case TajsTweaksSettingsCatalog.OverclockWorkerCurve: OverclockWorkerCurve = value; break;
+                case TajsTweaksSettingsCatalog.OverclockComputingCurve: OverclockComputingCurve = value; break;
+                case TajsTweaksSettingsCatalog.OverclockMaintenanceCurve: OverclockMaintenanceCurve = value; break;
+                case TajsTweaksSettingsCatalog.OverclockAutoIntervalSeconds: OverclockAutoIntervalSeconds = value; break;
+                case TajsTweaksSettingsCatalog.OverclockAutoPowerReserve: OverclockAutoPowerReserve = value; break;
+                case TajsTweaksSettingsCatalog.OverclockAutoWorkerReserve: OverclockAutoWorkerReserve = value; break;
+                case TajsTweaksSettingsCatalog.OverclockAutoStepPercent: OverclockAutoStepPercent = value; break;
+                case TajsTweaksSettingsCatalog.OverclockAutoDeadbandPercent: OverclockAutoDeadbandPercent = value; break;
+                case TajsTweaksSettingsCatalog.OverclockAutoMaxStepPercent: OverclockAutoMaxStepPercent = value; break;
+                case TajsTweaksSettingsCatalog.OverclockAutoLowFill: OverclockAutoLowFill = value; break;
+                case TajsTweaksSettingsCatalog.OverclockAutoNeutralFill: OverclockAutoNeutralFill = value; break;
+                case TajsTweaksSettingsCatalog.OverclockAutoHighFill: OverclockAutoHighFill = value; break;
             }
         }
 

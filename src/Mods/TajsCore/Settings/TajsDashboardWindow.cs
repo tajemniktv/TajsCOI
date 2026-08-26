@@ -165,7 +165,16 @@ namespace TajsCOI.Core.Settings
             OnCloseStart += _ => m_refreshQueued = false;
             Schedule.Execute(UpdateResponsiveWindowSize).Every(20L);
             RebuildPage();
-            Open(uiRoot);
+            // Console commands can run while UI Toolkit is traversing the current panel. Defer
+            // attaching the completed window by one UI tick so the panel's internal change sets
+            // are not mutated during that traversal.
+            m_pageContent.Schedule.Execute(() =>
+            {
+                if (!IsOpen)
+                {
+                    Open(uiRoot);
+                }
+            }).StartingIn(1L);
         }
 
         private void BuildShell()
