@@ -34,6 +34,88 @@ namespace TajsCOI.Tweaks.Features.Overclocking
     /// </summary>
     internal static class OverclockingInspectorPatch
     {
+        internal enum OverclockPendingOperation
+        {
+            Manual,
+            Auto,
+            Reset,
+        }
+
+        private sealed class PendingPolicy
+        {
+            internal OverclockPendingOperation Operation;
+            internal int Percent;
+            internal bool Auto;
+            internal bool CommandApplied;
+
+            internal static PendingPolicy Manual(int percent) => new()
+            {
+                Operation = OverclockPendingOperation.Manual,
+                Percent = percent,
+            };
+
+            internal static PendingPolicy AutoMode(bool enabled) => new()
+            {
+                Operation = OverclockPendingOperation.Auto,
+                Auto = enabled,
+            };
+
+            internal static PendingPolicy Reset() => new()
+            {
+                Operation = OverclockPendingOperation.Reset,
+            };
+
+            internal bool Matches(TajsOverclockingFeature feature, EntityId entityId)
+            {
+                if (!CommandApplied)
+                {
+                    return false;
+                }
+
+                if (Operation == OverclockPendingOperation.Reset)
+                {
+                    return !feature.TryGetEntityPolicy(entityId, out _);
+                }
+
+                if (!feature.TryGetEntityPolicy(entityId, out OverclockEntityPolicy? policy) || policy is null)
+                {
+                    return false;
+                }
+
+                return Operation == OverclockPendingOperation.Manual
+                    ? policy.HasManualOverride && policy.ManualPercent == Percent && policy.HasAutoOverride && !policy.Auto
+                    : policy.HasAutoOverride && policy.Auto == Auto;
+            }
+
+            internal bool MatchesCommand(
+                OverclockPendingOperation operation,
+                int? percent,
+                bool? auto)
+            {
+                if (Operation != operation)
+                {
+                    return false;
+                }
+
+                return operation == OverclockPendingOperation.Manual
+                    ? percent == Percent
+                    : operation == OverclockPendingOperation.Auto
+                        ? auto == Auto
+                        : true;
+            }
+
+            internal int DisplayPercent(TajsOverclockingFeature feature, EntityId entityId)
+            {
+                if (Operation == OverclockPendingOperation.Manual || Operation == OverclockPendingOperation.Auto)
+                {
+                    return Operation == OverclockPendingOperation.Manual ? Percent : 100;
+                }
+
+                OverclockEffectivePolicy resetPolicy = feature.GetPolicyAfterEntityReset(entityId.Value);
+                return resetPolicy.Auto ? 100 : resetPolicy.ManualPercent;
+            }
+        }
+
         private sealed class State
         {
             internal IEntity? Entity;
@@ -42,7 +124,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             internal UiLabel Costs = null!;
             internal UiSlider Slider = null!;
             internal UiTextField Input = null!;
-            internal int? PendingPercent;
+            internal PendingPolicy? Pending;
         }
 
         private static readonly Dictionary<object, State> s_states = new();
@@ -122,6 +204,45 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
         }
 
+        internal static void CommandRejected(
+            EntityId id,
+            OverclockPendingOperation operation,
+            int? percent,
+            bool? auto)
+        {
+            foreach (KeyValuePair<object, State> pair in s_states.ToArray())
+            {
+                State state = pair.Value;
+                if (state.Entity?.Id != id || state.Pending is null ||
+                    !state.Pending.MatchesCommand(operation, percent, auto))
+                {
+                    continue;
+                }
+
+                state.Pending = null;
+                Refresh(pair.Key);
+            }
+        }
+
+        internal static void CommandApplied(
+            EntityId id,
+            OverclockPendingOperation operation,
+            int? percent,
+            bool? auto)
+        {
+            foreach (KeyValuePair<object, State> pair in s_states.ToArray())
+            {
+                State state = pair.Value;
+                if (state.Entity?.Id == id && state.Pending is not null &&
+                    state.Pending.MatchesCommand(operation, percent, auto))
+                {
+                    state.Pending.CommandApplied = true;
+                }
+            }
+
+            RefreshAllForEntity(id);
+        }
+
         private static void QueueRelative(object inspector, int delta)
         {
             if (TajsOverclockingFeature.Current is null || !TryGetEntity(inspector, out IEntity? entity))
@@ -129,29 +250,58 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return;
             }
 
-            int current = s_states.TryGetValue(inspector, out State? state) && state.PendingPercent.HasValue
-                ? state.PendingPercent.Value
+            int current = s_states.TryGetValue(inspector, out State? state) && state.Pending is not null
+                ? state.Pending.DisplayPercent(TajsOverclockingFeature.Current, entity!.Id)
                 : TajsOverclockingFeature.Current.GetPercent(entity!.Id);
             QueueExact(inspector, current + delta);
         }
 
         private static void Reset(object inspector)
         {
-            if (TajsOverclockingFeature.Current is not null && TryGetEntity(inspector, out IEntity? entity))
+            if (TajsOverclockingFeature.Current is TajsOverclockingFeature feature &&
+                TryGetEntity(inspector, out IEntity? entity) &&
+                feature.QueueReset(entity!.Id, out _))
             {
-                TajsOverclockingFeature.Current.Reset(entity!.Id, out _);
-                Refresh(inspector);
+                if (s_states.TryGetValue(inspector, out State? state))
+                {
+                    state.Pending = PendingPolicy.Reset();
+                    Refresh(inspector);
+                }
             }
         }
 
         private static void ToggleAuto(object inspector)
         {
-            if (TajsOverclockingFeature.Current is not null && TryGetEntity(inspector, out IEntity? entity))
+            if (TajsOverclockingFeature.Current is not TajsOverclockingFeature feature ||
+                !TryGetEntity(inspector, out IEntity? entity))
             {
-                bool enabled = !TajsOverclockingFeature.Current.IsAuto(entity!.Id);
-                TajsOverclockingFeature.Current.SetAuto(entity.Id, enabled, null, null, out _);
-                Refresh(inspector);
+                return;
             }
+
+            bool currentAuto = s_states.TryGetValue(inspector, out State? state) && state.Pending is not null
+                ? GetPendingAuto(feature, entity!.Id, state.Pending)
+                : feature.IsAuto(entity!.Id);
+            bool enabled = !currentAuto;
+            if (feature.QueueSetAuto(entity.Id, enabled, null, null, out _))
+            {
+                if (state is not null)
+                {
+                    state.Pending = PendingPolicy.AutoMode(enabled);
+                    Refresh(inspector);
+                }
+            }
+        }
+
+        private static bool GetPendingAuto(
+            TajsOverclockingFeature feature,
+            EntityId entityId,
+            PendingPolicy pending)
+        {
+            return pending.Operation == OverclockPendingOperation.Auto
+                ? pending.Auto
+                : pending.Operation == OverclockPendingOperation.Manual
+                    ? false
+                    : feature.GetPolicyAfterEntityReset(entityId.Value).Auto;
         }
 
         private static void Refresh(object inspector)
@@ -164,20 +314,22 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             try
             {
                 TajsOverclockingFeature feature = TajsOverclockingFeature.Current;
-                int current = feature.GetPercent(state.Entity.Id);
-                bool pending = state.PendingPercent.HasValue && state.PendingPercent.Value != current;
-                if (!pending)
+                PendingPolicy? requested = state.Pending;
+                if (requested is not null && requested.Matches(feature, state.Entity.Id))
                 {
-                    state.PendingPercent = null;
+                    state.Pending = null;
+                    requested = null;
                 }
 
-                int displayed = pending ? state.PendingPercent!.Value : current;
+                int displayed = requested is null
+                    ? feature.GetPercent(state.Entity.Id)
+                    : requested.DisplayPercent(feature, state.Entity.Id);
                 OverclockEffectivePolicy policy = feature.GetEffectivePolicy(state.Entity.Id.Value);
                 state.Rate.Value((displayed + "%").AsLoc());
                 state.Slider.Range(policy.MinPercent, policy.MaxPercent).Value(displayed);
                 state.Input.Text(displayed.ToString());
                 string group = policy.GroupId < 0 ? string.Empty : " / group " + policy.GroupId;
-                state.Mode.Value((pending ? "Pending" : (policy.Auto ? "Auto" : "Manual") + group).AsLoc());
+                state.Mode.Value((requested is not null ? "Pending" : (policy.Auto ? "Auto" : "Manual") + group).AsLoc());
                 state.Costs.Value(FormatCosts(state.Entity).AsLoc());
             }
             catch
@@ -198,7 +350,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                         : null;
                     if (previous?.Id != existing.Entity?.Id)
                     {
-                        existing.PendingPercent = null;
+                        existing.Pending = null;
                     }
                     return;
                 }
@@ -328,7 +480,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             {
                 OverclockEffectivePolicy policy = feature.GetEffectivePolicy(entity.Id.Value);
                 int clamped = OverclockingMath.ClampPercent(percent, policy.MinPercent, policy.MaxPercent);
-                state.PendingPercent = clamped;
+                state.Pending = PendingPolicy.Manual(clamped);
                 state.Rate.Value((clamped + "%").AsLoc());
                 state.Slider.Range(policy.MinPercent, policy.MaxPercent).Value(clamped);
                 state.Input.Text(clamped.ToString());

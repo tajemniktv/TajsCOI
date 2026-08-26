@@ -550,7 +550,7 @@ namespace TajsCOI.Tweaks
 
             int? min = minimum is null ? null : parsedMinimum;
             int? max = maximum is null ? null : parsedMaximum;
-            return m_overclocking.SetAuto(new EntityId(parsedId), parsedEnabled, min, max, out string message) ? message : "Not changed: " + message;
+            return m_overclocking.QueueSetAuto(new EntityId(parsedId), parsedEnabled, min, max, out string message) ? message : "Not queued: " + message;
         }
 
         [ConsoleCommand(
@@ -568,7 +568,7 @@ namespace TajsCOI.Tweaks
                 return "Usage: tajs_overclock_reset <entity-id>";
             }
 
-            return m_overclocking.Reset(new EntityId(parsedId), out string message) ? message : "Not reset: " + message;
+            return m_overclocking.QueueReset(new EntityId(parsedId), out string message) ? message : "Not queued: " + message;
         }
 
         [ConsoleCommand(
@@ -632,9 +632,14 @@ namespace TajsCOI.Tweaks
                 return OverclockingUnavailableMessage;
             }
 
-            return int.TryParse(groupId, out int parsedGroup) && m_overclocking.DeleteGroup(parsedGroup)
-                ? "Deleted overclock group " + parsedGroup + "."
-                : "Group is missing.";
+            if (!int.TryParse(groupId, out int parsedGroup))
+            {
+                return "Usage: tajs_overclock_group_delete <group-id>";
+            }
+
+            return m_overclocking.QueueDeleteGroup(parsedGroup, out string deleteMessage)
+                ? deleteMessage
+                : "Not queued: " + deleteMessage;
         }
 
         [ConsoleCommand(
@@ -728,9 +733,9 @@ namespace TajsCOI.Tweaks
                 return "Usage: tajs_overclock_group_add <group-id> <entity-id>";
             }
 
-            return m_overclocking.AddToGroup(parsedGroup, new EntityId(parsedEntity))
-                ? "Added entity " + parsedEntity + " to group " + parsedGroup + "."
-                : "Entity/group missing, locked, or unsupported.";
+            return m_overclocking.QueueAddToGroup(parsedGroup, new EntityId(parsedEntity), out string addMessage)
+                ? addMessage
+                : "Not queued: " + addMessage;
         }
 
         [ConsoleCommand(
@@ -748,9 +753,9 @@ namespace TajsCOI.Tweaks
                 return "Usage: tajs_overclock_group_remove <group-id> <entity-id>";
             }
 
-            return m_overclocking.RemoveFromGroup(parsedGroup, new EntityId(parsedEntity))
-                ? "Removed entity " + parsedEntity + " from group " + parsedGroup + "."
-                : "Entity/group missing, locked, or not a member.";
+            return m_overclocking.QueueRemoveFromGroup(parsedGroup, new EntityId(parsedEntity), out string removeMessage)
+                ? removeMessage
+                : "Not queued: " + removeMessage;
         }
 
         [ConsoleCommand(
@@ -768,7 +773,7 @@ namespace TajsCOI.Tweaks
                 return "Usage: tajs_overclock_group_default <group-id> <percent>";
             }
 
-            return m_overclocking.SetGroupDefault(parsedGroup, parsedPercent, out string message) ? message : "Not changed: " + message;
+            return m_overclocking.QueueSetGroupDefault(parsedGroup, parsedPercent, out string message) ? message : "Not queued: " + message;
         }
 
         [ConsoleCommand(
@@ -786,7 +791,7 @@ namespace TajsCOI.Tweaks
                 return "Usage: tajs_overclock_group_apply <group-id> <percent>";
             }
 
-            return m_overclocking.ApplyGroupToMembers(parsedGroup, parsedPercent, out string message) ? message : "Not changed: " + message;
+            return m_overclocking.QueueApplyGroupToMembers(parsedGroup, parsedPercent, out string message) ? message : "Not queued: " + message;
         }
 
         [ConsoleCommand(
@@ -810,7 +815,7 @@ namespace TajsCOI.Tweaks
 
             int? min = minimum is null ? null : parsedMinimum;
             int? max = maximum is null ? null : parsedMaximum;
-            return m_overclocking.SetGroupAuto(parsedGroup, parsedEnabled, min, max, out string message) ? message : "Not changed: " + message;
+            return m_overclocking.QueueSetGroupAuto(parsedGroup, parsedEnabled, min, max, out string message) ? message : "Not queued: " + message;
         }
 
         [ConsoleCommand(

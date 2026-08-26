@@ -263,7 +263,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
             if (auto.HasValue || minimum.HasValue || maximum.HasValue)
             {
-                feature.SetAuto(__instance.Id, auto == true, minimum, maximum, out _);
+                feature.ApplyAutoPolicy(__instance.Id, auto == true, minimum, maximum, out _);
             }
         }
 
@@ -320,7 +320,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
             if (auto.HasValue || minimum.HasValue || maximum.HasValue)
             {
-                feature.SetAuto(__instance.Id, auto == true, minimum, maximum, out _);
+                feature.ApplyAutoPolicy(__instance.Id, auto == true, minimum, maximum, out _);
             }
         }
 

@@ -92,17 +92,17 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
             if (m_dragging && Input.GetMouseButtonUp(0))
             {
-                int added = 0;
+                int queued = 0;
                 foreach (int id in m_matches)
                 {
-                    if (m_feature.AddToGroup(m_groupId, new EntityId(id)))
+                    if (m_feature.QueueAddToGroup(m_groupId, new EntityId(id), out _))
                     {
-                        added++;
+                        queued++;
                     }
                 }
 
                 Deactivate();
-                m_feature.SelectionStatus = "Added " + added + " entity/entities to group " + m_groupId + ".";
+                m_feature.SelectionStatus = "Queued " + queued + " entity/entities for group " + m_groupId + ".";
             }
         }
 

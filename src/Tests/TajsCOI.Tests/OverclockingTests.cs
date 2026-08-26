@@ -2,7 +2,13 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
+using System;
+using System.Linq;
+using System.IO;
 using TajsCOI.Tweaks.Features.Overclocking;
+using Mafi.Core;
+using Mafi.Core.Input;
+using Mafi.Serialization;
 using Xunit;
 
 namespace TajsCOI.Tests
@@ -87,6 +93,81 @@ namespace TajsCOI.Tests
 
             second.Locked = true;
             Assert.False(store.AddMember(second.Id, 43));
+        }
+
+        [Fact]
+        public void PolicyCommandsPreserveManualAutoResetInputOrder()
+        {
+            EntityId entityId = new(42);
+            var commands = new[]
+            {
+                TajsOverclockPolicyCmd.SetManual(entityId, 180),
+                TajsOverclockPolicyCmd.SetAuto(entityId, true, null, null),
+                TajsOverclockPolicyCmd.Reset(entityId),
+            };
+
+            Assert.Equal(
+                new[]
+                {
+                    TajsOverclockPolicyOperation.SetManual,
+                    TajsOverclockPolicyOperation.SetAuto,
+                    TajsOverclockPolicyOperation.Reset,
+                },
+                commands.Select(command => command.Operation));
+            Assert.Equal(180, commands[0].Percent);
+            Assert.True(commands[1].Enabled);
+            Assert.Equal(entityId, commands[2].TargetId);
+        }
+
+        [Fact]
+        public void GroupPolicyCommandsCarryOnlyStableValueData()
+        {
+            EntityId entityId = new(42);
+            TajsOverclockPolicyCmd auto = TajsOverclockPolicyCmd.SetGroupAuto(7, true, 125, 275);
+            TajsOverclockPolicyCmd add = TajsOverclockPolicyCmd.AddToGroup(7, entityId);
+
+            Assert.Equal(TajsOverclockPolicyOperation.SetGroupAuto, auto.Operation);
+            Assert.Equal(7, auto.GroupId);
+            Assert.True(auto.HasMinimum);
+            Assert.Equal(125, auto.Minimum);
+            Assert.True(auto.HasMaximum);
+            Assert.Equal(275, auto.Maximum);
+            Assert.Equal(TajsOverclockPolicyOperation.AddToGroup, add.Operation);
+            Assert.Equal(entityId, add.TargetId);
+            Assert.Equal(7, add.GroupId);
+        }
+
+        [Fact]
+        public void PolicyCommandRoundTripsThroughCoiSerializer()
+        {
+            TajsOverclockPolicyCmd original = TajsOverclockPolicyCmd.SetGroupAuto(7, true, 125, 275);
+            using var stream = new MemoryStream();
+            using (var writer = new BlobWriter(stream))
+            {
+                TajsOverclockPolicyCmd.Serialize(original, writer);
+                writer.FinalizeSerialization();
+            }
+
+            stream.Position = 0;
+            var reader = new BlobReader(stream, 0);
+            TajsOverclockPolicyCmd restored = TajsOverclockPolicyCmd.Deserialize(reader);
+            reader.FinalizeLoading(Mafi.Option<Mafi.DependencyResolver>.None);
+
+            Assert.Equal(original.Operation, restored.Operation);
+            Assert.Equal(original.GroupId, restored.GroupId);
+            Assert.Equal(original.Enabled, restored.Enabled);
+            Assert.Equal(original.Minimum, restored.Minimum);
+            Assert.Equal(original.Maximum, restored.Maximum);
+        }
+
+        [Fact]
+        public void PolicyCommandProcessorRegistersLegacyAndUnifiedInputTypes()
+        {
+            Type[] interfaces = typeof(TajsOverclockCommandsProcessor).GetInterfaces();
+
+            Assert.Contains(typeof(ICommandProcessor<TajsOverclockSetRateCmd>), interfaces);
+            Assert.Contains(typeof(ICommandProcessor<TajsOverclockPolicyCmd>), interfaces);
+            Assert.Contains(typeof(Mafi.IAction<TajsOverclockPolicyCmd>), interfaces);
         }
     }
 }

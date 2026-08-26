@@ -387,6 +387,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
         private bool TryQueueGroupCommand(OverclockGroup? group, out string message)
         {
+            if (!TajsTweaksRuntimeState.Overclocking)
+            {
+                message = "Per-machine overclocking is disabled.";
+                return false;
+            }
+
             if (group is null || group.Locked)
             {
                 message = "Group is missing or locked.";
@@ -550,6 +556,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
+            bool hadPreviousPolicy = m_store.TryGetEntity(id.Value, out OverclockEntityPolicy? previousPolicy) && previousPolicy is not null;
+            OverclockEntityPolicy? previousSnapshot = hadPreviousPolicy ? ClonePolicy(previousPolicy!) : null;
             OverclockEntityPolicy policy = m_store.GetOrCreateEntity(id.Value);
             policy.HasAutoOverride = true;
             policy.Auto = enabled;
@@ -561,14 +569,13 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 policy.MaxPercent = Math.Max(policy.MinPercent, maximum ?? current.MaxPercent);
             }
 
-            if (enabled)
+            OverclockEffectivePolicy effective = GetEffectivePolicy(id.Value);
+            int targetPercent = enabled || effective.Auto ? DefaultPercent : effective.ManualPercent;
+            if (!ApplyRate(entity!, targetPercent))
             {
-                ApplyRate(entity!, DefaultPercent);
-            }
-            else
-            {
-                OverclockEffectivePolicy restored = GetEffectivePolicy(id.Value);
-                ApplyRate(entity!, restored.Auto ? DefaultPercent : restored.ManualPercent);
+                RestoreEntityPolicy(id.Value, hadPreviousPolicy, previousSnapshot);
+                message = "The supported speed seam was unavailable for entity " + id.Value + ".";
+                return false;
             }
 
             m_store.Save();
@@ -591,12 +598,49 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
+            bool hadPreviousPolicy = m_store.TryGetEntity(id.Value, out OverclockEntityPolicy? previousPolicy) && previousPolicy is not null;
+            OverclockEntityPolicy? previousSnapshot = hadPreviousPolicy ? ClonePolicy(previousPolicy!) : null;
             m_store.RemoveEntity(id.Value);
             OverclockEffectivePolicy effective = GetEffectivePolicy(id.Value);
-            ApplyRate(entity!, effective.Auto ? DefaultPercent : effective.ManualPercent);
+            if (!ApplyRate(entity!, effective.Auto ? DefaultPercent : effective.ManualPercent))
+            {
+                RestoreEntityPolicy(id.Value, hadPreviousPolicy, previousSnapshot);
+                message = "The supported speed seam was unavailable for entity " + id.Value + ".";
+                return false;
+            }
+
             m_store.Save();
             message = "Entity " + id.Value + " returned to its group/global policy.";
             return true;
+        }
+
+        private static OverclockEntityPolicy ClonePolicy(OverclockEntityPolicy source) => new()
+        {
+            HasManualOverride = source.HasManualOverride,
+            ManualPercent = source.ManualPercent,
+            HasAutoOverride = source.HasAutoOverride,
+            Auto = source.Auto,
+            HasBoundsOverride = source.HasBoundsOverride,
+            MinPercent = source.MinPercent,
+            MaxPercent = source.MaxPercent,
+        };
+
+        private void RestoreEntityPolicy(int entityId, bool hadPreviousPolicy, OverclockEntityPolicy? previousSnapshot)
+        {
+            if (!hadPreviousPolicy || previousSnapshot is null)
+            {
+                m_store.RemoveEntity(entityId);
+                return;
+            }
+
+            OverclockEntityPolicy restored = m_store.GetOrCreateEntity(entityId);
+            restored.HasManualOverride = previousSnapshot.HasManualOverride;
+            restored.ManualPercent = previousSnapshot.ManualPercent;
+            restored.HasAutoOverride = previousSnapshot.HasAutoOverride;
+            restored.Auto = previousSnapshot.Auto;
+            restored.HasBoundsOverride = previousSnapshot.HasBoundsOverride;
+            restored.MinPercent = previousSnapshot.MinPercent;
+            restored.MaxPercent = previousSnapshot.MaxPercent;
         }
 
         internal OverclockGroup CreateGroup(string? name) => m_store.CreateGroup(name);
