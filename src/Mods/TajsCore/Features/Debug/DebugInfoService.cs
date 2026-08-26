@@ -9,9 +9,9 @@ using System.Collections.Generic;
 using System.Text;
 using Mafi;
 using Mafi.Core.Console;
-using Mafi.Core.Mods;
 using Mafi.Core.Simulation;
 using TajsCOI.Common.Compatibility;
+using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Core.Infrastructure;
 
@@ -32,6 +32,25 @@ namespace TajsCOI.Core.Features.Debug
             m_runtime = runtime;
             m_harmony = HarmonyRuntimeInfo.Inspect(coreMod.Manifest.RootDirectoryPath);
             m_runtime.ReportCompatibility(m_harmony.ToCompatibilityReport());
+            m_runtime.RegisterCapability(
+                new RuntimeCapabilityDescriptor(
+                    "TajsCore.HarmonyInspection",
+                    "TajsCore",
+                    "HarmonyDiagnostics",
+                    RuntimeCapabilityState.Available,
+                    BuildMetadata.Version,
+                    "On-demand read-only Harmony ownership and collision inspection.",
+                    string.Empty,
+                    RuntimeComponentLifetime.Process));
+            m_runtime.RegisterComponent(
+                new RuntimeComponentDescriptor(
+                    "TajsCore",
+                    "HarmonyDiagnostics",
+                    RuntimeComponentLifetime.Process,
+                    "Harmony.GetAllPatchedMethods and Harmony.GetPatchInfo",
+                    Array.Empty<string>(),
+                    Array.Empty<string>(),
+                    Array.Empty<string>()));
         }
 
         [ConsoleCommand(
@@ -60,15 +79,10 @@ namespace TajsCOI.Core.Features.Debug
             builder.AppendLine($"  status:   {m_harmony.State}");
             builder.AppendLine("Tajs mods:");
 
-            foreach (LoadedModData mod in ModsLoader.LoadedAndFailedMods)
+            foreach (LoadedModSnapshot mod in m_runtime.GetLoadedModSnapshot())
             {
-                if (!mod.Manifest.Id.StartsWith("Tajs", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                string status = mod.LoadError.HasValue ? "FAILED: " + mod.LoadError.Value : "loaded";
-                builder.AppendLine($"  {mod.Manifest.Id} {mod.Manifest.Version}: {status}");
+                string status = mod.LoadSucceeded ? "loaded" : "FAILED: " + mod.LoadError;
+                builder.AppendLine($"  {mod.Id} {mod.Version}: {status}");
             }
 
             builder.AppendLine("Compatibility:");
@@ -86,6 +100,57 @@ namespace TajsCOI.Core.Features.Debug
                     builder.AppendLine($"    observed: {report.Observed}");
                     builder.AppendLine($"    reason:   {report.Reason}");
                 }
+            }
+
+            builder.AppendLine("Capabilities:");
+            IReadOnlyList<RuntimeCapabilityDescriptor> capabilities = m_runtime.GetCapabilitySnapshot();
+            if (capabilities.Count == 0)
+            {
+                builder.AppendLine("  none");
+            }
+            else
+            {
+                foreach (RuntimeCapabilityDescriptor capability in capabilities)
+                {
+                    builder.AppendLine(
+                        $"  {capability.CapabilityId}: {capability.State} ({capability.ModId}/{capability.ComponentId})");
+                    if (capability.Reason.Length > 0)
+                    {
+                        builder.AppendLine("    reason: " + capability.Reason);
+                    }
+                }
+            }
+
+            builder.AppendLine("Components:");
+            IReadOnlyList<RuntimeComponentDescriptor> components = m_runtime.GetComponentSnapshot();
+            if (components.Count == 0)
+            {
+                builder.AppendLine("  none");
+            }
+            else
+            {
+                foreach (RuntimeComponentDescriptor component in components)
+                {
+                    string owners = component.HarmonyOwnerIds.Count == 0
+                        ? "none"
+                        : string.Join(",", component.HarmonyOwnerIds);
+                    builder.AppendLine(
+                        $"  {component.ModId}/{component.ComponentId}: lifetime={component.Lifetime}, owners={owners}");
+                    builder.AppendLine("    expected: " + component.ExpectedSeam);
+                    builder.AppendLine(
+                        "    required: " + string.Join(",", component.RequiredCapabilityIds) +
+                        "; optional: " + string.Join(",", component.OptionalCapabilityIds));
+                }
+            }
+
+            HarmonyInspectionSnapshot harmony = m_runtime.GetHarmonyInspectionSnapshot();
+            builder.AppendLine("Harmony targets:");
+            builder.AppendLine(
+                $"  Tajs targets={harmony.TajsPatchedTargetCount}, shared={harmony.SharedTargetCount}, " +
+                $"attention={harmony.AttentionCount}, patches={harmony.TajsPatchCount}");
+            if (!harmony.IsAvailable)
+            {
+                builder.AppendLine("  error: " + harmony.Error);
             }
 
             return builder.ToString().TrimEnd();

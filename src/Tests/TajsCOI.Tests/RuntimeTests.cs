@@ -10,6 +10,7 @@ using HarmonyLib;
 using Mafi;
 using Mafi.Logging;
 using TajsCOI.Common.Compatibility;
+using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Logging;
 using TajsCOI.Core.Infrastructure;
 using TajsCOI.Core.Runtime;
@@ -97,6 +98,71 @@ namespace TajsCOI.Tests
                 Log.AcceptedLogTypes = acceptedBefore;
                 Log.LogReceivedThreadStatic -= handler;
             }
+        }
+
+        [Fact]
+        public void RuntimeRegistryIsIdempotentAndRejectsConflictingOwnership()
+        {
+            var runtime = new TajsRuntime();
+            RuntimeCapabilityDescriptor capability = new(
+                "TajsCore.Tests.Capability",
+                "TajsCore",
+                "Tests",
+                RuntimeCapabilityState.Available,
+                "1",
+                "available",
+                string.Empty,
+                RuntimeComponentLifetime.Process);
+
+            Assert.Equal(RuntimeRegistrationStatus.Added, runtime.RegisterCapability(capability).Status);
+            Assert.Equal(RuntimeRegistrationStatus.AlreadyRegistered, runtime.RegisterCapability(capability).Status);
+            Assert.True(runtime.IsCapabilityAvailable(capability.CapabilityId));
+
+            RuntimeCapabilityDescriptor degraded = new(
+                capability.CapabilityId,
+                capability.ModId,
+                capability.ComponentId,
+                RuntimeCapabilityState.Degraded,
+                "1",
+                "degraded",
+                "test",
+                capability.Lifetime);
+            Assert.Equal(RuntimeRegistrationStatus.Updated, runtime.RegisterCapability(degraded).Status);
+            Assert.False(runtime.IsCapabilityAvailable(capability.CapabilityId));
+
+            RuntimeCapabilityDescriptor conflictingOwner = new(
+                capability.CapabilityId,
+                "TajsProfiler",
+                "Other",
+                RuntimeCapabilityState.Available,
+                "1",
+                "conflicting",
+                string.Empty,
+                RuntimeComponentLifetime.Process);
+            Assert.Equal(RuntimeRegistrationStatus.Rejected, runtime.RegisterCapability(conflictingOwner).Status);
+            Assert.Contains(runtime.GetCompatibilitySnapshot(), report => report.ComponentId == "RuntimeRegistry");
+
+            RuntimeComponentDescriptor component = new(
+                "TajsCore",
+                "Tests",
+                RuntimeComponentLifetime.Process,
+                "unit-test",
+                new[] { "TajsCOI.Tests" },
+                new[] { capability.CapabilityId },
+                Array.Empty<string>());
+            Assert.Equal(RuntimeRegistrationStatus.Added, runtime.RegisterComponent(component).Status);
+            Assert.Equal(RuntimeRegistrationStatus.AlreadyRegistered, runtime.RegisterComponent(component).Status);
+            Assert.Single(runtime.GetComponentSnapshot());
+
+            RuntimeComponentDescriptor conflictingComponent = new(
+                "TajsCore",
+                "Tests",
+                RuntimeComponentLifetime.GameplayScene,
+                "different seam",
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<string>());
+            Assert.Equal(RuntimeRegistrationStatus.Rejected, runtime.RegisterComponent(conflictingComponent).Status);
         }
 
         [Fact]

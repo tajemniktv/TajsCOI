@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using TajsCOI.Common.Diagnostics;
 
 namespace TajsCOI.Profiler.Core
 {
@@ -59,7 +60,11 @@ namespace TajsCOI.Profiler.Core
             IReadOnlyList<RuntimeTraceSpan> spans,
             IReadOnlyList<CallbackMetadataSnapshot> metadata,
             IReadOnlyList<RuntimeTraceMarker> markers,
-            IReadOnlyList<RuntimeTelemetryEventSnapshot>? telemetryEvents = null)
+            IReadOnlyList<RuntimeTelemetryEventSnapshot>? telemetryEvents = null,
+            HarmonyInspectionSnapshot? harmony = null,
+            IReadOnlyList<RuntimeCapabilityDescriptor>? capabilities = null,
+            IReadOnlyList<RuntimeComponentDescriptor>? components = null,
+            IReadOnlyList<LoadedModSnapshot>? loadedMods = null)
         {
             if (string.IsNullOrWhiteSpace(path))
             {
@@ -159,9 +164,197 @@ namespace TajsCOI.Profiler.Core
                 }
             }
 
-            builder.Append("],\"displayTimeUnit\":\"ms\"}");
+            builder.Append("],\"displayTimeUnit\":\"ms\"");
+            if (harmony is not null || capabilities is not null || components is not null || loadedMods is not null)
+            {
+                AppendRuntimeDiagnostics(builder, harmony, capabilities, components, loadedMods);
+            }
+            builder.Append('}');
             File.WriteAllText(path, builder.ToString(), new UTF8Encoding(false));
             return new RuntimeTraceExportResult(path, eventCount);
+        }
+
+        private static void AppendRuntimeDiagnostics(
+            StringBuilder builder,
+            HarmonyInspectionSnapshot? harmony,
+            IReadOnlyList<RuntimeCapabilityDescriptor>? capabilities,
+            IReadOnlyList<RuntimeComponentDescriptor>? components,
+            IReadOnlyList<LoadedModSnapshot>? loadedMods)
+        {
+            builder.Append(",\"tajsDiagnostics\":{");
+            bool first = true;
+            if (harmony is not null)
+            {
+                AppendJsonPropertyName(builder, ref first, "harmony");
+                builder.Append("{\"capturedUtc\":");
+                AppendJsonString(builder, harmony.CapturedUtc.ToString("O", CultureInfo.InvariantCulture));
+                builder.Append(",\"available\":").Append(harmony.IsAvailable ? "true" : "false")
+                    .Append(",\"error\":");
+                AppendJsonString(builder, harmony.Error);
+                builder.Append(",\"tajsPatchedTargets\":").Append(harmony.TajsPatchedTargetCount)
+                    .Append(",\"sharedTargets\":").Append(harmony.SharedTargetCount)
+                    .Append(",\"attention\":").Append(harmony.AttentionCount)
+                    .Append(",\"tajsPatches\":").Append(harmony.TajsPatchCount)
+                    .Append(",\"targets\":[");
+                for (int index = 0; index < harmony.Targets.Count; index++)
+                {
+                    if (index > 0)
+                    {
+                        builder.Append(',');
+                    }
+                    HarmonyTargetSnapshot target = harmony.Targets[index];
+                    builder.Append("{\"assembly\":");
+                    AppendJsonString(builder, target.OriginalAssembly);
+                    builder.Append(",\"type\":");
+                    AppendJsonString(builder, target.OriginalType);
+                    builder.Append(",\"method\":");
+                    AppendJsonString(builder, target.OriginalMethod);
+                    builder.Append(",\"signature\":");
+                    AppendJsonString(builder, target.OriginalSignature);
+                    builder.Append(",\"risk\":");
+                    AppendJsonString(builder, target.Risk.ToString());
+                    builder.Append(",\"riskReason\":");
+                    AppendJsonString(builder, target.RiskReason);
+                    builder.Append(",\"nonTajsOwners\":");
+                    AppendJsonStringArray(builder, target.NonTajsOwners);
+                    builder.Append(",\"patches\":[");
+                    for (int patchIndex = 0; patchIndex < target.Patches.Count; patchIndex++)
+                    {
+                        if (patchIndex > 0)
+                        {
+                            builder.Append(',');
+                        }
+                        HarmonyPatchSnapshot patch = target.Patches[patchIndex];
+                        builder.Append("{\"kind\":");
+                        AppendJsonString(builder, patch.Kind.ToString());
+                        builder.Append(",\"owner\":");
+                        AppendJsonString(builder, patch.OwnerId);
+                        builder.Append(",\"method\":");
+                        AppendJsonString(builder, patch.PatchMethod);
+                        builder.Append(",\"priority\":").Append(patch.Priority)
+                            .Append(",\"before\":");
+                        AppendJsonStringArray(builder, patch.Before);
+                        builder.Append(",\"after\":");
+                        AppendJsonStringArray(builder, patch.After);
+                        builder.Append(",\"tajsOwned\":").Append(patch.IsTajsOwned ? "true" : "false").Append('}');
+                    }
+                    builder.Append("]}");
+                }
+                builder.Append("]}");
+            }
+
+            if (capabilities is not null)
+            {
+                AppendJsonPropertyName(builder, ref first, "capabilities");
+                builder.Append('[');
+                for (int index = 0; index < capabilities.Count; index++)
+                {
+                    if (index > 0)
+                    {
+                        builder.Append(',');
+                    }
+                    RuntimeCapabilityDescriptor capability = capabilities[index];
+                    builder.Append("{\"id\":");
+                    AppendJsonString(builder, capability.CapabilityId);
+                    builder.Append(",\"mod\":");
+                    AppendJsonString(builder, capability.ModId);
+                    builder.Append(",\"component\":");
+                    AppendJsonString(builder, capability.ComponentId);
+                    builder.Append(",\"state\":");
+                    AppendJsonString(builder, capability.State.ToString());
+                    builder.Append(",\"version\":");
+                    AppendJsonString(builder, capability.Version);
+                    builder.Append(",\"details\":");
+                    AppendJsonString(builder, capability.Details);
+                    builder.Append(",\"reason\":");
+                    AppendJsonString(builder, capability.Reason);
+                    builder.Append(",\"lifetime\":");
+                    AppendJsonString(builder, capability.Lifetime.ToString());
+                    builder.Append('}');
+                }
+                builder.Append(']');
+            }
+
+            if (components is not null)
+            {
+                AppendJsonPropertyName(builder, ref first, "components");
+                builder.Append('[');
+                for (int index = 0; index < components.Count; index++)
+                {
+                    if (index > 0)
+                    {
+                        builder.Append(',');
+                    }
+                    RuntimeComponentDescriptor component = components[index];
+                    builder.Append("{\"mod\":");
+                    AppendJsonString(builder, component.ModId);
+                    builder.Append(",\"id\":");
+                    AppendJsonString(builder, component.ComponentId);
+                    builder.Append(",\"lifetime\":");
+                    AppendJsonString(builder, component.Lifetime.ToString());
+                    builder.Append(",\"expectedSeam\":");
+                    AppendJsonString(builder, component.ExpectedSeam);
+                    builder.Append(",\"harmonyOwners\":");
+                    AppendJsonStringArray(builder, component.HarmonyOwnerIds);
+                    builder.Append(",\"requiredCapabilities\":");
+                    AppendJsonStringArray(builder, component.RequiredCapabilityIds);
+                    builder.Append(",\"optionalCapabilities\":");
+                    AppendJsonStringArray(builder, component.OptionalCapabilityIds);
+                    builder.Append('}');
+                }
+                builder.Append(']');
+            }
+
+            if (loadedMods is not null)
+            {
+                AppendJsonPropertyName(builder, ref first, "loadedMods");
+                builder.Append('[');
+                for (int index = 0; index < loadedMods.Count; index++)
+                {
+                    if (index > 0)
+                    {
+                        builder.Append(',');
+                    }
+                    LoadedModSnapshot mod = loadedMods[index];
+                    builder.Append("{\"id\":");
+                    AppendJsonString(builder, mod.Id);
+                    builder.Append(",\"displayName\":");
+                    AppendJsonString(builder, mod.DisplayName);
+                    builder.Append(",\"version\":");
+                    AppendJsonString(builder, mod.Version);
+                    builder.Append(",\"loadSucceeded\":").Append(mod.LoadSucceeded ? "true" : "false")
+                        .Append(",\"loadError\":");
+                    AppendJsonString(builder, mod.LoadError);
+                    builder.Append('}');
+                }
+                builder.Append(']');
+            }
+            builder.Append('}');
+        }
+
+        private static void AppendJsonPropertyName(StringBuilder builder, ref bool first, string name)
+        {
+            if (!first)
+            {
+                builder.Append(',');
+            }
+            first = false;
+            AppendJsonString(builder, name);
+            builder.Append(':');
+        }
+
+        private static void AppendJsonStringArray(StringBuilder builder, IReadOnlyList<string> values)
+        {
+            builder.Append('[');
+            for (int index = 0; index < values.Count; index++)
+            {
+                if (index > 0)
+                {
+                    builder.Append(',');
+                }
+                AppendJsonString(builder, values[index]);
+            }
+            builder.Append(']');
         }
 
         /// <summary>

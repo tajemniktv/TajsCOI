@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
+using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Settings;
 using TajsCOI.Profiler;
 using TajsCOI.Profiler.Core;
@@ -31,6 +32,70 @@ namespace TajsCOI.Tests
                     Assert.Equal("Profiler", descriptor.Category);
                     Assert.Equal(SettingApplyMode.Immediate, descriptor.ApplyMode);
                 });
+        }
+
+        [Fact]
+        public void TraceExportIncludesStructuredRuntimeDiagnosticsSnapshot()
+        {
+            var target = new HarmonyTargetSnapshot(
+                "TestAssembly",
+                "Test.Type",
+                "Target",
+                "Test.Type.Target()",
+                new[]
+                {
+                    new HarmonyPatchSnapshot(
+                        HarmonyPatchKind.Prefix,
+                        "TajsCOI.Tests",
+                        "Test.Type.Prefix()",
+                        400,
+                        new[] { "OtherMod" },
+                        Array.Empty<string>(),
+                        true,
+                        true),
+                },
+                new[] { "OtherMod" },
+                HarmonyCollisionRisk.Informational,
+                "shared target");
+            var harmony = new HarmonyInspectionSnapshot(DateTime.UtcNow, new[] { target });
+            var capabilities = new[]
+            {
+                new RuntimeCapabilityDescriptor(
+                    "TajsCore.Tests",
+                    "TajsCore",
+                    "Tests",
+                    RuntimeCapabilityState.Available,
+                    "1",
+                    "details",
+                    string.Empty,
+                    RuntimeComponentLifetime.Process),
+            };
+            string path = Path.Combine(Path.GetTempPath(), "tajs-diagnostics-" + Guid.NewGuid().ToString("N") + ".json");
+            try
+            {
+                RuntimeTraceExporter.Export(
+                    path,
+                    Array.Empty<RuntimeFrameSample>(),
+                    Array.Empty<RuntimeTraceSpan>(),
+                    Array.Empty<CallbackMetadataSnapshot>(),
+                    Array.Empty<RuntimeTraceMarker>(),
+                    harmony: harmony,
+                    capabilities: capabilities,
+                    components: Array.Empty<RuntimeComponentDescriptor>());
+
+                var parsed = new JavaScriptSerializer().DeserializeObject(File.ReadAllText(path)) as Dictionary<string, object>;
+                Assert.NotNull(parsed);
+                Assert.True(parsed!.ContainsKey("tajsDiagnostics"));
+                Assert.Contains("Test.Type.Target", File.ReadAllText(path));
+                Assert.Contains("TajsCore.Tests", File.ReadAllText(path));
+            }
+            finally
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
         }
 
         [Fact]

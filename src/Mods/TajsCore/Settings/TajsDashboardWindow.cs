@@ -8,7 +8,6 @@ using System.Globalization;
 using System.Linq;
 using Mafi;
 using Mafi.Core.Console;
-using Mafi.Core.Mods;
 using Mafi.Localization;
 using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
@@ -21,6 +20,7 @@ using Button = Mafi.Unity.UiToolkit.Library.Button;
 using Column = Mafi.Unity.UiToolkit.Library.Column;
 using Label = Mafi.Unity.UiToolkit.Library.Label;
 using TextField = Mafi.Unity.UiToolkit.Library.TextField;
+using TajsCOI.Common.Diagnostics;
 
 namespace TajsCOI.Core.Settings
 {
@@ -501,7 +501,7 @@ namespace TajsCOI.Core.Settings
         {
             IReadOnlyList<SettingSnapshot>? settings = null;
             IReadOnlyList<CompatibilityReport>? reports = null;
-            IReadOnlyList<LoadedModData>? mods = null;
+            IReadOnlyList<LoadedModSnapshot>? mods = null;
 
             IReadOnlyList<SettingSnapshot> LoadSettings()
             {
@@ -514,7 +514,7 @@ namespace TajsCOI.Core.Settings
             }
 
             IReadOnlyList<CompatibilityReport> LoadReports() => reports ??= m_runtime.GetCompatibilitySnapshot();
-            IReadOnlyList<LoadedModData> LoadMods() => mods ??= GetTajsMods();
+            IReadOnlyList<LoadedModSnapshot> LoadMods() => mods ??= m_runtime.GetLoadedModSnapshot();
 
             foreach (Column page in m_pageContainers.Values)
             {
@@ -655,10 +655,10 @@ namespace TajsCOI.Core.Settings
         private void AddOverview(
             IReadOnlyList<SettingSnapshot> settings,
             IReadOnlyList<CompatibilityReport> reports,
-            IReadOnlyList<LoadedModData> mods,
+            IReadOnlyList<LoadedModSnapshot> mods,
             ProfilerSnapshot profiler)
         {
-            int loadErrors = mods.Count(mod => mod.LoadError.HasValue);
+            int loadErrors = mods.Count(mod => !mod.LoadSucceeded);
             int unavailable = reports.Count(report => report.State == CompatibilityState.Disabled);
             int degraded = reports.Count(report => report.State == CompatibilityState.Degraded);
             int activeSettings = settings.Count(snapshot => !Equals(snapshot.Value, snapshot.Descriptor.DefaultValue));
@@ -816,14 +816,19 @@ namespace TajsCOI.Core.Settings
 
         private void AddCompatibilityPage(
             IReadOnlyList<CompatibilityReport> reports,
-            IReadOnlyList<LoadedModData> mods)
+            IReadOnlyList<LoadedModSnapshot> mods)
         {
+            HarmonyInspectionSnapshot harmony = m_runtime.GetHarmonyInspectionSnapshot();
+            IReadOnlyList<RuntimeCapabilityDescriptor> capabilities = m_runtime.GetCapabilitySnapshot();
+            IReadOnlyList<RuntimeComponentDescriptor> components = m_runtime.GetComponentSnapshot();
             CurrentPage.Add(
                 TajsDashboardUi.SectionHeader("Compatibility"),
                 new Label("Expected-versus-observed seams reported by the loaded suite and its gameplay-scene services.".AsLoc())
                     .FontSize(12),
                 BuildCompatibilitySummary(reports),
-                BuildLoadedModsPanel(mods));
+                BuildLoadedModsPanel(mods),
+                BuildRuntimeRegistryPanel(capabilities, components),
+                BuildHarmonyDiagnosticsPanel(harmony));
 
             Panel details = TajsDashboardUi.Card("Component reports", "Unavailable and degraded components remain visible with their owning mod and reason.");
             if (reports.Count == 0)
@@ -848,6 +853,154 @@ namespace TajsCOI.Core.Settings
                 }
             }
             CurrentPage.Add(details);
+        }
+
+        private Panel BuildRuntimeRegistryPanel(
+            IReadOnlyList<RuntimeCapabilityDescriptor> capabilities,
+            IReadOnlyList<RuntimeComponentDescriptor> components)
+        {
+            Panel panel = TajsDashboardUi.Card(
+                "Runtime capabilities and components",
+                "Immutable semantic registrations owned by the active gameplay runtime; duplicate ownership is rejected and reported above.");
+            if (capabilities.Count == 0 && components.Count == 0)
+            {
+                panel.Body.Add(new Label("No runtime capabilities or components were registered in this scene.".AsLoc()).FontSize(12));
+                return panel;
+            }
+
+            foreach (RuntimeCapabilityDescriptor capability in capabilities.Take(16))
+            {
+                Column capabilityText = new Column(1.pt())
+                {
+                    new Label(capability.CapabilityId.AsLoc()).FontBold(),
+                    new Label($"{capability.ModId} / {capability.ComponentId} · {capability.Lifetime}".AsLoc()).FontSize(11),
+                    new Label(capability.Details.AsLoc()).FontSize(11),
+                };
+                if (capability.Reason.Length > 0)
+                {
+                    capabilityText.Add(new Label(("Reason: " + capability.Reason).AsLoc()).FontSize(11));
+                }
+                panel.Body.Add(
+                    new Row(4.pt())
+                    {
+                        capabilityText.FlexGrow(1f),
+                        TajsDashboardUi.StatusBadge(capability.State.ToString(), CapabilityColor(capability.State)),
+                    }.AlignItemsCenter());
+            }
+            if (capabilities.Count > 16)
+            {
+                panel.Body.Add(new Label($"{capabilities.Count - 16} more capabilities are available in Core status/export.".AsLoc()).FontSize(11));
+            }
+
+            if (components.Count > 0)
+            {
+                panel.Body.Add(new Label("Registered components".AsLoc()).FontBold().MarginTop(3.pt()));
+                foreach (RuntimeComponentDescriptor component in components.Take(16))
+                {
+                    string owners = component.HarmonyOwnerIds.Count == 0
+                        ? "no Harmony owner"
+                        : string.Join(", ", component.HarmonyOwnerIds);
+                    panel.Body.Add(
+                        new Label(
+                                $"{component.ModId} / {component.ComponentId} · {component.Lifetime} · {owners}".AsLoc())
+                            .FontSize(11)
+                            .Selectable(true));
+                }
+                if (components.Count > 16)
+                {
+                    panel.Body.Add(new Label($"{components.Count - 16} more components are available in Core status/export.".AsLoc()).FontSize(11));
+                }
+            }
+            return panel;
+        }
+
+        private Panel BuildHarmonyDiagnosticsPanel(HarmonyInspectionSnapshot snapshot)
+        {
+            Panel panel = TajsDashboardUi.Card(
+                "Harmony ownership and collision diagnostics",
+                "Read-only, on-demand metadata from the shared Core inspector. Detailed rows are bounded and expandable.");
+            Row summary = new Row(3.pt()).Wrap().AlignItemsStretch();
+            summary.Add(
+                TajsDashboardUi.MetricTile("Tajs targets", snapshot.TajsPatchedTargetCount.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan),
+                TajsDashboardUi.MetricTile("Shared targets", snapshot.SharedTargetCount.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Yellow),
+                TajsDashboardUi.MetricTile("Attention", snapshot.AttentionCount.ToString(CultureInfo.InvariantCulture), snapshot.AttentionCount == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Red),
+                TajsDashboardUi.MetricTile("Tajs patches", snapshot.TajsPatchCount.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan));
+            panel.Body.Add(summary);
+            if (!snapshot.IsAvailable)
+            {
+                panel.Body.Add(new Label(("Inspector unavailable: " + snapshot.Error).AsLoc()).FontSize(11).Selectable(true));
+                return panel;
+            }
+
+            HarmonyTargetSnapshot[] interesting = snapshot.Targets
+                .Where(target => target.IsSharedTarget || target.Risk != HarmonyCollisionRisk.None)
+                .Take(12)
+                .ToArray();
+            if (interesting.Length == 0)
+            {
+                panel.Body.Add(new Label("No shared targets or heuristic collision risks were detected.".AsLoc()).FontSize(12));
+                return panel;
+            }
+
+            foreach (HarmonyTargetSnapshot target in interesting)
+            {
+                Column details = new Column(2.pt()).AlignItemsStretch().Hide();
+                foreach (HarmonyPatchSnapshot patch in target.Patches.Take(12))
+                {
+                    details.Add(
+                        new Label(
+                                $"{patch.Kind} · {patch.OwnerId} · priority={patch.Priority} · before={FormatOwners(patch.Before)} · after={FormatOwners(patch.After)}\n{patch.PatchMethod}".AsLoc())
+                            .FontSize(10)
+                            .Selectable(true));
+                }
+                if (target.Patches.Count > 12)
+                {
+                    details.Add(new Label($"{target.Patches.Count - 12} more patch entries omitted from this bounded view.".AsLoc()).FontSize(10));
+                }
+
+                bool expanded = false;
+                Button detailsButton = TajsDashboardUi.ActionButton(
+                    Button.Area,
+                    "Show details",
+                    "Assets/Unity/UserInterface/General/Configure.svg",
+                    () =>
+                    {
+                        expanded = !expanded;
+                        if (expanded)
+                        {
+                            details.Show();
+                        }
+                        else
+                        {
+                            details.Hide();
+                        }
+                    });
+                panel.Body.Add(
+                    new Panel(true)
+                        .ReducedPadding()
+                        .BodyGap(2.pt())
+                        .StyleGroupDark()
+                        .BodyAdd(
+                            new Row(4.pt())
+                            {
+                                new Column(1.pt())
+                                {
+                                    new Label(target.OriginalSignature.AsLoc()).FontBold(),
+                                    new Label(
+                                            $"Risk: {target.Risk} · shared owners: {FormatOwners(target.NonTajsOwners)}".AsLoc())
+                                        .FontSize(11)
+                                        .Color(RiskColor(target.Risk)),
+                                    new Label(target.RiskReason.AsLoc()).FontSize(11),
+                                }.FlexGrow(1f),
+                                detailsButton,
+                            }.AlignItemsCenter(),
+                            details));
+            }
+            if (snapshot.Targets.Count(target => target.IsSharedTarget || target.Risk != HarmonyCollisionRisk.None) > interesting.Length)
+            {
+                panel.Body.Add(new Label("Additional shared/risk targets are available in the profiler command and exported trace.".AsLoc()).FontSize(11));
+            }
+            return panel;
         }
 
         private void AddSettingsPage(IReadOnlyList<SettingSnapshot> settings)
@@ -1143,7 +1296,7 @@ namespace TajsCOI.Core.Settings
             return panel;
         }
 
-        private Panel BuildLoadedModsPanel(IReadOnlyList<LoadedModData> mods)
+        private Panel BuildLoadedModsPanel(IReadOnlyList<LoadedModSnapshot> mods)
         {
             Panel panel = TajsDashboardUi.Card("Loaded suite modules", "The dashboard only lists Taj's modules reported by the current gameplay resolver.");
             if (mods.Count == 0)
@@ -1152,20 +1305,20 @@ namespace TajsCOI.Core.Settings
                 return panel;
             }
 
-            foreach (LoadedModData mod in mods)
+            foreach (LoadedModSnapshot mod in mods)
             {
-                bool failed = mod.LoadError.HasValue;
-                string version = Convert.ToString(mod.Manifest.Version, CultureInfo.InvariantCulture) ?? "unknown";
+                bool failed = !mod.LoadSucceeded;
+                string version = string.IsNullOrWhiteSpace(mod.Version) ? "unknown" : mod.Version;
                 panel.Body.Add(
                     new Row(4.pt())
                     {
-                        new Column(1.pt()) { new Label(mod.Manifest.Id.AsLoc()).FontBold(), new Label($"Version {version}".AsLoc()).FontSize(11) }
+                        new Column(1.pt()) { new Label(mod.DisplayName.AsLoc()).FontBold(), new Label($"{mod.Id} · version {version}".AsLoc()).FontSize(11) }
                             .FlexGrow(1f),
                         TajsDashboardUi.StatusBadge(failed ? "Load failed" : "Loaded", failed ? TajsDashboardUi.Red : TajsDashboardUi.Green),
                     }.AlignItemsCenter());
                 if (failed)
                 {
-                    panel.Body.Add(new Label(mod.LoadError.Value.ToString().AsLoc()).FontSize(11));
+                    panel.Body.Add(new Label(mod.LoadError.AsLoc()).FontSize(11));
                 }
             }
             return panel;
@@ -1334,12 +1487,6 @@ namespace TajsCOI.Core.Settings
                 descriptor.DisplayName.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
-        private IReadOnlyList<LoadedModData> GetTajsMods() =>
-            ModsLoader.LoadedAndFailedMods
-                .Where(mod => mod.Manifest.Id.StartsWith("Tajs", StringComparison.Ordinal))
-                .OrderBy(mod => mod.Manifest.Id, StringComparer.Ordinal)
-                .ToArray();
-
         private string FormatCurrent(SettingDescriptor descriptor) => FormatValue(GetCurrentValue(descriptor));
 
         private object GetCurrentValue(SettingDescriptor descriptor) =>
@@ -1358,6 +1505,20 @@ namespace TajsCOI.Core.Settings
             state == CompatibilityState.Compatible ? TajsDashboardUi.Green :
             state == CompatibilityState.Degraded ? TajsDashboardUi.Yellow :
             TajsDashboardUi.Red;
+
+        private static ColorRgba CapabilityColor(RuntimeCapabilityState state) =>
+            state == RuntimeCapabilityState.Available ? TajsDashboardUi.Green :
+            state == RuntimeCapabilityState.Degraded ? TajsDashboardUi.Yellow :
+            TajsDashboardUi.Red;
+
+        private static ColorRgba RiskColor(HarmonyCollisionRisk risk) =>
+            risk == HarmonyCollisionRisk.High ? TajsDashboardUi.Red :
+            risk == HarmonyCollisionRisk.Medium ? TajsDashboardUi.Yellow :
+            risk == HarmonyCollisionRisk.Informational ? TajsDashboardUi.Cyan :
+            TajsDashboardUi.Green;
+
+        private static string FormatOwners(IReadOnlyList<string> owners) =>
+            owners.Count == 0 ? "-" : string.Join(", ", owners);
 
         private static string FormatValue(object value) =>
             Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;

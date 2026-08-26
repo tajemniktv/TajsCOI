@@ -4,6 +4,7 @@
 
 using System.Collections.Generic;
 using TajsCOI.Common.Compatibility;
+using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Logging;
 
 namespace TajsCOI.Common.Runtime
@@ -15,5 +16,19 @@ namespace TajsCOI.Common.Runtime
         public void ReportCompatibility(CompatibilityReport report);
 
         public IReadOnlyList<CompatibilityReport> GetCompatibilitySnapshot();
+
+        public RuntimeRegistrationResult RegisterCapability(RuntimeCapabilityDescriptor capability);
+
+        public RuntimeRegistrationResult RegisterComponent(RuntimeComponentDescriptor component);
+
+        public bool IsCapabilityAvailable(string capabilityId);
+
+        public IReadOnlyList<RuntimeCapabilityDescriptor> GetCapabilitySnapshot();
+
+        public IReadOnlyList<RuntimeComponentDescriptor> GetComponentSnapshot();
+
+        public IReadOnlyList<LoadedModSnapshot> GetLoadedModSnapshot();
+
+        public HarmonyInspectionSnapshot GetHarmonyInspectionSnapshot();
     }
 }

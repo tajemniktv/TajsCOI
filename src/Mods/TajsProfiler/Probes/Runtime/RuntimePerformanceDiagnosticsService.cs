@@ -18,6 +18,7 @@ using HarmonyLib;
 using Mafi;
 using Mafi.Core.Console;
 using TajsCOI.Common.Compatibility;
+using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Profiler.Core;
@@ -90,6 +91,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private static PatchSummary s_patchSummary;
 
         private readonly DependencyResolver m_resolver;
+        private readonly ITajsRuntime m_runtime;
 
         [ThreadStatic]
         private static int s_saveDataDepth;
@@ -103,6 +105,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         public RuntimePerformanceDiagnosticsService(DependencyResolver resolver, ITajsRuntime runtime)
         {
             m_resolver = resolver;
+            m_runtime = runtime;
             RecordWeakLifecycleWatch("resolver/runtime-diagnostics", resolver);
             RecordLifecycleCheckpoint("resolver/runtime-diagnostics-created");
             // Harmony callbacks are static, so this process-lifetime global dependency publishes
@@ -110,6 +113,16 @@ namespace TajsCOI.Profiler.Probes.Runtime
 #pragma warning disable S2696
             s_log = runtime.GetLogger("TajsProfiler", "RuntimePerformance");
 #pragma warning restore S2696
+
+            runtime.RegisterComponent(
+                new RuntimeComponentDescriptor(
+                    "TajsProfiler",
+                    "RuntimePerformance",
+                    RuntimeComponentLifetime.Process,
+                    "Harmony-owned save/load, memory, GC, and renderer timing probes",
+                    new[] { HarmonyId },
+                    new[] { "TajsCore.HarmonyInspection" },
+                    Array.Empty<string>()));
 
             PatchSummary summary = InstallPatches();
             CompatibilityState state = summary.RequiredInstalled == summary.RequiredExpected
@@ -173,7 +186,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         }
 
         [ConsoleCommand(
-            documentation: "Audits current TajsCOI Harmony owners and flags duplicate registrations by target/kind/owner/patch method.",
+            documentation: "Audits current TajsCOI Harmony owners, shared non-Tajs owners, ordering metadata, and collision risk.",
             customCommandName: "tajs_runtime_harmony_audit")]
         public string HarmonyAudit() => BuildHarmonyAudit();
 
@@ -1528,61 +1541,52 @@ namespace TajsCOI.Profiler.Probes.Runtime
             $"graphics={FormatUnityGraphicsBytes(checkpoint.UnityGraphicsBytes, default)}, " +
             $"GC0/1/2={checkpoint.Gen0Collections}/{checkpoint.Gen1Collections}/{checkpoint.Gen2Collections}]";
 
-        private static string BuildHarmonyAudit()
+        private string BuildHarmonyAudit()
         {
-            var lines = new List<string>();
-            int duplicateCount = 0;
-            foreach (MethodBase original in Harmony.GetAllPatchedMethods().OrderBy(x => x.DeclaringType?.FullName).ThenBy(x => x.Name))
+            HarmonyInspectionSnapshot snapshot = m_runtime.GetHarmonyInspectionSnapshot();
+            if (!snapshot.IsAvailable)
             {
-                Patches? patches = Harmony.GetPatchInfo(original);
-                duplicateCount += AppendHarmonyAuditLines(lines, original, "prefix", patches?.Prefixes);
-                duplicateCount += AppendHarmonyAuditLines(lines, original, "postfix", patches?.Postfixes);
-                duplicateCount += AppendHarmonyAuditLines(lines, original, "transpiler", patches?.Transpilers);
-                duplicateCount += AppendHarmonyAuditLines(lines, original, "finalizer", patches?.Finalizers);
+                return "TajsCOI Harmony audit unavailable: " + snapshot.Error;
+            }
+            if (snapshot.Targets.Count == 0)
+            {
+                return "TajsCOI Harmony audit: no TajsCOI-owned patches found.";
+            }
+
+            var lines = new List<string>();
+            var duplicateGroups = new HashSet<string>(StringComparer.Ordinal);
+            foreach (HarmonyTargetSnapshot target in snapshot.Targets)
+            {
+                foreach (HarmonyPatchSnapshot patch in target.Patches)
+                {
+                    int count = target.Patches.Count(candidate =>
+                        candidate.Kind == patch.Kind &&
+                        string.Equals(candidate.OwnerId, patch.OwnerId, StringComparison.Ordinal) &&
+                        string.Equals(candidate.PatchMethod, patch.PatchMethod, StringComparison.Ordinal));
+                    if (patch.IsTajsOwned && count > 1)
+                    {
+                        duplicateGroups.Add(
+                            target.OriginalSignature + "|" + patch.Kind + "|" + patch.OwnerId + "|" + patch.PatchMethod);
+                    }
+
+                    lines.Add(
+                        $"  original={target.OriginalSignature} | kind={patch.Kind.ToString().ToLowerInvariant()} | owner={patch.OwnerId} | patch={patch.PatchMethod} | priority={patch.Priority} | " +
+                        $"before={FormatOwners(patch.Before)} | after={FormatOwners(patch.After)} | risk={target.Risk} | " +
+                        $"shared={FormatOwners(target.NonTajsOwners)} | count={count}" +
+                        (patch.IsTajsOwned && count > 1 ? " | DUPLICATE" : string.Empty));
+                }
             }
 
             return lines.Count == 0
                 ? "TajsCOI Harmony audit: no TajsCOI-owned patches found."
-                : $"TajsCOI Harmony audit: {lines.Count} patch entries, duplicate registrations={duplicateCount}.\n" + string.Join("\n", lines);
+                : $"TajsCOI Harmony audit: {lines.Count} patch entries across {snapshot.TajsPatchedTargetCount} Tajs target(s), shared targets={snapshot.SharedTargetCount}, attention={snapshot.AttentionCount}, duplicate registrations={duplicateGroups.Count}.\n" + string.Join("\n", lines);
         }
 
-        private static int AppendHarmonyAuditLines(
-            ICollection<string> lines,
-            MethodBase original,
-            string kind,
-            IEnumerable<Patch>? patches)
-        {
-            if (patches is null)
-            {
-                return 0;
-            }
-
-            int duplicates = 0;
-            foreach (var group in patches
-                         .Where(x => x.owner.StartsWith("TajsCOI.", StringComparison.Ordinal))
-                         .GroupBy(x => new { x.owner, x.PatchMethod }))
-            {
-                int count = group.Count();
-                if (count > 1)
-                {
-                    duplicates++;
-                }
-                lines.Add(
-                    $"  original={FormatHarmonyMethod(original)} | kind={kind} | owner={group.Key.owner} | patch={FormatHarmonyMethod(group.Key.PatchMethod)} | count={count}" +
-                    (count > 1 ? " | DUPLICATE" : string.Empty));
-            }
-            return duplicates;
-        }
+        private static string FormatOwners(IReadOnlyList<string> owners) =>
+            owners.Count == 0 ? "-" : string.Join(",", owners);
 
         internal static string FormatHarmonyMethod(MethodBase method)
-        {
-            string declaringType = method.DeclaringType?.FullName ?? "<global>";
-            string parameters = string.Join(
-                ", ",
-                method.GetParameters().Select(x =>
-                    x.ParameterType.FullName ?? x.ParameterType.Name));
-            return declaringType + "." + method.Name + "(" + parameters + ")";
-        }
+            => RuntimeMethodFormatter.Format(method);
 
         internal static string FormatUnityGraphicsBytes(long unityGraphicsBytes, ProductRendererMetric products)
         {

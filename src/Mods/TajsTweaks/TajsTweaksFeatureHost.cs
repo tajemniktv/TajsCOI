@@ -19,6 +19,7 @@ using Mafi.Core.Vehicles.Trucks;
 using Mafi.Core.World;
 using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Compatibility;
+using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
@@ -64,6 +65,7 @@ namespace TajsCOI.Tweaks
             TryInstall(runtime, "AutoWorldDelivery", harmony => TweaksAutoShipDeliveryFeature.Install(harmony, resolver));
             TryInstall(runtime, "CameraAndHud", TweaksCameraFeature.Install);
             TryInstall(runtime, "DesignationControls", TweaksDesignationFeature.Install);
+            RegisterDesignationIntegration(runtime);
             TryInstall(runtime, "NotificationFilter", TweaksNotificationFeature.Install);
             TryInstall(runtime, "MineTruckStaging", TweaksMineTruckStagingFeature.Install);
             TweaksMineTruckStagingFeature.SetResolver(resolver);
@@ -80,6 +82,30 @@ namespace TajsCOI.Tweaks
                     "Typed global settings and independently fail-open feature patches",
                     TajsTweaksSettingsCatalog.All.Count + " settings; " + HarmonyId,
                     "Features are optional and retain vanilla behavior when a target is unavailable."));
+        }
+
+        private static void RegisterDesignationIntegration(ITajsRuntime runtime)
+        {
+            bool available = TweaksDesignationFeature.HasTweaksPlusPlusDesignationVisualIntegration();
+            runtime.RegisterCapability(
+                new RuntimeCapabilityDescriptor(
+                    "TajsTweaks.TweaksPlusPlusDesignationVisual",
+                    TajsTweaksSettingsCatalog.ModId,
+                    "DesignationControls",
+                    available ? RuntimeCapabilityState.Available : RuntimeCapabilityState.Unavailable,
+                    string.Empty,
+                    "Optional Tweaks++ designation-renderer compatibility seam.",
+                    available ? string.Empty : "Tweaks++ DesignationVisualPatch.RenderPrefix was not found.",
+                    RuntimeComponentLifetime.GameplayScene));
+            runtime.RegisterComponent(
+                new RuntimeComponentDescriptor(
+                    TajsTweaksSettingsCatalog.ModId,
+                    "DesignationControls",
+                    RuntimeComponentLifetime.GameplayScene,
+                    "TerrainDesignationsRenderer.renderUpdate and optional Tweaks++ DesignationVisualPatch.RenderPrefix",
+                    new[] { HarmonyId + ".DesignationControls" },
+                    Array.Empty<string>(),
+                    new[] { "TajsTweaks.TweaksPlusPlusDesignationVisual" }));
         }
 
         private void TryInstall(ITajsRuntime runtime, string id, Action<Harmony> install)

@@ -590,6 +590,19 @@ namespace TajsCOI.Tweaks
             InstallTweaksPlusPlusCompatibility(harmony);
         }
 
+        internal static bool HasTweaksPlusPlusDesignationVisualIntegration()
+        {
+            try
+            {
+                Type? patchType = FindTweaksPlusPlusPatchType();
+                return patchType is not null && AccessTools.Method(patchType, "RenderPrefix") is not null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static void InstallTweaksPlusPlusCompatibility(Harmony harmony)
         {
             try
@@ -598,10 +611,7 @@ namespace TajsCOI.Tweaks
                 // DesignationsVisualEnabled value can otherwise veto this method entirely.
                 // Patch that prefix's result instead of depending on Harmony prefix ordering:
                 // any false prefix skips the original, regardless of which prefix runs first.
-                Type? patchType = Type.GetType("TweaksPP.DesignationVisualPatch, Tweaks++", false) ??
-                    AppDomain.CurrentDomain.GetAssemblies()
-                        .FirstOrDefault(x => string.Equals(x.GetName().Name, "Tweaks++", StringComparison.Ordinal))
-                        ?.GetType("TweaksPP.DesignationVisualPatch", false);
+                Type? patchType = FindTweaksPlusPlusPatchType();
                 MethodInfo? renderPrefix = patchType is null ? null : AccessTools.Method(patchType, "RenderPrefix");
                 if (renderPrefix is not null)
                 {
@@ -616,6 +626,12 @@ namespace TajsCOI.Tweaks
                 // not prevent the independent designation-area patches from installing.
             }
         }
+
+        private static Type? FindTweaksPlusPlusPatchType() =>
+            Type.GetType("TweaksPP.DesignationVisualPatch, Tweaks++", false) ??
+            AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(x => string.Equals(x.GetName().Name, "Tweaks++", StringComparison.Ordinal))
+                ?.GetType("TweaksPP.DesignationVisualPatch", false);
 
         private static bool UsesAreaLimit(MethodInfo method, IReadOnlyCollection<FieldInfo> fields)
         {

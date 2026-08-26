@@ -714,7 +714,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 markers,
                 RuntimeTelemetry.SnapshotEvents(
                     frames.Length == 0 ? 0 : frames[0].CapturedTimestamp,
-                    frames.Length == 0 ? 0 : frames[frames.Length - 1].CapturedTimestamp));
+                    frames.Length == 0 ? 0 : frames[frames.Length - 1].CapturedTimestamp),
+                m_runtime.GetHarmonyInspectionSnapshot(),
+                m_runtime.GetCapabilitySnapshot(),
+                m_runtime.GetComponentSnapshot(),
+                m_runtime.GetLoadedModSnapshot());
             return "Runtime profiler trace exported: " + result.EventCount + " event(s) to " + result.Path;
         }
 
