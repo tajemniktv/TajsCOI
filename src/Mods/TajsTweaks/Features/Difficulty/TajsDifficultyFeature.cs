@@ -8,43 +8,19 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using Mafi;
+using Mafi.Core;
 using Mafi.Core.Game;
 using Mafi.Core.Input;
+using Mafi.Core.SaveGame;
 using TajsCOI.Common.Logging;
 
 namespace TajsCOI.Tweaks.Features.Difficulty
 {
-    internal sealed class TajsDifficultyRow
-    {
-        internal TajsDifficultyRow(
-            TajsDifficultyDefinition definition,
-            PropertyInfo? property,
-            IDiffSettingInfo? info,
-            string current,
-            string original,
-            string vanilla)
-        {
-            Definition = definition;
-            Property = property;
-            Info = info;
-            Current = current;
-            Original = original;
-            Vanilla = vanilla;
-        }
-
-        internal TajsDifficultyDefinition Definition { get; }
-        internal PropertyInfo? Property { get; }
-        internal IDiffSettingInfo? Info { get; }
-        internal string Current { get; }
-        internal string Original { get; }
-        internal string Vanilla { get; }
-        internal bool Supported => Property is not null && Info is not null && Definition.ApplyMode != TajsDifficultyApplyMode.Unsupported;
-    }
-
     /// <summary>
-    ///     Adapts the native difficulty config to a safe editor. All actual changes go through
-    ///     the game's ChangeGameDifficultyCmd, which updates native property modifiers, change
-    ///     history, and save serialization consistently.
+    ///     Owns Tajs difficulty metadata, console validation, and original-save diagnostics.
+    ///     Runtime editing is performed by the native DifficultySettingsWindow; console input
+    ///     uses TajsDifficultySetCmd/TajsDifficultyResetCmd so each command rebases on the
+    ///     latest native config at execution time.
     /// </summary>
     internal sealed class TajsDifficultyFeature : IDisposable
     {
@@ -52,6 +28,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
 
         private readonly GameDifficultyApplier m_applier;
         private readonly IInputScheduler m_inputScheduler;
+        private readonly ISaveManager m_saveManager;
         private readonly ITajsLogger m_log;
         private readonly TajsDifficultyStateStore m_store = new();
         private readonly Dictionary<string, PropertyInfo> m_properties = new(StringComparer.Ordinal);
@@ -62,11 +39,14 @@ namespace TajsCOI.Tweaks.Features.Difficulty
         internal TajsDifficultyFeature(
             GameDifficultyApplier applier,
             IInputScheduler inputScheduler,
+            GameNameConfig? gameNameConfig,
+            ISaveManager saveManager,
             string saveName,
             ITajsLogger log)
         {
             m_applier = applier ?? throw new ArgumentNullException(nameof(applier));
             m_inputScheduler = inputScheduler ?? throw new ArgumentNullException(nameof(inputScheduler));
+            m_saveManager = saveManager ?? throw new ArgumentNullException(nameof(saveManager));
             m_log = log ?? throw new ArgumentNullException(nameof(log));
 
             foreach (TajsDifficultyDefinition definition in TajsDifficultyOptionCatalog.Definitions)
@@ -98,57 +78,37 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 m_log.Exception(exception, "Difficulty metadata enumeration failed open.");
             }
 
-            m_store.LoadOrCapture(saveName, m_applier.DifficultyConfig, m_properties);
-        }
+            TajsDifficultySaveIdentity? identity = null;
+            if (gameNameConfig?.LoadedFile is SaveFileInfo loadedFile)
+            {
+                identity = TajsDifficultySaveIdentity.FromSaveFile(loadedFile);
+            }
 
-        internal IReadOnlyList<TajsDifficultyRow> Snapshot()
-        {
-            var rows = new List<TajsDifficultyRow>(m_definitions.Count);
-            foreach (TajsDifficultyDefinition definition in m_definitions.Values
-                         .OrderBy(value => value.Category, StringComparer.Ordinal)
-                         .ThenBy(value => value.DisplayName, StringComparer.Ordinal))
-            {
-                m_properties.TryGetValue(definition.MemberName, out PropertyInfo? property);
-                m_infos.TryGetValue(definition.MemberName, out IDiffSettingInfo? info);
-                object? current = TryGetPropertyValue(property, m_applier.DifficultyConfig);
-                object? original = property is not null && m_store.TryGetOriginal(definition.MemberName, property, out object? stored)
-                    ? stored
-                    : null;
-                object? vanilla = property is not null ? GetVanillaConfigValue(property) : null;
-                rows.Add(
-                    new TajsDifficultyRow(
-                        definition,
-                        property,
-                        info,
-                        FormatValue(current, info),
-                        FormatValue(original, info),
-                        FormatValue(vanilla, info)));
-            }
-            return rows;
-        }
-
-        private static object? TryGetPropertyValue(PropertyInfo? property, GameDifficultyConfig config)
-        {
-            try
-            {
-                return property?.GetValue(config);
-            }
-            catch
-            {
-                return null;
-            }
+            m_store.LoadOrCapture(identity, saveName, m_applier.DifficultyConfig, m_properties);
+            m_saveManager.OnSaveDone += OnSaveDone;
         }
 
         internal string Status()
         {
-            IReadOnlyList<TajsDifficultyRow> rows = Snapshot();
-            int supported = rows.Count(row => row.Supported);
-            int unsupported = rows.Count - supported;
+            int supported = m_definitions.Values.Count(
+                definition => m_properties.ContainsKey(definition.MemberName) &&
+                              m_infos.ContainsKey(definition.MemberName) &&
+                              definition.ApplyMode != TajsDifficultyApplyMode.Unsupported);
+            int unsupported = m_definitions.Count - supported;
             string unsupportedNames = string.Join(
                 ", ",
-                rows.Where(row => !row.Supported).Select(row => row.Definition.MemberName));
-            return "TajsDifficulty: " + supported + " supported, " + unsupported + " unsupported; " +
-                   "original-save values are stored separately from vanilla defaults." +
+                m_definitions.Values
+                    .Where(definition => !m_properties.ContainsKey(definition.MemberName) ||
+                                         !m_infos.ContainsKey(definition.MemberName) ||
+                                         definition.ApplyMode == TajsDifficultyApplyMode.Unsupported)
+                    .Select(definition => definition.MemberName));
+            string unknownPercent = TajsDifficultyOptionCatalog.UnsupportedPercentMembers.Count == 0
+                ? string.Empty
+                : " Unknown percent settings left vanilla: " +
+                  string.Join(", ", TajsDifficultyOptionCatalog.UnsupportedPercentMembers) + ".";
+            return "TajsDifficulty uses the native COI Difficulty Settings window; " +
+                   supported + " Tajs settings are supported and " + unsupported + " are unsupported. " +
+                   m_store.BaselineStatus + unknownPercent +
                    (unsupported == 0 ? string.Empty : " Unsupported: " + unsupportedNames + ".");
         }
 
@@ -158,7 +118,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             {
                 return "Unknown or unsupported difficulty setting '" + (memberName ?? string.Empty) + "'.";
             }
-            if (definition.ApplyMode is TajsDifficultyApplyMode.NewGameOnly or TajsDifficultyApplyMode.ReloadSave)
+            if (definition.ApplyMode is TajsDifficultyApplyMode.NewGameOnly or TajsDifficultyApplyMode.ReloadSave or TajsDifficultyApplyMode.Unsupported)
             {
                 return definition.DisplayName + " is " + ApplyModeText(definition.ApplyMode) + "; the active save was not changed.";
             }
@@ -172,14 +132,12 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 return "The requested value is unusually extreme. Repeat with CONFIRM to apply it.";
             }
 
-            GameDifficultyConfig updated = m_applier.DifficultyConfig.Clone();
-            property.SetValue(updated, value);
-            if (m_applier.DifficultyConfig.IsSameAs(updated))
+            if (property.GetValue(m_applier.DifficultyConfig) is object current && value is not null && ValuesEqual(current, value))
             {
                 return definition.DisplayName + " is already " + FormatValue(value, info) + ".";
             }
 
-            m_inputScheduler.ScheduleInputCmd(new ChangeGameDifficultyCmd(updated));
+            m_inputScheduler.ScheduleInputCmd(new TajsDifficultySetCmd(memberName.Trim(), rawValue!.Trim(), confirmed));
             return definition.DisplayName + " queued at " + FormatValue(value, info) + " (" + ApplyModeText(definition.ApplyMode) + ").";
         }
 
@@ -207,11 +165,11 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 return "Usage: tajs_difficulty_reset <original|vanilla> CONFIRM";
             }
 
-            GameDifficultyConfig updated = m_applier.DifficultyConfig.Clone();
-            int changed = 0;
+            var memberNames = new List<string>();
+            var encodedValues = new List<string>();
             foreach (TajsDifficultyDefinition definition in m_definitions.Values)
             {
-                if (definition.ApplyMode is TajsDifficultyApplyMode.NewGameOnly or TajsDifficultyApplyMode.ReloadSave ||
+                if (definition.ApplyMode is TajsDifficultyApplyMode.NewGameOnly or TajsDifficultyApplyMode.ReloadSave or TajsDifficultyApplyMode.Unsupported ||
                     !m_properties.TryGetValue(definition.MemberName, out PropertyInfo? property) ||
                     !m_infos.ContainsKey(definition.MemberName))
                 {
@@ -232,16 +190,22 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 {
                     continue;
                 }
-                property.SetValue(updated, value);
-                changed++;
+
+                if (!TajsDifficultyStateStore.TryEncode(value, out string encoded))
+                {
+                    continue;
+                }
+
+                memberNames.Add(definition.MemberName);
+                encodedValues.Add(encoded);
             }
 
-            if (changed == 0 || m_applier.DifficultyConfig.IsSameAs(updated))
+            if (memberNames.Count == 0)
             {
                 return "No runtime-safe difficulty values needed resetting.";
             }
 
-            m_inputScheduler.ScheduleInputCmd(new ChangeGameDifficultyCmd(updated));
+            m_inputScheduler.ScheduleInputCmd(new TajsDifficultyResetCmd(memberNames.ToArray(), encodedValues.ToArray()));
             return "Queued runtime-safe difficulty reset to " + (useVanilla ? "vanilla defaults" : "original save values") + ".";
         }
 
@@ -255,7 +219,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             {
                 return "Unknown or unsupported difficulty setting '" + memberName + "'.";
             }
-            if (definition.ApplyMode is TajsDifficultyApplyMode.NewGameOnly or TajsDifficultyApplyMode.ReloadSave)
+            if (definition.ApplyMode is TajsDifficultyApplyMode.NewGameOnly or TajsDifficultyApplyMode.ReloadSave or TajsDifficultyApplyMode.Unsupported)
             {
                 return definition.DisplayName + " is " + ApplyModeText(definition.ApplyMode) + "; the active save was not changed.";
             }
@@ -270,13 +234,17 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 return "No " + (useVanilla ? "vanilla" : "original-save") + " value is available for " + definition.DisplayName + ".";
             }
 
-            GameDifficultyConfig updated = m_applier.DifficultyConfig.Clone();
-            property.SetValue(updated, value);
-            if (m_applier.DifficultyConfig.IsSameAs(updated))
+            if (property.GetValue(m_applier.DifficultyConfig) is object current && ValuesEqual(current, value))
             {
                 return definition.DisplayName + " is already " + FormatValue(value, info) + ".";
             }
-            m_inputScheduler.ScheduleInputCmd(new ChangeGameDifficultyCmd(updated));
+
+            if (!TajsDifficultyStateStore.TryEncode(value, out string encoded))
+            {
+                return "The value for " + definition.DisplayName + " cannot be represented safely.";
+            }
+
+            m_inputScheduler.ScheduleInputCmd(new TajsDifficultySetCmd(memberName.Trim(), encoded, true));
             return "Queued " + definition.DisplayName + " reset to " + FormatValue(value, info) + ".";
         }
 
@@ -294,7 +262,22 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 return;
             }
             m_disposed = true;
+            m_saveManager.OnSaveDone -= OnSaveDone;
             m_store.Save();
+        }
+
+        private void OnSaveDone(SaveResult result)
+        {
+            if (result.FilePath.ValueOrNull is string path &&
+                !m_store.RebindAfterSave(path, m_saveManager.GameName))
+            {
+                m_log.Warning("Original-save difficulty baseline was not rebound after save; it remains unavailable if the save identity was ambiguous.");
+            }
+        }
+
+        private static bool ValuesEqual(object left, object right)
+        {
+            return left.Equals(right);
         }
 
         private bool TryFind(
@@ -332,7 +315,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             }
         }
 
-        private static bool TryParseValue(
+        internal static bool TryParseValue(
             string? rawValue,
             Type targetType,
             TajsDifficultyDefinition definition,
@@ -374,6 +357,11 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             {
                 try
                 {
+                    if (input.StartsWith("enum:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        input = input.Substring("enum:".Length).Trim();
+                    }
+
                     if (int.TryParse(input, NumberStyles.Integer, CultureInfo.InvariantCulture, out int numeric))
                     {
                         if (!Enum.IsDefined(targetType, numeric))
@@ -415,7 +403,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             return false;
         }
 
-        private static bool NeedsConfirmation(object? value)
+        internal static bool NeedsConfirmation(object? value)
         {
             if (value is Percent percent)
             {

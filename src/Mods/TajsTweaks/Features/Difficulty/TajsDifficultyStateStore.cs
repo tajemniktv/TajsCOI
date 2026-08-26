@@ -7,112 +7,234 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using Mafi;
+using Mafi.Core;
 using Mafi.Core.Game;
 
 namespace TajsCOI.Tweaks.Features.Difficulty
 {
     /// <summary>
-    ///     Stores only the original difficulty values for one save slot. The file deliberately
-    ///     contains scalar values and no game objects, delegates, resolver instances, or scene
-    ///     references, so an invalid or stale file can never become part of the vanilla save blob.
+    ///     The 0.8.7b save metadata has no immutable save id. This fingerprint combines the
+    ///     native file identity fields instead of using the display name alone. File timestamp
+    ///     and size change when a save is written, so the owning feature rebinds the sidecar only
+    ///     after a successful native save.
+    /// </summary>
+    internal sealed class TajsDifficultySaveIdentity
+    {
+        private TajsDifficultySaveIdentity(string fingerprint)
+        {
+            Fingerprint = fingerprint;
+        }
+
+        internal string Fingerprint { get; }
+
+        internal static TajsDifficultySaveIdentity FromSaveFile(SaveFileInfo save)
+        {
+            string canonical = string.Join(
+                "\n",
+                save.GameName ?? string.Empty,
+                save.NameNoExtension ?? string.Empty,
+                save.Extension ?? string.Empty,
+                save.WriteTimestamp.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture),
+                save.SizeBytes.ToString(CultureInfo.InvariantCulture));
+            return new TajsDifficultySaveIdentity(Hash(canonical));
+        }
+
+        internal static TajsDifficultySaveIdentity? FromSavePath(string path, string gameName)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            try
+            {
+                var file = new FileInfo(path);
+                if (!file.Exists)
+                {
+                    return null;
+                }
+
+                return FromSaveFile(
+                    new SaveFileInfo(
+                        Path.GetFileNameWithoutExtension(file.Name),
+                        gameName,
+                        file.LastWriteTimeUtc,
+                        file.Length,
+                        file.Extension));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string Hash(string value)
+        {
+            using (SHA256 sha256 = SHA256.Create())
+            {
+                byte[] bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(value));
+                var builder = new StringBuilder(bytes.Length * 2);
+                foreach (byte item in bytes)
+                {
+                    builder.Append(item.ToString("x2", CultureInfo.InvariantCulture));
+                }
+
+                return builder.ToString();
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Stores only scalar original difficulty values. V1 name-based sidecars, corrupt V2
+    ///     sidecars, and identity collisions are never trusted or overwritten automatically.
     /// </summary>
     internal sealed class TajsDifficultyStateStore
     {
-        private const string Header = "TajsTweaksDifficultyV1";
+        private const string Header = "TajsTweaksDifficultyV2";
+        private const string LegacyHeader = "TajsTweaksDifficultyV1";
+        private const int SchemaVersion = 2;
+
         private readonly Dictionary<string, string> m_originalValues = new(StringComparer.Ordinal);
+        private readonly string m_rootDirectory;
         private string? m_filePath;
+        private string? m_identityFingerprint;
+        private bool m_allowWrite;
+        private bool m_baselineAvailable;
+        private string m_baselineStatus = "original-save baseline unavailable.";
+
+        internal TajsDifficultyStateStore(string? rootDirectory = null)
+        {
+            m_rootDirectory = string.IsNullOrWhiteSpace(rootDirectory)
+                ? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Captain of Industry",
+                    "TajsTweaks",
+                    "Difficulty")
+                : rootDirectory!;
+        }
 
         internal IReadOnlyDictionary<string, string> OriginalValues => m_originalValues;
 
-        internal void LoadOrCapture(string saveName, GameDifficultyConfig current, IReadOnlyDictionary<string, System.Reflection.PropertyInfo> properties)
+        internal bool IsBaselineAvailable => m_baselineAvailable;
+
+        internal string BaselineStatus => m_baselineStatus;
+
+        internal string? IdentityFingerprint => m_identityFingerprint;
+
+        internal void LoadOrCapture(
+            TajsDifficultySaveIdentity? identity,
+            string saveName,
+            GameDifficultyConfig current,
+            IReadOnlyDictionary<string, PropertyInfo> properties)
         {
             m_originalValues.Clear();
-            string safeName = Sanitize(saveName);
-            string directory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "Captain of Industry",
-                "TajsTweaks",
-                "Difficulty",
-                safeName.Length == 0 ? "current" : safeName);
-            m_filePath = Path.Combine(directory, "state.txt");
+            m_filePath = identity is null
+                ? null
+                : Path.Combine(m_rootDirectory, identity.Fingerprint, "state.txt");
+            m_identityFingerprint = identity?.Fingerprint;
+            m_allowWrite = false;
+            m_baselineAvailable = false;
+            m_baselineStatus = "original-save baseline unavailable.";
 
-            if (File.Exists(m_filePath))
+            if (identity is not null && File.Exists(m_filePath))
             {
-                try
+                if (!TryRead(m_filePath!, identity.Fingerprint, properties))
                 {
-                    string[] lines = File.ReadAllLines(m_filePath);
-                    if (lines.Length > 0 && string.Equals(lines[0], Header, StringComparison.Ordinal))
-                    {
-                        foreach (string line in lines.Skip(1))
-                        {
-                            int separator = line.IndexOf('=');
-                            if (separator <= 0 || separator == line.Length - 1)
-                            {
-                                continue;
-                            }
+                    // Do not replace a file that may contain recoverable data. The native
+                    // difficulty UI and console remain usable without the optional baseline.
+                    m_baselineStatus = "original-save baseline unavailable: sidecar is invalid or belongs to another save.";
+                    return;
+                }
 
-                            string memberName = line.Substring(0, separator).Trim();
-                            string encoded = line.Substring(separator + 1).Trim();
-                            if (properties.ContainsKey(memberName) && encoded.Length > 0)
-                            {
-                                m_originalValues[memberName] = encoded;
-                            }
-                        }
-                    }
-                }
-                catch
+                m_baselineAvailable = true;
+                m_allowWrite = true;
+                m_baselineStatus = "original-save baseline identity verified.";
+                if (CaptureMissing(current, properties))
                 {
-                    m_originalValues.Clear();
+                    Save();
                 }
+
+                return;
             }
 
-            // A first load captures the values that actually came from the save. This is distinct
-            // from the preset's vanilla defaults and remains stable after later Tajs changes. If a
-            // later game version adds a field, fill only that missing field from the current save.
-            // Existing entries are never overwritten.
-            bool added = false;
-            foreach (KeyValuePair<string, System.Reflection.PropertyInfo> pair in properties)
+            if (HasLegacySidecar(saveName))
             {
-                if (m_originalValues.ContainsKey(pair.Key))
-                {
-                    continue;
-                }
-
-                try
-                {
-                    if (TryEncode(pair.Value.GetValue(current), out string encoded))
-                    {
-                        m_originalValues[pair.Key] = encoded;
-                        added = true;
-                    }
-                }
-                catch
-                {
-                    // A single incompatible field is not allowed to block the remaining
-                    // difficulty values from being captured.
-                }
+                // V1 is keyed only by a sanitized name. Preserve it, but never guess that it
+                // belongs to the active save and never silently migrate it.
+                m_baselineStatus = "original-save baseline unavailable: legacy name-based sidecar requires explicit recapture.";
+                return;
             }
-            if (added || m_originalValues.Count == 0)
+
+            CaptureMissing(current, properties);
+            m_baselineAvailable = true;
+            m_baselineStatus = identity is null
+                ? "original-save baseline is in memory only: native save identity was unavailable."
+                : "original-save baseline captured with verified save identity.";
+            m_allowWrite = identity is not null;
+            if (m_allowWrite)
             {
                 Save();
             }
         }
 
-        internal bool TryGetOriginal(string memberName, System.Reflection.PropertyInfo property, out object? value)
+        /// <summary>
+        ///     Rebinds an already-captured baseline to the metadata of a successfully written
+        ///     native save. A pre-existing target sidecar is treated as an identity collision.
+        /// </summary>
+        internal bool RebindAfterSave(string? savePath, string gameName)
+        {
+            if (!m_baselineAvailable || string.IsNullOrWhiteSpace(savePath))
+            {
+                return false;
+            }
+
+            TajsDifficultySaveIdentity? identity = TajsDifficultySaveIdentity.FromSavePath(savePath!, gameName);
+            if (identity is null)
+            {
+                return false;
+            }
+
+            if (string.Equals(m_identityFingerprint, identity.Fingerprint, StringComparison.Ordinal))
+            {
+                return m_allowWrite && Save();
+            }
+
+            string nextPath = Path.Combine(m_rootDirectory, identity.Fingerprint, "state.txt");
+            if (File.Exists(nextPath))
+            {
+                m_baselineAvailable = false;
+                m_allowWrite = false;
+                m_baselineStatus = "original-save baseline unavailable: save identity collides with an existing sidecar.";
+                return false;
+            }
+
+            m_identityFingerprint = identity.Fingerprint;
+            m_filePath = nextPath;
+            m_allowWrite = true;
+            m_baselineStatus = "original-save baseline identity verified.";
+            return Save();
+        }
+
+        internal bool TryGetOriginal(string memberName, PropertyInfo property, out object? value)
         {
             value = null;
-            return m_originalValues.TryGetValue(memberName, out string? encoded) &&
+            return m_baselineAvailable &&
+                   m_originalValues.TryGetValue(memberName, out string? encoded) &&
                    TryDecode(encoded, property.PropertyType, out value);
         }
 
-        internal void Save()
+        internal bool Save()
         {
-            if (m_filePath is null)
+            if (!m_allowWrite || !m_baselineAvailable || m_filePath is null || m_identityFingerprint is null)
             {
-                return;
+                return false;
             }
 
+            string? temporary = null;
             try
             {
                 string? directory = Path.GetDirectoryName(m_filePath);
@@ -121,11 +243,20 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                     Directory.CreateDirectory(directory);
                 }
 
-                string temporary = m_filePath + ".tmp." + Guid.NewGuid().ToString("N");
+                temporary = m_filePath + ".tmp." + Guid.NewGuid().ToString("N");
                 File.WriteAllLines(
                     temporary,
-                    new[] { Header }.Concat(m_originalValues.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => pair.Key + "=" + pair.Value)),
-                    new System.Text.UTF8Encoding(false));
+                    new[]
+                    {
+                        Header,
+                        "schema=" + SchemaVersion.ToString(CultureInfo.InvariantCulture),
+                        "identity=" + m_identityFingerprint,
+                    }.Concat(
+                        m_originalValues
+                            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                            .Select(pair => pair.Key + "=" + pair.Value)),
+                    new UTF8Encoding(false));
+
                 if (File.Exists(m_filePath))
                 {
                     File.Replace(temporary, m_filePath, m_filePath + ".bak", true);
@@ -134,10 +265,27 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 {
                     File.Move(temporary, m_filePath);
                 }
+
+                temporary = null;
+                return true;
             }
             catch
             {
                 // Optional metadata must never interfere with saving or loading the game.
+                return false;
+            }
+            finally
+            {
+                if (temporary is not null)
+                {
+                    try
+                    {
+                        File.Delete(temporary);
+                    }
+                    catch
+                    {
+                    }
+                }
             }
         }
 
@@ -164,25 +312,28 @@ namespace TajsCOI.Tweaks.Features.Difficulty
         internal static bool TryDecode(string encoded, Type targetType, out object? value)
         {
             value = null;
+            string input = encoded?.Trim() ?? string.Empty;
             if (targetType == typeof(Percent))
             {
-                if (string.Equals(encoded, "unlimited", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(input, "unlimited", StringComparison.OrdinalIgnoreCase))
                 {
                     value = Percent.MaxValue;
                     return true;
                 }
 
-                if (int.TryParse(encoded, NumberStyles.Integer, CultureInfo.InvariantCulture, out int percent))
+                if (int.TryParse(input, NumberStyles.Integer, CultureInfo.InvariantCulture, out int percent))
                 {
                     value = percent.Percent();
                     return true;
                 }
+
                 return false;
             }
 
-            if (targetType.IsEnum && encoded.StartsWith("enum:", StringComparison.Ordinal))
+            if (targetType.IsEnum && input.StartsWith("enum:", StringComparison.Ordinal))
             {
-                if (int.TryParse(encoded.Substring("enum:".Length), NumberStyles.Integer, CultureInfo.InvariantCulture, out int enumValue))
+                if (int.TryParse(input.Substring("enum:".Length), NumberStyles.Integer, CultureInfo.InvariantCulture, out int enumValue) &&
+                    Enum.IsDefined(targetType, enumValue))
                 {
                     value = Enum.ToObject(targetType, enumValue);
                     return true;
@@ -190,6 +341,131 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             }
 
             return false;
+        }
+
+        private bool CaptureMissing(GameDifficultyConfig current, IReadOnlyDictionary<string, PropertyInfo> properties)
+        {
+            bool added = false;
+            foreach (KeyValuePair<string, PropertyInfo> pair in properties)
+            {
+                if (m_originalValues.ContainsKey(pair.Key))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (TryEncode(pair.Value.GetValue(current), out string encoded))
+                    {
+                        m_originalValues[pair.Key] = encoded;
+                        added = true;
+                    }
+                }
+                catch
+                {
+                    // One incompatible field must not block the remaining scalar values.
+                }
+            }
+
+            return added;
+        }
+
+        private bool TryRead(string path, string expectedIdentity, IReadOnlyDictionary<string, PropertyInfo> properties)
+        {
+            try
+            {
+                string[] lines = File.ReadAllLines(path);
+                if (lines.Length < 3 || !string.Equals(lines[0], Header, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+                var members = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (string line in lines.Skip(1))
+                {
+                    int separator = line.IndexOf('=');
+                    if (separator <= 0 || separator == line.Length - 1)
+                    {
+                        return false;
+                    }
+
+                    string name = line.Substring(0, separator).Trim();
+                    string encoded = line.Substring(separator + 1).Trim();
+                    if (name is "schema" or "identity")
+                    {
+                        if (metadata.ContainsKey(name))
+                        {
+                            return false;
+                        }
+
+                        metadata[name] = encoded;
+                        continue;
+                    }
+
+                    if (members.ContainsKey(name))
+                    {
+                        return false;
+                    }
+                    members[name] = encoded;
+
+                    // Unknown members are retained by the file but ignored by this version;
+                    // known members must decode as their reflected scalar type.
+                    if (properties.TryGetValue(name, out PropertyInfo? property))
+                    {
+                        if (!TryDecode(encoded, property.PropertyType, out _))
+                        {
+                            return false;
+                        }
+
+                    }
+                }
+
+                bool valid = metadata.TryGetValue("schema", out string? schema) &&
+                       string.Equals(schema, SchemaVersion.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal) &&
+                       metadata.TryGetValue("identity", out string? identity) &&
+                       string.Equals(identity, expectedIdentity, StringComparison.Ordinal);
+                if (!valid)
+                {
+                    m_originalValues.Clear();
+                    return false;
+                }
+
+                foreach (KeyValuePair<string, string> member in members)
+                {
+                    if (properties.ContainsKey(member.Key))
+                    {
+                        m_originalValues[member.Key] = member.Value;
+                    }
+                }
+
+                return true;
+            }
+            catch
+            {
+                m_originalValues.Clear();
+                return false;
+            }
+        }
+
+        private bool HasLegacySidecar(string saveName)
+        {
+            string safeName = Sanitize(saveName);
+            if (safeName.Length == 0)
+            {
+                safeName = "current";
+            }
+
+            string legacyPath = Path.Combine(m_rootDirectory, safeName, "state.txt");
+            if (!File.Exists(legacyPath))
+            {
+                return false;
+            }
+
+            // Keep the constant in the code so migration behavior stays visibly tied to the
+            // actual predecessor format, while deliberately refusing to parse or overwrite it.
+            _ = LegacyHeader;
+            return true;
         }
 
         private static string Sanitize(string? value)

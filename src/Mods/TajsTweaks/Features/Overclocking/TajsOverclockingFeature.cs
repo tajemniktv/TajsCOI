@@ -258,10 +258,19 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
         internal bool IsAuto(EntityId id) => TajsTweaksRuntimeState.Overclocking && GetEffectivePolicy(id.Value).Auto;
 
-        internal OverclockEffectivePolicy GetEffectivePolicy(int entityId)
+        internal OverclockEffectivePolicy GetEffectivePolicy(int entityId) => GetEffectivePolicy(entityId, ignoreEntityOverride: false);
+
+        internal OverclockEffectivePolicy GetPolicyAfterEntityReset(int entityId) =>
+            GetEffectivePolicy(entityId, ignoreEntityOverride: true);
+
+        private OverclockEffectivePolicy GetEffectivePolicy(int entityId, bool ignoreEntityOverride)
         {
             OverclockGroup? group = m_store.GetGroupForEntity(entityId);
-            m_store.TryGetEntity(entityId, out OverclockEntityPolicy? entity);
+            OverclockEntityPolicy? entity = null;
+            if (!ignoreEntityOverride)
+            {
+                m_store.TryGetEntity(entityId, out entity);
+            }
             int min = entity is not null && entity.HasBoundsOverride
                 ? entity.MinPercent
                 : group is not null
@@ -319,8 +328,177 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
-            m_inputScheduler.ScheduleInputCmd(new TajsOverclockSetRateCmd(id, clamped.Percent()));
+            m_inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.SetManual(id, clamped));
             message = "Overclock command queued for entity " + id.Value + " at " + clamped + "%.";
+            return true;
+        }
+
+        internal bool QueueSetAuto(EntityId id, bool enabled, int? minimum, int? maximum, out string message)
+        {
+            message = string.Empty;
+            if (!TajsTweaksRuntimeState.Overclocking)
+            {
+                message = "Per-machine overclocking is disabled.";
+                return false;
+            }
+
+            if (!TryGetSupportedEntity(id, out _))
+            {
+                message = "Entity '" + id.Value + "' is not a supported overclocking entity.";
+                return false;
+            }
+
+            if (m_inputScheduler is null)
+            {
+                message = "The normal input scheduler is unavailable.";
+                return false;
+            }
+
+            m_inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.SetAuto(id, enabled, minimum, maximum));
+            message = "Overclock Auto command queued for entity " + id.Value + ".";
+            return true;
+        }
+
+        internal bool QueueReset(EntityId id, out string message)
+        {
+            message = string.Empty;
+            if (!TajsTweaksRuntimeState.Overclocking)
+            {
+                message = "Per-machine overclocking is disabled.";
+                return false;
+            }
+
+            if (!TryGetSupportedEntity(id, out _))
+            {
+                message = "Entity '" + id.Value + "' is not a supported overclocking entity.";
+                return false;
+            }
+
+            if (m_inputScheduler is null)
+            {
+                message = "The normal input scheduler is unavailable.";
+                return false;
+            }
+
+            m_inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.Reset(id));
+            message = "Overclock reset command queued for entity " + id.Value + ".";
+            return true;
+        }
+
+        private bool TryQueueGroupCommand(OverclockGroup? group, out string message)
+        {
+            if (group is null || group.Locked)
+            {
+                message = "Group is missing or locked.";
+                return false;
+            }
+
+            if (m_inputScheduler is null)
+            {
+                message = "The normal input scheduler is unavailable.";
+                return false;
+            }
+
+            message = string.Empty;
+            return true;
+        }
+
+        internal bool QueueDeleteGroup(int groupId, out string message)
+        {
+            if (!TryQueueGroupCommand(m_store.GetGroup(groupId), out message))
+            {
+                return false;
+            }
+
+            m_inputScheduler!.ScheduleInputCmd(TajsOverclockPolicyCmd.DeleteGroup(groupId));
+            message = "Overclock group delete command queued for group " + groupId + ".";
+            return true;
+        }
+
+        internal bool QueueAddToGroup(int groupId, EntityId id, out string message)
+        {
+            if (!TryQueueGroupCommand(m_store.GetGroup(groupId), out message))
+            {
+                return false;
+            }
+
+            if (!TryGetSupportedEntity(id, out _))
+            {
+                message = "Entity '" + id.Value + "' is not a supported overclocking entity.";
+                return false;
+            }
+
+            if (m_store.GetGroup(groupId)!.Members.Contains(id.Value))
+            {
+                message = "Entity " + id.Value + " is already a member of group " + groupId + ".";
+                return false;
+            }
+
+            m_inputScheduler!.ScheduleInputCmd(TajsOverclockPolicyCmd.AddToGroup(groupId, id));
+            message = "Overclock group add command queued for entity " + id.Value + ".";
+            return true;
+        }
+
+        internal bool QueueRemoveFromGroup(int groupId, EntityId id, out string message)
+        {
+            OverclockGroup? group = m_store.GetGroup(groupId);
+            if (!TryQueueGroupCommand(group, out message))
+            {
+                return false;
+            }
+
+            if (!group!.Members.Contains(id.Value))
+            {
+                message = "Entity " + id.Value + " is not a member of group " + groupId + ".";
+                return false;
+            }
+
+            m_inputScheduler!.ScheduleInputCmd(TajsOverclockPolicyCmd.RemoveFromGroup(groupId, id));
+            message = "Overclock group remove command queued for entity " + id.Value + ".";
+            return true;
+        }
+
+        internal bool QueueSetGroupDefault(int groupId, int percent, out string message)
+        {
+            if (!TryQueueGroupCommand(m_store.GetGroup(groupId), out message))
+            {
+                return false;
+            }
+
+            int clamped = OverclockingMath.ClampPercent(
+                percent,
+                TajsTweaksRuntimeState.OverclockMinPercent,
+                TajsTweaksRuntimeState.OverclockMaxPercent);
+            m_inputScheduler!.ScheduleInputCmd(TajsOverclockPolicyCmd.SetGroupDefault(groupId, clamped));
+            message = "Overclock group default command queued for group " + groupId + " at " + clamped + "%.";
+            return true;
+        }
+
+        internal bool QueueApplyGroupToMembers(int groupId, int percent, out string message)
+        {
+            if (!TryQueueGroupCommand(m_store.GetGroup(groupId), out message))
+            {
+                return false;
+            }
+
+            int clamped = OverclockingMath.ClampPercent(
+                percent,
+                TajsTweaksRuntimeState.OverclockMinPercent,
+                TajsTweaksRuntimeState.OverclockMaxPercent);
+            m_inputScheduler!.ScheduleInputCmd(TajsOverclockPolicyCmd.ApplyGroup(groupId, clamped));
+            message = "Overclock group apply command queued for group " + groupId + " at " + clamped + "%.";
+            return true;
+        }
+
+        internal bool QueueSetGroupAuto(int groupId, bool enabled, int? minimum, int? maximum, out string message)
+        {
+            if (!TryQueueGroupCommand(m_store.GetGroup(groupId), out message))
+            {
+                return false;
+            }
+
+            m_inputScheduler!.ScheduleInputCmd(TajsOverclockPolicyCmd.SetGroupAuto(groupId, enabled, minimum, maximum));
+            message = "Overclock group Auto command queued for group " + groupId + ".";
             return true;
         }
 
@@ -357,7 +535,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return true;
         }
 
-        internal bool SetAuto(EntityId id, bool enabled, int? minimum, int? maximum, out string message)
+        internal bool ApplyAutoPolicy(EntityId id, bool enabled, int? minimum, int? maximum, out string message)
         {
             message = string.Empty;
             if (!TajsTweaksRuntimeState.Overclocking)
@@ -398,7 +576,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return true;
         }
 
-        internal bool Reset(EntityId id, out string message)
+        internal bool ApplyResetPolicy(EntityId id, out string message)
         {
             message = string.Empty;
             if (!TajsTweaksRuntimeState.Overclocking)
@@ -431,7 +609,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         internal bool CanControl(EntityId entityId) =>
             TajsTweaksRuntimeState.Overclocking && TryGetSupportedEntity(entityId, out _);
 
-        internal bool DeleteGroup(int groupId)
+        internal bool ApplyDeleteGroup(int groupId)
         {
             OverclockGroup? group = m_store.GetGroup(groupId);
             if (group is null || group.Locked)
@@ -562,7 +740,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             m_highlights.Clear();
         }
 
-        internal bool AddToGroup(int groupId, EntityId id)
+        internal bool ApplyAddToGroup(int groupId, EntityId id)
         {
             if (!TryGetSupportedEntity(id, out object? entity) || !m_store.AddMember(groupId, id.Value))
             {
@@ -574,7 +752,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return true;
         }
 
-        internal bool RemoveFromGroup(int groupId, EntityId id)
+        internal bool ApplyRemoveFromGroup(int groupId, EntityId id)
         {
             if (!m_store.RemoveMember(groupId, id.Value))
             {
@@ -590,7 +768,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return true;
         }
 
-        internal bool SetGroupDefault(int groupId, int percent, out string message)
+        internal bool ApplyGroupDefault(int groupId, int percent, out string message)
         {
             OverclockGroup? group = m_store.GetGroup(groupId);
             if (group is null || group.Locked)
@@ -655,7 +833,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return true;
         }
 
-        internal bool SetGroupAuto(int groupId, bool enabled, int? minimum, int? maximum, out string message)
+        internal bool ApplyGroupAuto(int groupId, bool enabled, int? minimum, int? maximum, out string message)
         {
             OverclockGroup? group = m_store.GetGroup(groupId);
             if (group is null || group.Locked)

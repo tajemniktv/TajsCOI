@@ -52,7 +52,6 @@ namespace TajsCOI.Tweaks
         private bool m_overclockingInitializationAttempted;
         private Option<TajsWorldOperationsWindow> m_worldOperationsWindow;
         private Option<TajsFleetManagementWindow> m_fleetManagementWindow;
-        private Option<TajsDifficultyWindow> m_difficultyWindow;
         private int m_renderTick;
 
         public TajsTweaksFeatureHost(DependencyResolver resolver, IGameLoopEvents gameLoop, ITajsRuntime runtime, ITajsSettings settings)
@@ -348,12 +347,27 @@ namespace TajsCOI.Tweaks
                 throw new InvalidOperationException("The active scene does not expose the native difficulty applier, input scheduler, and save manager.");
             }
 
+            m_resolver.TryResolve(out GameNameConfig? gameNameConfig);
             string saveName = string.IsNullOrWhiteSpace(saveManager.GameName) ? "current" : saveManager.GameName;
             m_difficulty = new TajsDifficultyFeature(
                 applier,
                 scheduler,
+                gameNameConfig,
+                saveManager,
                 saveName,
                 m_runtime.GetLogger(TajsTweaksSettingsCatalog.ModId, TajsDifficultyFeature.ComponentId));
+
+            var unsupportedPercent = TajsDifficultyOptionCatalog.UnsupportedPercentMembers;
+            m_runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    TajsTweaksSettingsCatalog.ModId,
+                    "DifficultyMetadata",
+                    unsupportedPercent.Count == 0 ? CompatibilityState.Compatible : CompatibilityState.Degraded,
+                    "Only explicitly audited DiffSettingInfo<Percent> members receive extended options",
+                    unsupportedPercent.Count == 0 ? "All native percent members are audited" : string.Join(", ", unsupportedPercent),
+                    unsupportedPercent.Count == 0
+                        ? "Native difficulty option arrays retain their vanilla values and receive audited Tajs extensions."
+                        : "Unknown native percent members retain vanilla options until their semantics are audited."));
         }
 
         private void EnsureOverclockingFeature()
@@ -407,46 +421,25 @@ namespace TajsCOI.Tweaks
             TweaksHudLayoutFeature.ClearFullscreenState();
             CloseWorldOperationsWindow();
             CloseFleetManagementWindow();
-            CloseDifficultyWindow();
         }
 
         [ConsoleCommand(
-            documentation: "Opens the advanced difficulty editor for the active save.",
+            documentation: "Explains where to open the native difficulty editor for the active save.",
             customCommandName: "tajs_difficulty")]
-        public string ToggleDifficultyWindow()
+        public string DifficultyEditorHelp()
         {
             if (m_difficulty is null)
             {
-                return "Advanced difficulty editor is unavailable in this scene.";
-            }
-            if (m_difficultyWindow.HasValue && m_difficultyWindow.Value.IsOpen)
-            {
-                CloseDifficultyWindow();
-                return "Advanced difficulty window: hidden";
-            }
-            if (!m_resolver.TryResolve(out UiRoot uiRoot))
-            {
-                return "Advanced difficulty editor is unavailable in this scene.";
+                return "Native difficulty settings are unavailable in this scene.";
             }
 
-            try
-            {
-                var window = new TajsDifficultyWindow(m_difficulty, uiRoot);
-                window.OnCloseStart += OnDifficultyWindowClose;
-                m_difficultyWindow = window;
-                return "Advanced difficulty window: shown";
-            }
-            catch (Exception exception)
-            {
-                m_log.Exception(exception, "Advanced difficulty window failed open.");
-                return "Advanced difficulty editor is unavailable in this scene.";
-            }
+            return "Use COI's native Difficulty Settings window from the game menu. TajsDifficulty extends its audited options there.";
         }
 
         [ConsoleCommand(
             documentation: "Shows supported difficulty values and lifecycle classifications.",
             customCommandName: "tajs_difficulty_status")]
-        public string DifficultyStatus() => m_difficulty?.Status() ?? "Advanced difficulty editor is unavailable in this scene.";
+        public string DifficultyStatus() => m_difficulty?.Status() ?? "Native difficulty settings are unavailable in this scene.";
 
         [ConsoleCommand(
             documentation: "Queues one runtime-safe difficulty value. Extreme values require CONFIRM.",
@@ -455,7 +448,7 @@ namespace TajsCOI.Tweaks
         {
             if (m_difficulty is null)
             {
-                return "Advanced difficulty editor is unavailable in this scene.";
+                return "Native difficulty settings are unavailable in this scene.";
             }
             if (string.IsNullOrWhiteSpace(memberName) || string.IsNullOrWhiteSpace(value))
             {
@@ -471,30 +464,9 @@ namespace TajsCOI.Tweaks
         {
             if (m_difficulty is null)
             {
-                return "Advanced difficulty editor is unavailable in this scene.";
+                return "Native difficulty settings are unavailable in this scene.";
             }
             return m_difficulty.Reset(target, string.Equals(confirmation, "CONFIRM", StringComparison.OrdinalIgnoreCase));
-        }
-
-        private void OnDifficultyWindowClose(Window window)
-        {
-            if (m_difficultyWindow.HasValue && ReferenceEquals(m_difficultyWindow.Value, window))
-            {
-                window.OnCloseStart -= OnDifficultyWindowClose;
-                m_difficultyWindow = Option<TajsDifficultyWindow>.None;
-            }
-        }
-
-        private void CloseDifficultyWindow()
-        {
-            if (!m_difficultyWindow.HasValue)
-            {
-                return;
-            }
-            TajsDifficultyWindow window = m_difficultyWindow.Value;
-            window.OnCloseStart -= OnDifficultyWindowClose;
-            window.CloseNoFade();
-            m_difficultyWindow = Option<TajsDifficultyWindow>.None;
         }
 
         [ConsoleCommand(

@@ -91,6 +91,8 @@ namespace TajsCOI.Tweaks.Features.Difficulty
     /// </summary>
     internal static class TajsDifficultyOptionCatalog
     {
+        private static readonly List<string> s_unsupportedPercentMembers = new();
+
         private static readonly IReadOnlyDictionary<string, TajsDifficultyRange> s_percentRanges =
             new Dictionary<string, TajsDifficultyRange>(StringComparer.Ordinal)
             {
@@ -319,8 +321,11 @@ namespace TajsCOI.Tweaks.Features.Difficulty
 
         internal static IReadOnlyList<TajsDifficultyDefinition> Definitions => s_definitions;
 
+        internal static IReadOnlyList<string> UnsupportedPercentMembers => s_unsupportedPercentMembers;
+
         internal static void ApplyExtendedOptions()
         {
+            s_unsupportedPercentMembers.Clear();
             Type configType = typeof(GameDifficultyConfig);
             Type percentInfoType = typeof(DiffSettingInfo<Percent>);
             FieldInfo[] fields = configType.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
@@ -333,17 +338,26 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                         continue;
                     }
 
-                    TajsDifficultyRange range = FindRange(info.ValueMemberName);
-                    Percent[] options = range.Values()
-                        .Distinct()
-                        .Select(value => value.Percent())
-                        .OrderBy(value => value.RawValue)
-                        .ToArray();
-
-                    if (string.Equals(info.ValueMemberName, "WorldMinesReservesDiff", StringComparison.Ordinal))
+                    if (!TryFindRange(info.ValueMemberName, out TajsDifficultyRange? range))
                     {
-                        options = options.Append(Percent.MaxValue).ToArray();
+                        if (!s_unsupportedPercentMembers.Contains(info.ValueMemberName, StringComparer.Ordinal))
+                        {
+                            s_unsupportedPercentMembers.Add(info.ValueMemberName);
+                        }
+
+                        Log.Warning(
+                            "TajsDifficulty discovered unsupported percent setting " +
+                            info.ValueMemberName + "; native options remain unchanged.");
+                        continue;
                     }
+
+                    // Preserve every vanilla option and add only the explicitly audited Tajs
+                    // values. Native AdvancedSettingsTab consumes this same array in both the
+                    // new-game and in-game difficulty surfaces.
+                    Percent[] options = BuildExtendedOptions(
+                        info.Options,
+                        range!,
+                        string.Equals(info.ValueMemberName, "WorldMinesReservesDiff", StringComparison.Ordinal));
 
                     FieldInfo? optionsField = percentInfoType.GetField("Options", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                     optionsField?.SetValue(info, options);
@@ -360,10 +374,26 @@ namespace TajsCOI.Tweaks.Features.Difficulty
         internal static TajsDifficultyDefinition? Find(string memberName) =>
             s_definitions.FirstOrDefault(definition => string.Equals(definition.MemberName, memberName, StringComparison.Ordinal));
 
-        internal static TajsDifficultyRange FindRange(string memberName) =>
-            s_percentRanges.TryGetValue(memberName, out TajsDifficultyRange? range)
-                ? range
-                : new TajsDifficultyRange(-100, 500, 10);
+        internal static TajsDifficultyRange? FindRange(string memberName) =>
+            s_percentRanges.TryGetValue(memberName, out TajsDifficultyRange? range) ? range : null;
+
+        internal static bool TryFindRange(string memberName, out TajsDifficultyRange? range) =>
+            s_percentRanges.TryGetValue(memberName, out range);
+
+        internal static Percent[] BuildExtendedOptions(
+            IEnumerable<Percent>? vanillaOptions,
+            TajsDifficultyRange range,
+            bool includeUnlimited)
+        {
+            IEnumerable<Percent> values = (vanillaOptions ?? Array.Empty<Percent>())
+                .Concat(range.Values().Select(value => value.Percent()));
+            if (includeUnlimited)
+            {
+                values = values.Append(Percent.MaxValue);
+            }
+
+            return values.Distinct().OrderBy(value => value.RawValue).ToArray();
+        }
 
         internal static TajsDifficultyDefinition CreateDiscovered(string memberName, Type propertyType)
         {
@@ -373,7 +403,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 SplitWords(memberName),
                 "Additional",
                 "Discovered from the current game's difficulty configuration. Runtime editing is disabled until its semantics are audited.",
-                isPercent ? TajsDifficultyApplyMode.NewGameOnly : TajsDifficultyApplyMode.Unsupported,
+                TajsDifficultyApplyMode.Unsupported,
                 isPercent ? FindRange(memberName) : null);
         }
 
