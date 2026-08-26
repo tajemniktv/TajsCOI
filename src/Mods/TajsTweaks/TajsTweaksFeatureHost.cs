@@ -60,6 +60,7 @@ namespace TajsCOI.Tweaks
             settings.Changed += OnSettingChanged;
             gameLoop.RenderUpdateEnd.AddNonSaveable(this, OnRenderUpdateEnd);
             gameLoop.Terminate.AddNonSaveable(this, OnTerminate);
+            gameLoop.RegisterInitState(this, InitializeDeferredFeatures);
 
             TryInstall(runtime, "LinePlacement", TweaksLinePlacementFeature.Install);
             TryInstall(runtime, "PinnedProducts", TweaksPinnedProductsFeature.Install);
@@ -70,11 +71,9 @@ namespace TajsCOI.Tweaks
             TryInstall(runtime, "BuildDefaults", TweaksBuildDefaultsFeature.Install);
             TryInstall(runtime, "ResourceOverlays", TweaksResourceOverlayFeature.Install);
             TryInstall(runtime, "MiningTowerColors", harmony => TweaksMiningTowerColorFeature.Install(harmony, settings));
-            TryInstall(runtime, "StackerDesignationOverlay", harmony => TweaksStackerDesignationFeature.Install(harmony, resolver));
             TryInstall(runtime, "StatisticsTotals", TweaksStatisticsTotalsFeature.Install);
             TryInstall(runtime, "ResourceDepositClusters", TweaksResourceDepositFeature.Install);
             TryInstallResolved(runtime, "InfiniteGroundwater", m_infiniteGroundwater.Install);
-            TryInstall(runtime, "SteamAndExhaustStorage", harmony => TweaksSteamStorageFeature.Install(harmony, resolver));
             TryInstall(runtime, "ShipCargoPreload", harmony => TweaksShipPreloadFeature.Install(harmony, resolver, settings));
             TryInstall(runtime, "AutoWorldDelivery", harmony => TweaksAutoShipDeliveryFeature.Install(harmony, resolver));
             TryInstall(runtime, "BattleScoreOnMap", TweaksBattleScoreFeature.Install);
@@ -87,9 +86,7 @@ namespace TajsCOI.Tweaks
             TweaksMineTruckStagingFeature.SetResolver(resolver);
             TryInstall(runtime, "StuckTruckRecovery", TweaksStuckTruckRecoveryFeature.Install);
             TweaksStuckTruckRecoveryFeature.SetResolver(resolver);
-            TryInstall(runtime, "StorageOverrides", harmony => TweaksStorageFeature.Install(harmony, resolver));
             TryInstall(runtime, "TransportThroughput", TweaksTransportThroughputFeature.Install);
-            TryInstall(runtime, "GameplayPlusPlusBridge", harmony => TweaksGameplayPlusPlusFeature.Install(harmony, resolver));
             TryInstall(runtime, "ParkingHqOffload", TweaksParkingHqOffloadFeature.Install);
             TweaksParkingHqOffloadFeature.SetResolver(resolver);
             TryInstall(runtime, "KeepFullEmptyMarkers", TweaksKeepFullEmptyMarkerFeature.Install);
@@ -286,6 +283,18 @@ namespace TajsCOI.Tweaks
                 TweaksHudLayoutFeature.Apply(m_resolver, m_settings);
                 m_overclocking?.Tick();
             }
+        }
+
+        private void InitializeDeferredFeatures()
+        {
+            // TajsTweaksFeatureHost is constructed while DependencyResolver is instantiating
+            // global dependencies. Resolver-backed feature setup must wait until InitState,
+            // after InstantiateAllAndLock has completed, otherwise the resolver rejects the
+            // nested TryResolve call as a recursive dependency resolution.
+            TryInstall(m_runtime, "StackerDesignationOverlay", harmony => TweaksStackerDesignationFeature.Install(harmony, m_resolver));
+            TryInstall(m_runtime, "SteamAndExhaustStorage", harmony => TweaksSteamStorageFeature.Install(harmony, m_resolver));
+            TryInstall(m_runtime, "StorageOverrides", harmony => TweaksStorageFeature.Install(harmony, m_resolver));
+            TryInstall(m_runtime, "GameplayPlusPlusBridge", harmony => TweaksGameplayPlusPlusFeature.Install(harmony, m_resolver));
         }
 
         private void EnsureOverclockingFeature()

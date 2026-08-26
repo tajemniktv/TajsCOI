@@ -565,7 +565,10 @@ namespace TajsCOI.Tweaks
         internal static void Install(Harmony harmony)
         {
             Type type = typeof(RecipeUi);
-            s_durationContainer = type.GetField("m_durationContainer", s_any);
+            // 0.8.7a used a private m_durationContainer field. In 0.8.7b the same
+            // presentation container is exposed as a protected DurationContainer field.
+            s_durationContainer = type.GetField("DurationContainer", s_any) ??
+                                   type.GetField("m_durationContainer", s_any);
             s_inputs = type.GetField("m_inputs", s_any);
             s_outputs = type.GetField("m_outputs", s_any);
             s_duration = type.GetField("m_duration", s_any);
