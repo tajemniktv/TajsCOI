@@ -11,6 +11,7 @@ using Mafi.Core.Buildings.VehicleDepots;
 using Mafi.Core.Console;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Dynamic;
+using Mafi.Core.Factory.Transports;
 using Mafi.Core.GameLoop;
 using Mafi.Core.Input;
 using Mafi.Core.Prototypes;
@@ -57,6 +58,7 @@ namespace TajsCOI.Tweaks
             m_infiniteGroundwater = new TweaksInfiniteGroundwaterFeature(resolver, gameLoop, m_log);
             TajsTweaksSettingsCatalog.RegisterAll(settings);
             TajsTweaksRuntimeState.Load(settings);
+            TransportPillarRulesFeature.Initialize();
             settings.Changed += OnSettingChanged;
             gameLoop.RenderUpdateEnd.AddNonSaveable(this, OnRenderUpdateEnd);
             gameLoop.Terminate.AddNonSaveable(this, OnTerminate);
@@ -87,6 +89,7 @@ namespace TajsCOI.Tweaks
             TryInstall(runtime, "StuckTruckRecovery", TweaksStuckTruckRecoveryFeature.Install);
             TweaksStuckTruckRecoveryFeature.SetResolver(resolver);
             TryInstall(runtime, "TransportThroughput", TweaksTransportThroughputFeature.Install);
+            TryInstall(runtime, "TransportPillarRules", TransportPillarRulesFeature.Install);
             TryInstall(runtime, "ParkingHqOffload", TweaksParkingHqOffloadFeature.Install);
             TweaksParkingHqOffloadFeature.SetResolver(resolver);
             TryInstall(runtime, "KeepFullEmptyMarkers", TweaksKeepFullEmptyMarkerFeature.Install);
@@ -295,6 +298,13 @@ namespace TajsCOI.Tweaks
             TryInstall(m_runtime, "SteamAndExhaustStorage", harmony => TweaksSteamStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "StorageOverrides", harmony => TweaksStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "GameplayPlusPlusBridge", harmony => TweaksGameplayPlusPlusFeature.Install(harmony, m_resolver));
+            TryInstallResolved(m_runtime, "PillarConstraintOverrides", () =>
+            {
+                if (TajsTweaksRuntimeState.IgnorePillarRequirements && m_resolver.TryResolve(out ProtosDb protosDb))
+                {
+                    TransportPillarRulesFeature.ApplyPillarConstraintOverrides(protosDb);
+                }
+            });
         }
 
         private void EnsureOverclockingFeature()
@@ -687,6 +697,52 @@ namespace TajsCOI.Tweaks
             int? min = minimum is null ? null : parsedMinimum;
             int? max = maximum is null ? null : parsedMaximum;
             return m_overclocking.SetGroupAuto(parsedGroup, parsedEnabled, min, max, out string message) ? message : "Not changed: " + message;
+        }
+
+        [ConsoleCommand(
+            documentation: "Shows the configured transport and train pillar rules, including their vanilla values.",
+            customCommandName: "tajs_transport_pillars_status")]
+        public string TransportPillarsStatus() => TransportPillarRulesFeature.Describe();
+
+        [ConsoleCommand(
+            documentation: "Restores all transport and train pillar settings to their vanilla values; restart the game to apply them.",
+            customCommandName: "tajs_transport_pillars_reset")]
+        public string ResetTransportPillarRules()
+        {
+            SettingSetResult[] results =
+            {
+                m_settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TransportPillarSupportRadius, TransportPillarRulesFeature.VanillaTransportSupportRadius),
+                m_settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TransportPillarMaxHeight, TransportPillarRulesFeature.VanillaTransportPillarHeight),
+                m_settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainTrackPillarMaxHeight, TransportPillarRulesFeature.VanillaTrainPillarHeight),
+                m_settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainTrackPillarSupportDistance, TransportPillarRulesFeature.VanillaTrainSupportDistance),
+                m_settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.IgnorePillarRequirements, false),
+            };
+            return results.All(x => x.Success)
+                ? "Transport and train pillar settings reset to vanilla. Restart the game to apply them."
+                : "Pillar reset was incomplete: " + string.Join("; ", results.Where(x => !x.Success).Select(x => x.Error));
+        }
+
+        [ConsoleCommand(
+            documentation: "Queues a bounded rectangular transport pillar add/remove operation through the native manager.",
+            customCommandName: "tajs_transport_pillars_area")]
+        public string TransportPillarsArea(string? operation, string minX, string minY, string maxX, string maxY, string? confirmation = null)
+        {
+            if (!int.TryParse(minX, out int parsedMinX) || !int.TryParse(minY, out int parsedMinY) ||
+                !int.TryParse(maxX, out int parsedMaxX) || !int.TryParse(maxY, out int parsedMaxY) ||
+                !m_resolver.TryResolve(out TransportsManager manager) || !m_resolver.TryResolve(out IInputScheduler scheduler))
+            {
+                return "Usage: tajs_transport_pillars_area <add|remove> <min-x> <min-y> <max-x> <max-y> [CONFIRM]";
+            }
+
+            return TransportPillarRulesFeature.ApplyTransportArea(
+                manager,
+                scheduler,
+                operation,
+                parsedMinX,
+                parsedMinY,
+                parsedMaxX,
+                parsedMaxY,
+                confirmation);
         }
 
         [ConsoleCommand(

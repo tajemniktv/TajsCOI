@@ -101,6 +101,11 @@ namespace TajsCOI.Tweaks
         internal static bool BridgeCableEnabled;
         internal static string BridgeScaleMode = "off";
         internal static bool CenterDriving;
+        internal static int TransportPillarSupportRadius;
+        internal static int TransportPillarMaxHeight;
+        internal static int TrainTrackPillarMaxHeight;
+        internal static int TrainTrackPillarSupportDistance;
+        internal static bool IgnorePillarRequirements;
         internal static bool FleetManager;
         internal static int FleetBatchLimit;
         internal static bool Overclocking;
@@ -209,6 +214,11 @@ namespace TajsCOI.Tweaks
             BridgeCableEnabled = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.BridgeCableEnabled);
             BridgeScaleMode = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.BridgeScaleMode);
             CenterDriving = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.CenterDriving);
+            TransportPillarSupportRadius = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TransportPillarSupportRadius);
+            TransportPillarMaxHeight = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TransportPillarMaxHeight);
+            TrainTrackPillarMaxHeight = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainTrackPillarMaxHeight);
+            TrainTrackPillarSupportDistance = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainTrackPillarSupportDistance);
+            IgnorePillarRequirements = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.IgnorePillarRequirements);
             FleetManager = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.FleetManager);
             FleetBatchLimit = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.FleetBatchLimit);
             Overclocking = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.Overclocking);
@@ -347,6 +357,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.BridgeTrussEnabled: BridgeTrussEnabled = value; break;
                 case TajsTweaksSettingsCatalog.BridgeCableEnabled: BridgeCableEnabled = value; break;
                 case TajsTweaksSettingsCatalog.CenterDriving: CenterDriving = value; break;
+                case TajsTweaksSettingsCatalog.IgnorePillarRequirements: IgnorePillarRequirements = value; break;
                 case TajsTweaksSettingsCatalog.InfiniteGroundwater: InfiniteGroundwater = value; break;
                 case TajsTweaksSettingsCatalog.AllowSteam: AllowSteam = value; break;
                 case TajsTweaksSettingsCatalog.AllowExhaust: AllowExhaust = value; break;
@@ -392,6 +403,10 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.ResourceOverlayLabelAlpha: ResourceOverlayLabelAlpha = value; break;
                 case TajsTweaksSettingsCatalog.DesignationLimit: DesignationLimit = value; break;
                 case TajsTweaksSettingsCatalog.FleetBatchLimit: FleetBatchLimit = value; break;
+                case TajsTweaksSettingsCatalog.TransportPillarSupportRadius: TransportPillarSupportRadius = value; break;
+                case TajsTweaksSettingsCatalog.TransportPillarMaxHeight: TransportPillarMaxHeight = value; break;
+                case TajsTweaksSettingsCatalog.TrainTrackPillarMaxHeight: TrainTrackPillarMaxHeight = value; break;
+                case TajsTweaksSettingsCatalog.TrainTrackPillarSupportDistance: TrainTrackPillarSupportDistance = value; break;
                 case TajsTweaksSettingsCatalog.OverclockMaxPercent: OverclockMaxPercent = value; break;
                 case TajsTweaksSettingsCatalog.OverclockTransportSpacingBonus: OverclockTransportSpacingBonus = value; break;
                 case TajsTweaksSettingsCatalog.OverclockTransportStackBonus: OverclockTransportStackBonus = value; break;

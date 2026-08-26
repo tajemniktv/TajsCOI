@@ -108,6 +108,12 @@ namespace TajsCOI.Tweaks
         internal const string BridgeScaleMode = "bridge_scale_mode";
         internal const string CenterDriving = "center_driving";
 
+        internal const string TransportPillarSupportRadius = "transport_pillar_support_radius";
+        internal const string TransportPillarMaxHeight = "transport_pillar_max_height";
+        internal const string TrainTrackPillarMaxHeight = "train_track_pillar_max_height";
+        internal const string TrainTrackPillarSupportDistance = "train_track_pillar_support_distance";
+        internal const string IgnorePillarRequirements = "ignore_pillar_requirements";
+
         internal const string FleetManager = "fleet_manager";
         internal const string FleetBatchLimit = "fleet_batch_limit";
 
@@ -1136,6 +1142,68 @@ namespace TajsCOI.Tweaks
                 "Uses center-driving lane masks through the optional Gameplay++ bridge integration. Requires a game restart.",
                 false,
                 "Building",
+                applyMode: SettingApplyMode.RestartGame,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Integer(
+                ModId,
+                DisplayName,
+                TransportPillarSupportRadius,
+                "Transport pillar support radius [vanilla: 4 tiles]",
+                "Maximum support spacing radius used by transport construction and pathability. Valid range is 1-16 tiles; requires a game restart.",
+                4,
+                1,
+                TransportPillarRulesFeature.MaxConfiguredSupportRadius,
+                1,
+                "Transport",
+                applyMode: SettingApplyMode.RestartGame,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Integer(
+                ModId,
+                DisplayName,
+                TransportPillarMaxHeight,
+                "Transport pillar maximum height [vanilla: 6 tiles]",
+                "Maximum ordinary transport-pillar height used by construction, preview, and validation. Valid range is 1-16 tiles; requires a game restart.",
+                6,
+                1,
+                TransportPillarRulesFeature.MaxConfiguredPillarHeight,
+                1,
+                "Transport",
+                applyMode: SettingApplyMode.RestartGame,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Integer(
+                ModId,
+                DisplayName,
+                TrainTrackPillarMaxHeight,
+                "Train-track pillar maximum height [vanilla: 6 tiles]",
+                "Maximum train-track pillar height used by construction, preview, and validation. Valid range is 1-16 tiles; requires a game restart.",
+                6,
+                1,
+                TransportPillarRulesFeature.MaxConfiguredPillarHeight,
+                1,
+                "Transport",
+                applyMode: SettingApplyMode.RestartGame,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Integer(
+                ModId,
+                DisplayName,
+                TrainTrackPillarSupportDistance,
+                "Train-track pillar support distance [vanilla: 7 tiles]",
+                "Maximum train-track span used by native support propagation. Valid range is 1-32 tiles; requires a game restart.",
+                7,
+                1,
+                TransportPillarRulesFeature.MaxConfiguredTrainSupportDistance,
+                1,
+                "Transport",
+                applyMode: SettingApplyMode.RestartGame,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                IgnorePillarRequirements,
+                "Ignore pillar requirements",
+                "Disables pillar requirements for transports and elevated layout entities, matching the native ignore-pillar behavior. Existing terrain and occupancy checks remain authoritative; requires a game restart.",
+                false,
+                "Transport",
                 applyMode: SettingApplyMode.RestartGame,
                 flags: SettingFlags.Advanced),
             SettingDescriptor.Boolean(

@@ -81,6 +81,14 @@ set_game_speed_unlocked <speed>
 get_game_speed_unlocked
 ```
 
+#### Transport pillars
+
+Taj's Tweaks exposes bounded transport and train pillar support/height settings with vanilla defaults. Changes require a
+game restart. The native pillar toolbar supports single-tile add/remove operations; rectangular transport operations
+are available through `tajs_transport_pillars_area` and retain the game's structural validation.
+The advanced `Ignore pillar requirements` setting can disable pillar requirements for transports and elevated
+layout entities; it is restart-scoped and leaves terrain/occupancy checks active.
+
 ### Taj's Profiler
 
 Taj's Profiler provides optional, behavior-neutral diagnostics for investigating slowdowns and
