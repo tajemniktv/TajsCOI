@@ -163,6 +163,7 @@ namespace TajsCOI.Tweaks
 
         private static readonly ConditionalWeakTable<VisualElement, BarColorState> s_barColors = new();
         private static bool s_wasBarColorsEnabled;
+        private static bool s_wasAutoColumnsEnabled;
 
         internal static void Install(Harmony harmony)
         {
@@ -235,7 +236,8 @@ namespace TajsCOI.Tweaks
         private static void Apply(object hud)
         {
             if (!TajsTweaksRuntimeState.PinnedSort && !TajsTweaksRuntimeState.PinnedLowOnly && !TajsTweaksRuntimeState.PinnedCompact &&
-                !TajsTweaksRuntimeState.PinnedBarColors && !s_wasBarColorsEnabled && TajsTweaksRuntimeState.PinnedColumns == 1)
+                !TajsTweaksRuntimeState.PinnedBarColors && !s_wasBarColorsEnabled &&
+                !TajsTweaksRuntimeState.PinnedAutoColumns && !s_wasAutoColumnsEnabled && TajsTweaksRuntimeState.PinnedColumns == 1)
             {
                 return;
             }
@@ -246,8 +248,6 @@ namespace TajsCOI.Tweaks
                 {
                     return;
                 }
-
-                s_setColumnsMethod?.Invoke(column, new object[] { Math.Max(1, Math.Min(4, TajsTweaksRuntimeState.PinnedColumns)) });
 
                 var rowList = new List<object>();
                 foreach (object row in rows)
@@ -290,9 +290,16 @@ namespace TajsCOI.Tweaks
                     selected = sortable;
                 }
 
+                List<object> selectedRows = selected.ToList();
+                int rowsPerColumn = Math.Max(10, Math.Min(35, TajsTweaksRuntimeState.PinnedRowsPerColumn));
+                int columns = TajsTweaksRuntimeState.PinnedAutoColumns
+                    ? Math.Min(4, Math.Max(1, (selectedRows.Count + rowsPerColumn - 1) / rowsPerColumn))
+                    : Math.Max(1, Math.Min(4, TajsTweaksRuntimeState.PinnedColumns));
+                s_setColumnsMethod?.Invoke(column, new object[] { columns });
+
                 Type itemType = s_addMethod!.GetParameters()[0].ParameterType.GetGenericArguments()[0];
                 var typed = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType))!;
-                foreach (object row in selected)
+                foreach (object row in selectedRows)
                 {
                     if (itemType.IsInstanceOfType(row))
                     {
@@ -304,6 +311,7 @@ namespace TajsCOI.Tweaks
                 s_addMethod.Invoke(column, new object[] { typed });
                 s_alternateBackgroundMethod?.Invoke(hud, null);
                 s_wasBarColorsEnabled = TajsTweaksRuntimeState.PinnedBarColors;
+                s_wasAutoColumnsEnabled = TajsTweaksRuntimeState.PinnedAutoColumns;
             }
             catch
             {

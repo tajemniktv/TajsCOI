@@ -27,6 +27,8 @@ namespace TajsCOI.Tweaks
         internal static bool PinnedCompact;
         internal static bool PinnedBarColors;
         internal static int PinnedColumns;
+        internal static bool PinnedAutoColumns;
+        internal static int PinnedRowsPerColumn;
         internal static bool PinnedLowOnly;
         internal static int PinnedLowThreshold;
         internal static int PinnedLowLimit;
@@ -86,6 +88,8 @@ namespace TajsCOI.Tweaks
             PinnedCompact = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedCompact);
             PinnedBarColors = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedBarColors);
             PinnedColumns = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedColumns);
+            PinnedAutoColumns = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedAutoColumns);
+            PinnedRowsPerColumn = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedRowsPerColumn);
             PinnedLowOnly = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedLowOnly);
             PinnedLowThreshold = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedLowThreshold);
             PinnedLowLimit = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedLowLimit);
@@ -213,6 +217,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.PinnedSort: PinnedSort = value; break;
                 case TajsTweaksSettingsCatalog.PinnedCompact: PinnedCompact = value; break;
                 case TajsTweaksSettingsCatalog.PinnedBarColors: PinnedBarColors = value; break;
+                case TajsTweaksSettingsCatalog.PinnedAutoColumns: PinnedAutoColumns = value; break;
                 case TajsTweaksSettingsCatalog.PinnedLowOnly: PinnedLowOnly = value; break;
                 case TajsTweaksSettingsCatalog.ResourceOverlay: ResourceOverlay = value; break;
                 case TajsTweaksSettingsCatalog.ResourceOverlayDepth: ResourceOverlayDepth = value; break;
@@ -244,6 +249,7 @@ namespace TajsCOI.Tweaks
             {
                 case TajsTweaksSettingsCatalog.LinePlacementLength: LinePlacementLength = value; break;
                 case TajsTweaksSettingsCatalog.PinnedColumns: PinnedColumns = value; break;
+                case TajsTweaksSettingsCatalog.PinnedRowsPerColumn: PinnedRowsPerColumn = value; break;
                 case TajsTweaksSettingsCatalog.PinnedLowThreshold: PinnedLowThreshold = value; break;
                 case TajsTweaksSettingsCatalog.PinnedLowLimit: PinnedLowLimit = value; break;
                 case TajsTweaksSettingsCatalog.RecoverPeriod: RecoverPeriod = value; break;

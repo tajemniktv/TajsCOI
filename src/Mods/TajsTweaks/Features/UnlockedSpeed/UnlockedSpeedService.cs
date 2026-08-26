@@ -191,15 +191,16 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
         private void RebuildSequence() =>
             m_sequence = SpeedSequence.Build(MaxSpeed, m_sequenceMode, m_customSequence).ToArray();
 
-        private static void InputUpdatePrefix(GameSpeedController __instance, ref bool __result)
+        private static bool InputUpdatePrefix(GameSpeedController __instance, ref bool __result)
         {
             if (s_current is null || !s_current.TryGetTarget(out UnlockedSpeedService? service) ||
                 !service.TryHandleInput(__instance))
             {
-                return;
+                return true;
             }
 
             __result = true;
+            return false;
         }
 
         private static void SetSimSpeedPostfix(SimLoopEvents __instance, int speedMult)

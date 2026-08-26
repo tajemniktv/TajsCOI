@@ -26,6 +26,8 @@ namespace TajsCOI.Tweaks
         internal const string PinnedCompact = "pinned_compact";
         internal const string PinnedBarColors = "pinned_bar_colors";
         internal const string PinnedColumns = "pinned_columns";
+        internal const string PinnedAutoColumns = "pinned_auto_columns";
+        internal const string PinnedRowsPerColumn = "pinned_rows_per_column";
         internal const string PinnedLowOnly = "pinned_low_only";
         internal const string PinnedLowThreshold = "pinned_low_threshold_percent";
         internal const string PinnedLowLimit = "pinned_low_limit";
@@ -217,6 +219,30 @@ namespace TajsCOI.Tweaks
                 "HUD",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                PinnedAutoColumns,
+                "Automatic pinned-product columns",
+                "Automatically chooses up to four pinned-product columns from the bounded rows-per-column setting; this takes precedence over the fixed column count.",
+                false,
+                "HUD",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Integer(
+                ModId,
+                DisplayName,
+                PinnedRowsPerColumn,
+                "Pinned rows per column",
+                "Maximum pinned-product rows per column when automatic columns are enabled.",
+                20,
+                10,
+                35,
+                1,
+                "HUD",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: PinnedAutoColumns),
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,
