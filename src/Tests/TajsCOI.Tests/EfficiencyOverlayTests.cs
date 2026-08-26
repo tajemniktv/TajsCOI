@@ -28,9 +28,8 @@ namespace TajsCOI.Tests
         [Theory]
         [InlineData("status", 50, "Working", "Working")]
         [InlineData("compact", 50, "Working", "●")]
-        public void DisplayModesRemainCompact(string mode, int percentage, string status, string expected)
-        {
-            Assert.Equal(expected, EfficiencyOverlayPresentation.Format(mode, percentage, status));
-        }
+        public void DisplayModesRemainCompact(string mode, int percentage, string status, string expected) => Assert.Equal(
+            expected,
+            EfficiencyOverlayPresentation.Format(mode, percentage, status));
     }
 }

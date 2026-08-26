@@ -199,9 +199,7 @@ namespace TajsCOI.Tweaks
 
         private static readonly IReadOnlyList<SettingChoice> s_efficiencyOverlayModes = new[]
         {
-            new SettingChoice("percentage", "Percentage"),
-            new SettingChoice("status", "Status"),
-            new SettingChoice("compact", "Compact marker"),
+            new SettingChoice("percentage", "Percentage"), new SettingChoice("status", "Status"), new SettingChoice("compact", "Compact marker"),
         };
 
         internal static IReadOnlyList<SettingDescriptor> All { get; } = new SettingDescriptor[]

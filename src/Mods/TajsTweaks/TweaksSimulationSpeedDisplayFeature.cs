@@ -14,7 +14,6 @@ using Mafi.Unity;
 using Mafi.Unity.InputControl;
 using Mafi.Unity.Ui.Hud;
 using Mafi.Unity.UiToolkit.Component;
-using Mafi.Unity.UiToolkit.Library;
 using UiLabel = Mafi.Unity.UiToolkit.Library.Label;
 
 namespace TajsCOI.Tweaks
@@ -39,19 +38,13 @@ namespace TajsCOI.Tweaks
         internal static void Install(Harmony harmony)
         {
             ConstructorInfo constructor = typeof(CalendarControlsHud).GetConstructor(
-                                                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                                                binder: null,
-                                                new[]
-                                                {
-                                                    typeof(GameSpeedController),
-                                                    typeof(IWeatherManager),
-                                                    typeof(ICalendar),
-                                                    typeof(IUnityInputMgr),
-                                                },
-                                                modifiers: null)
-                                            ?? throw new MissingMethodException(
-                                                typeof(CalendarControlsHud).FullName,
-                                                ".ctor(GameSpeedController, IWeatherManager, ICalendar, IUnityInputMgr)");
+                                              BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                                              binder: null,
+                                              new[] { typeof(GameSpeedController), typeof(IWeatherManager), typeof(ICalendar), typeof(IUnityInputMgr) },
+                                              modifiers: null)
+                                          ?? throw new MissingMethodException(
+                                              typeof(CalendarControlsHud).FullName,
+                                              ".ctor(GameSpeedController, IWeatherManager, ICalendar, IUnityInputMgr)");
 
             harmony.Patch(
                 constructor,
@@ -109,7 +102,7 @@ namespace TajsCOI.Tweaks
                                        typeof(CalendarControlsHud).FullName,
                                        "native speed-control row");
 
-            var display = new UiLabel(SimulationSpeedDisplayText.Format(speedController.SimSpeedMult).AsLoc())
+            UiLabel display = new UiLabel(SimulationSpeedDisplayText.Format(speedController.SimSpeedMult).AsLoc())
                 .Name(DisplayName)
                 .InfoIconPosition(UiLabel.InfoIconPos.None)
                 .FontBold()
@@ -125,20 +118,13 @@ namespace TajsCOI.Tweaks
             display.RootElement.style.flexShrink = 0f;
             speedRow.Add(display);
 
-            var state = new DisplayState
-            {
-                Display = display,
-                SpeedController = speedController,
-            };
+            var state = new DisplayState { Display = display, SpeedController = speedController };
             s_states.Add(hud, state);
             Update(state);
             display.Schedule.Execute(() => Update(state)).Every(250L);
         }
 
-        private static void Update(DisplayState state)
-        {
-            state.Display.Value(SimulationSpeedDisplayText.Format(state.SpeedController.SimSpeedMult).AsLoc());
-        }
+        private static void Update(DisplayState state) => state.Display.Value(SimulationSpeedDisplayText.Format(state.SpeedController.SimSpeedMult).AsLoc());
 
         private static UiComponent? FindSpeedButtonsRow(UiComponent root)
         {

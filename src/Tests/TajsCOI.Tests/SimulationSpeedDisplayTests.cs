@@ -12,9 +12,6 @@ namespace TajsCOI.Tests
         [Theory]
         [InlineData(1, "1x")]
         [InlineData(15, "15x")]
-        public void FormatsRequestedMultiplierLikeSpeedPlusPlus(int speed, string expected)
-        {
-            Assert.Equal(expected, SimulationSpeedDisplayText.Format(speed));
-        }
+        public void FormatsRequestedMultiplierLikeSpeedPlusPlus(int speed, string expected) => Assert.Equal(expected, SimulationSpeedDisplayText.Format(speed));
     }
 }

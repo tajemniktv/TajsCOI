@@ -619,19 +619,13 @@ namespace TajsCOI.Tweaks
 
         private static void InstallCanonicalDesignationSupport(Harmony harmony, string typeName)
         {
-            Type? managerType = Type.GetType(typeName, false);
+            var managerType = Type.GetType(typeName, false);
             MethodInfo? method = managerType is null
                 ? null
                 : AccessTools.Method(
                     managerType,
                     "GetCanonicalDesignationRange",
-                    new[]
-                    {
-                        typeof(Tile2i),
-                        typeof(Tile2i),
-                        typeof(Tile2i).MakeByRefType(),
-                        typeof(Tile2i).MakeByRefType(),
-                    });
+                    new[] { typeof(Tile2i), typeof(Tile2i), typeof(Tile2i).MakeByRefType(), typeof(Tile2i).MakeByRefType() });
             if (method is null || !method.IsStatic || method.ReturnType != typeof(void) ||
                 method.GetMethodBody() is null)
             {

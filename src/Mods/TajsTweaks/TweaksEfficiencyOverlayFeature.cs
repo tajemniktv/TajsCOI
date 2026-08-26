@@ -11,8 +11,8 @@ using Mafi.Core.Entities;
 using Mafi.Core.Entities.Dynamic;
 using Mafi.Core.Factory;
 using Mafi.Localization;
-using Mafi.Unity.InputControl;
 using Mafi.Unity;
+using Mafi.Unity.InputControl;
 using Mafi.Unity.Ui.Hud;
 using Mafi.Unity.UiStatic.Toolbar;
 using Mafi.Unity.UiToolkit.Component;
@@ -33,7 +33,7 @@ namespace TajsCOI.Tweaks
                 throw new InvalidOperationException("IEntitiesManager or ToolbarHud unavailable");
             }
 
-            Type? textMeshType = Type.GetType("UnityEngine.TextMesh, UnityEngine.TextRenderingModule", false);
+            var textMeshType = Type.GetType("UnityEngine.TextMesh, UnityEngine.TextRenderingModule", false);
             if (textMeshType is null)
             {
                 throw new TypeLoadException("UnityEngine.TextMesh");
@@ -238,7 +238,9 @@ namespace TajsCOI.Tweaks
     {
         private const int MaximumLabels = 1024;
         private const float MinimumViewportMargin = 0.05f;
+
         private const float LabelHeight = 2.25f;
+
         // TextMesh.characterSize is already expressed in world units. Keep the
         // transform scale in the same range as the working resource-overlay
         // labels; the previous 0.045-0.22 range made these labels effectively
@@ -388,20 +390,22 @@ namespace TajsCOI.Tweaks
             foreach (IEntityWithProductivityCounter entity in m_entities!.GetAllEntitiesOfType<IEntityWithProductivityCounter>())
             {
                 if (m_snapshots.Count >= MaximumLabels || entity.IsDestroyed || entity is not IEntityWithPosition positioned ||
-                    !IsIncluded(entity) || camera is not null && (positioned.Position3f.ToVector3() - camera.transform.position).sqrMagnitude > maxDistanceSquared)
+                    !IsIncluded(entity) ||
+                    camera is not null && (positioned.Position3f.ToVector3() - camera.transform.position).sqrMagnitude > maxDistanceSquared)
                 {
                     continue;
                 }
 
                 int percentage = EfficiencyOverlayPresentation.Percentage(entity.OngoingMonthlyData);
                 string status = GetStatus(entity);
-                m_snapshots.Add(new Snapshot
-                {
-                    Entity = entity,
-                    Position = positioned.Position3f.ToVector3() + Vector3.up * LabelHeight,
-                    Text = EfficiencyOverlayPresentation.Format(TajsTweaksRuntimeState.EfficiencyOverlayMode, percentage, status),
-                    Color = EfficiencyOverlayPresentation.ColorFor(percentage),
-                });
+                m_snapshots.Add(
+                    new Snapshot
+                    {
+                        Entity = entity,
+                        Position = positioned.Position3f.ToVector3() + Vector3.up * LabelHeight,
+                        Text = EfficiencyOverlayPresentation.Format(TajsTweaksRuntimeState.EfficiencyOverlayMode, percentage, status),
+                        Color = EfficiencyOverlayPresentation.ColorFor(percentage),
+                    });
             }
 
             for (int i = 0; i < m_snapshots.Count; i++)
@@ -453,7 +457,7 @@ namespace TajsCOI.Tweaks
         {
             while (m_labels.Count <= index)
             {
-                GameObject labelObject = new GameObject("Tajs efficiency label");
+                var labelObject = new GameObject("Tajs efficiency label");
                 labelObject.transform.SetParent(transform, false);
                 Component text = labelObject.AddComponent(m_textMeshType!);
                 SetTextProperty(text, "fontSize", 42);
