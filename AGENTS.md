@@ -1,367 +1,22 @@
 # Taj's COI - Agent Guidelines
 
-This file defines repository architecture, implementation constraints, validation rules, and agent-execution discipline
-for TajsCOI.
+Repository-specific architecture, compatibility, validation, and contributor rules for TajsCOI.
+
+Global `~/.codex/AGENTS.md` execution discipline also applies. This file overrides it where TajsCOI needs stricter or
+more specific behavior.
+
+If global guidance is unavailable, still use exact-symbol searches, bounded reads, evidence reuse, narrow tool output,
+distinct investigation/implementation/validation phases, and stop after the completion gate.
 
 ## Documentation boundary
 
-`README.md` is public, user-facing documentation. Keep it short and practical: describe available mods, user-visible
-features, and how they are used in-game. Do not put installation instructions there until the supported distribution
-flow is ready.
+`README.md` is public/user-facing. Keep it short and practical: available mods, user-visible features, and in-game use.
+Do not put installation instructions there until the supported distribution flow is ready.
 
-Keep implementation architecture, project layout, dependency rules, private API details, build/test commands,
-compatibility assumptions, profiling internals, contributor workflow, and agent-operating rules in this file or relevant
-`docs/` documents.
+Keep architecture, project layout, dependency rules, private API details, build/test commands, compatibility
+assumptions, profiling internals, contributor workflow, and agent-facing project rules here or in relevant `docs/`.
 
----
-
-## Agent operating contract
-
-For every repository task:
-
-1. Establish the requested outcome, scope, acceptance criteria, exclusions, and canonical sources before broad
-   investigation.
-2. Investigate only questions whose answers can change the implementation, validation result, or verdict.
-3. Reuse evidence already gathered during the task.
-4. Prefer `search -> bounded source range -> edit` over whole-file reads.
-5. Once enough evidence exists to act, act. Do not continue searching merely for confidence.
-6. Keep investigation, implementation, validation, and audit as distinct phases.
-7. Validate with the narrowest decisive check first.
-8. Broaden validation only when repository policy, acceptance criteria, or remaining uncertainty requires it.
-9. Do not reopen resolved questions without contradictory evidence.
-10. Stop when the requested outcome and required evidence level are satisfied.
-
-Exploration is not progress by itself.
-
-Every read, search, probe, build, test, or inspection must do at least one of:
-
-- resolve an open question;
-- locate code needed for an imminent edit;
-- validate a concrete hypothesis;
-- verify changed behavior;
-- provide required completion evidence.
-
-If it does none of those, do not run it.
-
-Optimize for evidence gained and work completed, not raw tool-call count.
-
----
-
-## Long-task state and compaction recovery
-
-For long or investigation-heavy tasks, maintain temporary `.codex/TASK_STATE.md`.
-
-Use it when the task spans multiple phases, substantial reference research has already been completed, context
-compaction is likely, or multiple acceptance criteria must be tracked.
-
-Update it only after a material conclusion, implementation milestone, scope change, or decisive validation result. Do
-not update it after ordinary reads or individual edits.
-
-Recommended structure:
-
-```md
-# Task state
-
-## Goal
-<exact requested outcome>
-
-## Acceptance
-- ...
-
-## Completed
-- ...
-
-## Confirmed facts
-- ...
-
-## Decisions
-- ...
-
-## Rejected / disproven
-- ...
-
-## Already researched
-- `path/file.cs`: <relevant conclusion>
-- Reference X: <relevant conclusion>
-
-## Changed files
-- ...
-
-## Validation
-- Debug: ...
-- Tests: ...
-- Release: ...
-
-## Open questions
-- ...
-
-## Next
-1. ...
-
-## Stop condition
-Task is complete when ...
-
-## Do not repeat
-- repository discovery
-- resolved API searches
-- completed reference audits
-```
-
-After automatic or manual context compaction:
-
-1. Do not restart repository discovery.
-2. Read `.codex/TASK_STATE.md` first when it exists.
-3. Inspect `git status --short`.
-4. Inspect the focused current diff if needed.
-5. Reconcile the checkpoint with the actual working tree.
-6. Resume from `Next`.
-7. Do not reread `Already researched` material without a new concrete question.
-8. Do not regenerate an already-valid plan.
-
-The repository and working tree are authoritative execution state. A compacted conversation summary is supporting
-context.
-
-Delete or reset `TASK_STATE.md` when the task is complete.
-
----
-
-## Source-reading discipline
-
-Use the smallest read that can answer the current question.
-
-Default escalation:
-
-1. `rg -n "<symbol|term>" <specific-path>`
-2. Read roughly 40-120 lines around relevant matches.
-3. Expand nearby ranges only when required.
-4. Read the complete file only when overall structure/lifecycle materially matters.
-
-For files >500 lines, a single investigation step should normally inspect
-no more than 150-200 total source lines from that file, also:
-
-- search first;
-- prefer bounded ranges;
-- avoid reading more than ~200 contiguous lines without a concrete reason;
-- do not repeatedly reopen the same file when one search can locate all relevant symbols.
-
-Do not dump large files merely to become familiar with them.
-
-### Good vs bad
-
-Bad:
-
-```text
-read 1800-line manager
-search all refs for generic terms
-read several related classes completely
-search again with broader terms
-```
-
-Good:
-
-```text
-rg exact/native symbol
-read bounded range
-inspect one direct caller if ownership remains unclear
-record conclusion
-continue
-```
-
----
-
-### Tool-output budget
-
-Default shell commands should request no more than 4,000-6,000 output tokens.
-
-A command expected to exceed ~200 source lines or ~8,000 output tokens must be split or narrowed unless the complete output is specifically required.
-
-Do not use `max_output_tokens` above 12,000 for ordinary source investigation.
-
-Do not batch multiple large source reads into one tool call.
-
-If one tool result reaches its output limit, treat the query as too broad:
-
-- do not repeat it with a larger limit;
-- narrow by symbol, path, or line range.
-
-For source investigation, prefer several decision-dependent small reads over one speculative 30,000-token batch.
-
----
-
-## Evidence reuse and search discipline
-
-Information already obtained remains valid unless:
-
-- the relevant file changed;
-- the prior result failed or was truncated;
-- a new question needs unseen source lines;
-- later evidence contradicts it.
-
-Do not reread unchanged source solely to refresh context or confidence.
-
-Before rereading, identify:
-
-1. the new question;
-2. why prior evidence is insufficient;
-3. the smallest additional range needed.
-
-Before broad repository/reference/decompiled-source search, identify the unanswered question it should resolve.
-
-Good:
-
-> Need the native owner of machine speed mutation, so search `SetBaseSpeedFactor`.
-
-Bad:
-
-> Search broadly for anything related to overclocking.
-
-Do not run successive broad searches that substantially answer the same question.
-
-After two exploration attempts without material new evidence:
-
-- synthesize what is known;
-- narrow the hypothesis;
-- edit/test if evidence is sufficient; or
-- change strategy.
-
-Do not perform a third equivalent search.
-
----
-
-## Evidence-delta rule
-
-Repeated operations must produce meaningful new evidence.
-
-Do not repeat:
-
-- `git status` when no file operation occurred;
-- the same `rg` query against unchanged sources;
-- a successful build before compile-relevant changes;
-- a successful test suite before behavior-relevant changes;
-- unchanged logs/reports;
-- the same reference-source inspection.
-
-If a repeated operation produces no new evidence twice, stop repeating it and change strategy.
-
----
-
-## Shell-output and batching discipline
-
-Commands should return only information likely to affect the next decision.
-
-Prefer:
-
-- `rg -n`;
-- exact paths;
-- bounded `Select-Object -First/-Skip`;
-- path-specific diffs;
-- `git diff --stat`;
-- concise test verbosity;
-- filtered logs.
-
-Avoid:
-
-- whole large source-file dumps;
-- unfiltered recursive listings;
-- complete repository diffs when only a few paths matter;
-- complete successful build logs;
-- broad decompiled-source dumps.
-
-If output is unexpectedly large, narrow the query before doing more exploration.
-
-Batch only independent operations already known to be needed.
-
-Prefer:
-
-```text
-search -> synthesize -> next decision
-```
-
-over:
-
-```text
-search many vaguely related things -> consume output -> decide afterward
-```
-
-Retry only failed, missing, or truncated operations.
-
----
-
-## Phase discipline
-
-### Investigation
-
-Goal: obtain enough evidence to choose an implementation or verdict.
-
-Exit when:
-
-- the owning code path is identified;
-- required API/compatibility assumptions are understood;
-- important implementation risks are known;
-- enough evidence exists to act.
-
-Do not seek exhaustive understanding of adjacent systems.
-
-### Implementation
-
-Make the smallest coherent change satisfying acceptance criteria.
-
-Do not restart broad investigation unless implementation exposes a concrete blocker or contradicts an earlier
-assumption.
-
-Prefer coherent edit batches over tiny speculative edits.
-
-### Validation
-
-Use the narrowest decisive check first.
-
-Broaden only when repository completion rules, acceptance criteria, failures, or meaningful uncertainty require it.
-
-### Audit
-
-Perform at most one general correctness audit after required validation succeeds.
-
-A second general audit requires:
-
-- a newly discovered defect;
-- failed validation;
-- contradictory evidence; or
-- explicit user request.
-
-Do not repeatedly restart "final review."
-
----
-
-## Completion and stopping rule
-
-A code-change task is complete when:
-
-- requested acceptance criteria are satisfied;
-- required Debug/Release builds pass;
-- required tests pass;
-- final diff/repository hygiene passes;
-- no concrete unresolved correctness issue remains.
-
-Once this gate is met:
-
-- do not start another speculative audit;
-- do not broaden scope;
-- do not refactor adjacent code merely because it could be cleaner;
-- do not search for hypothetical additional problems;
-- do not rerun already-passing evidence without a relevant change.
-
-A theoretical possibility of another issue is not a concrete unresolved correctness issue.
-
-Then stop.
-
----
-
-## Project intent and structure
-
-Captain of Industry is a complex Unity supply-chain/factory-automation simulator.
-
-TajsCOI is a monorepo containing multiple Captain of Industry mods plus shared libraries. Preserve architectural
-boundaries even when shortcuts would make one task locally easier.
+## Project structure
 
 ```text
 src/
@@ -376,7 +31,7 @@ src/
 └─ Tests/
 ```
 
-Compile-time contract dependency:
+Compile-time contracts:
 
 ```text
                  TajsCOI.Common
@@ -384,57 +39,36 @@ Compile-time contract dependency:
    TajsCore  TajsTweaks  TajsProfiler  TajsPerformance
 ```
 
-Tweaks, Profiler, and Performance manifest-depend on Core but must not compile-reference `TajsCore.dll`.
+Tweaks, Profiler, and Performance manifest-depend on Core but must not compile-reference `TajsCore.dll`. Runtime
+services inject Common's `ITajsRuntime` through the CoI dependency resolver.
 
-Runtime services inject Common's `ITajsRuntime` through the CoI dependency resolver.
-
----
+Preserve these boundaries even when a shortcut would make one task locally easier.
 
 ## Project responsibilities
 
 ### TajsCOI.Common
 
-A normal library, not an `IMod`.
+Normal library, not an `IMod`.
 
-Allowed:
+Allowed: generic utilities/collections, genuinely shared metric/timing primitives, generic reflection helpers,
+version/signature description types, shared result/error abstractions, and formatting reused by multiple mods.
 
-- generic utilities/collections;
-- shared metric/timing primitives;
-- generic reflection helpers;
-- version/signature description types;
-- shared result/error abstractions;
-- genuinely reused formatting helpers.
+Not allowed: gameplay features, mod lifecycle ownership, feature-specific MaFi bindings, suite-wide mutable service
+state, or code used by only one mod.
 
-Not allowed:
-
-- gameplay features;
-- mod lifecycle ownership;
-- feature-specific MaFi bindings;
-- suite-wide mutable service state;
-- code used by only one mod.
-
-Rule: **if only one mod uses it, keep it in that mod.**
-
-Common has no MaFi or Harmony dependency.
+**If only one mod uses it, keep it in that mod.** Common has no MaFi or Harmony dependency.
 
 ### TajsCore
 
-Installable runtime foundation.
+Installable, gameplay-neutral suite runtime foundation.
 
-Owns:
+Owns suite lifecycle coordination, shared logging/console commands, compatibility/game-version services, Harmony runtime
+coordination, mod registration/discovery, cross-mod capability detection, and true cross-mod service/diagnostic
+registries.
 
-- suite/runtime lifecycle coordination;
-- shared logging;
-- shared console commands;
-- compatibility/game-version services;
-- Harmony runtime/patch coordination;
-- mod registration/discovery;
-- cross-mod capability detection;
-- true cross-mod diagnostics/service registries.
+Installing only Core should cause essentially no gameplay-visible change.
 
-Installing only TajsCore should produce essentially no gameplay-visible change.
-
-Core explicitly loads:
+Packaged runtime load order:
 
 ```text
 0Harmony.dll
@@ -446,23 +80,21 @@ Dependent mods reference Common with copy-local disabled and receive Core servic
 
 ### TajsTweaks
 
-Contains user-facing QoL/gameplay tweaks.
-
-Organize features as vertical slices under:
+User-facing QoL/gameplay tweaks. Organize each feature as a vertical slice under:
 
 ```text
 Features/<FeatureName>/
 ```
 
-Keep config, patches, bindings, runtime state, and helpers together unless genuinely shared.
+Keep config, patches, bindings, state, and helpers local unless genuinely shared. Do not turn `Infrastructure/`,
+`Interop/`, `Services/`, or `Managers/` into catch-all directories.
 
-Do not turn `Infrastructure/`, `Interop/`, `Services/`, or `Managers/` into catch-all directories.
-
-Private-MaFi compatibility seams must fail gracefully and preserve vanilla behavior when signatures no longer match.
+Private-MaFi compatibility seams must fail gracefully and leave vanilla behavior available when signatures no longer
+match.
 
 ### TajsProfiler
 
-Diagnostics only. Observe the game; do not fix it.
+Diagnostics only: observe the game, do not fix it.
 
 ```text
 TajsProfiler/
@@ -471,53 +103,27 @@ TajsProfiler/
 ```
 
 Core may own generic sessions, snapshots, histories, histograms, comparisons, spike recording, formatting, and
-aggregation.
-
-Subsystem-specific hooks/counters/snapshots belong in probes such as:
-
-```text
-Probes/Dumping/
-Probes/Simulation/
-Probes/Vehicles/
-Probes/Logistics/
-Probes/PathFinding/
-Probes/Terrain/
-Probes/GC/
-Probes/Frame/
-```
+aggregation. Subsystem-specific hooks/counters/snapshots belong in probes such as Dumping, Simulation, Vehicles,
+Logistics, PathFinding, Terrain, GC, and Frame.
 
 Generic capture/reporting belongs in Core; subsystem knowledge belongs in the owning probe.
 
-Current runtime diagnostics include bounded captures for save/load timing, memory, CPU, GC, renderer telemetry,
-lifecycle checkpoints, Harmony audit, and initialization hotspots.
-
 ### TajsPerformance
 
-Contains only evidence-backed performance fixes.
+Only evidence-backed performance fixes.
 
-A Performance feature needs:
+A feature needs a measured problem, identified expensive stage, clear behavioral contract, behavior-preserving
+implementation, and before/after validation.
 
-- a measured problem;
-- identified expensive stage;
-- clear behavioral contract;
-- behavior-preserving implementation;
-- before/after validation.
-
-Profiling/diagnostics belong in TajsProfiler.
-
-Experimental/default-off candidates require issue-specific in-game A/B acceptance before default enablement. Proxy
-benchmarks alone are insufficient.
+Profiling belongs in TajsProfiler. Experimental/default-off candidates require issue-specific in-game A/B evidence
+before default enablement; proxy benchmarks alone are insufficient.
 
 Stable product-owner/slot buffers must never be compacted by product-buffer shrinking.
 
 ### TajsDebugger
 
 If created, reserve it for invasive developer tooling such as live state mutation, debug overlays, entity dumps, and
-path visualization.
-
-Do not stretch TajsProfiler into a general debugger.
-
----
+path visualization. Do not stretch Profiler into a general debugger.
 
 ## Namespaces and identities
 
@@ -531,21 +137,12 @@ TajsCOI.Profiler
 TajsCOI.Performance
 ```
 
-Installable IDs may remain:
+Installable IDs may remain `TajsCore`, `TajsTweaks`, `TajsProfiler`, and `TajsPerformance`.
 
-```text
-TajsCore
-TajsTweaks
-TajsProfiler
-TajsPerformance
-```
-
-Do not rename user-facing mod IDs casually; they affect manifests, dependencies, deployed directories, and save/mod
+Do not casually rename user-facing mod IDs; they affect manifests, dependencies, deployed directories, and save/mod
 identity.
 
----
-
-## Harmony rules
+## Harmony
 
 Core owns the packaged Harmony runtime.
 
@@ -558,112 +155,72 @@ TajsCOI.Profiler.RuntimePerformance
 TajsCOI.Performance.StreamingSaveCompression
 ```
 
-Do not add a suite-wide patch manager merely because multiple scoped owners exist.
+Do not add a suite-wide patch manager merely because multiple scoped owners exist. Prefer explicit patch installation
+over broad `PatchAll()` when practical.
 
-Prefer explicit patch installation over broad `PatchAll()` when practical.
+Every patch should establish the vanilla target, why it is needed, observe-vs-modify behavior, failure behavior when the
+signature is absent, and unpatch/dispose behavior if required.
 
-Every patch should establish:
+Profiler patches must fail open and must not suppress vanilla exceptions, alter search results, reorder jobs, mutate
+saves, throttle gameplay, introduce alternative algorithms, or perform expensive reflection/enumeration/stack traces in
+hot paths unless explicitly bounded.
 
-1. patched vanilla method;
-2. reason;
-3. observe vs modify;
-4. behavior if method/signature is absent;
-5. unpatch/dispose behavior if required.
-
-Profiler patches must fail open and must not:
-
-- suppress vanilla exceptions;
-- change search results;
-- reorder jobs;
-- mutate saves;
-- throttle gameplay;
-- introduce alternative algorithms;
-- perform expensive reflection/enumeration/stack traces in hot paths unless explicitly bounded.
-
----
+Feature patch installation must not leave partial patch state after compatibility failure. Scoped owners roll back their
+own Harmony ID when required.
 
 ## Private MaFi API / interop
 
 Private APIs are compatibility seams.
 
-Principle:
-
 > Centralize the mechanism; localize the knowledge.
 
-Generic reflection/signature helpers may live in Common/Core.
-
-Feature-specific private knowledge belongs with the owning feature/probe, e.g.:
+Generic reflection/signature helpers may live in Common/Core. Specific private knowledge belongs with the owning
+feature/probe, e.g.:
 
 ```text
 TajsProfiler/Probes/Dumping/Interop/
 TajsTweaks/Features/Foo/FooBindings.cs
 ```
 
-Prefer that over a global `MafiPrivateApi.cs`.
+Prefer this over a global `MafiPrivateApi.cs`.
 
-Validate expected:
+Validate member existence, parameter types, return type, static/instance shape, and supported game version. On failure,
+disable only the affected feature/probe and log a useful compatibility message.
 
-- member existence;
-- parameter types;
-- return type;
-- static/instance shape;
-- supported game version.
+Avoid per-call reflection in hot paths; resolve delegates/accessors once when practical.
 
-On failure, disable the affected feature/probe gracefully and log a useful compatibility message. Do not crash unrelated
-functionality.
+For private MaFi/Harmony behavior, inspect the exact supported game-version reference rather than guessing from older
+source or another mod.
 
-Avoid per-call reflection in hot paths; resolve handles/delegates/accessors once when practical.
+## Lifecycle
 
----
+Keep root `IMod` implementations small. Use simple feature/probe hosts rather than giant unrelated lifecycle lists. Do
+not invent frameworks that obscure the game's real lifecycle.
 
-## Feature/probe lifecycle
+Process-wide state: loaded assemblies, CLR statics, Harmony patch tables.
 
-Keep root `IMod` implementations small and boring.
+Gameplay scene/resolver state: `[GlobalDependency]` instances, `DependencyResolver`, managers/renderers, console/UI
+objects, and `SimLoopEvents`.
 
-Use simple feature/probe hosts rather than giant root lists of unrelated lifecycle calls.
+Process-lifetime patches must be idempotent. Process-static state must not strongly retain resolver-scoped objects or
+callbacks.
 
-Do not invent lifecycle frameworks that obscure the game/mod-loader lifecycle.
-
-Process-wide state includes:
-
-- loaded assemblies;
-- CLR statics;
-- Harmony patch tables.
-
-Gameplay scene/resolver state includes:
-
-- `[GlobalDependency]` service instances;
-- `DependencyResolver`;
-- managers/renderers;
-- console/UI objects;
-- `SimLoopEvents`.
-
-Process-lifetime patches must be idempotent.
-
-Process-static state must not strongly retain resolver-scoped objects or callbacks.
-
----
+Do not resolve gameplay-scene dependencies while the resolver is still constructing its dependency graph. Defer
+resolver-scoped work to the appropriate gameplay lifecycle.
 
 ## Configuration
 
-Features/probes own their setting descriptors.
-
-Shared contracts live in `TajsCOI.Common`; persistence/dashboard live in `TajsCore`.
+Features/probes own setting descriptors. Shared contracts live in Common; persistence/dashboard live in Core.
 
 ```text
 feature/probe -> SettingDescriptor through ITajsSettings
 TajsCore      -> persistence + runtime changes
 ```
 
-Do not add `ModJsonConfig` or per-mod `config.json`.
+Do not add `ModJsonConfig` or per-mod `config.json`. Use stable `ModId.key` identifiers. Declare `Immediate`,
+`ReloadSave`, or `RestartGame` honestly. Invalid persisted values fall back to descriptor defaults.
 
-Use stable `ModId.key` identifiers.
-
-Declare `Immediate`, `ReloadSave`, or `RestartGame` honestly.
-
-Invalid persisted values fall back to descriptor defaults.
-
-Global values:
+Global settings:
 
 ```text
 %APPDATA%\Captain of Industry\TajsCOI\settings.json
@@ -677,93 +234,82 @@ tajs_settings_list
 tajs_settings_set <ModId.key> <value>
 ```
 
-The dashboard is gameplay-scene-only until a deliberate main-menu bootstrap exists. Do not accidentally resolve
-gameplay-scene services in main-menu lifetime.
+The dashboard is gameplay-scene-only until a deliberate main-menu bootstrap exists.
 
----
+## Profiling
 
-## Profiling design rules
-
-Prefer top-down measurement before deep instrumentation:
+Prefer top-down measurement:
 
 1. measure a broad/root scope;
 2. identify the expensive subsystem;
 3. instrument one level deeper;
 4. repeat until isolated.
 
-Do not instrument dozens of internals based only on suspicion.
+Do not instrument dozens of internals based on suspicion.
 
-Capture cumulative and worst-event cost where meaningful.
+Capture cumulative and worst-event cost where meaningful. Deep probes must be cheap when disabled and bounded when
+enabled. Avoid unbounded history, per-call formatting, hot-loop stack traces/reflection, or dictionaries keyed by
+transient objects unless a bounded diagnostic explicitly requires them.
 
-Deep probes should be cheap when disabled and bounded when enabled.
+Distinguish wall-clock capture duration, simulation/update duration, cumulative nested work, and potentially concurrent
+work. Do not present nested cumulative time as exclusive wall time.
 
-Avoid unbounded history, per-call formatting, hot-loop stack traces/reflection, or transient-object dictionaries unless
-a bounded diagnostic explicitly requires them.
+## Performance fixes
 
-Distinguish wall-clock duration, simulation/update duration, cumulative nested work, and concurrent work. Do not present
-nested cumulative time as exclusive wall time.
+Before changing game behavior: reproduce, measure, identify the actual expensive stage, understand vanilla semantics
+from exact supported references, implement the smallest behavior-preserving fix, compare before/after, verify relevant
+save/gameplay semantics, and document compatibility assumptions.
 
----
+Do not promote a profiler observation directly into a workaround. If another mod may be the root cause, identify the
+interaction first.
 
-## Performance-fix rules
-
-Before changing game behavior:
-
-- reproduce;
-- measure;
-- identify the actual expensive stage;
-- understand vanilla semantics from supported references;
-- implement the smallest behavior-preserving fix;
-- compare before/after;
-- verify saves/gameplay behavior;
-- document compatibility assumptions.
-
-Do not promote profiler observations directly into workarounds.
-
-If another mod may be the root cause, identify the interaction before adding a blanket vanilla workaround.
-
----
+Build/test success is not a substitute for issue-specific in-game A/B evidence when runtime performance is the
+acceptance criterion.
 
 ## Source/reference policy
 
-The main repository must not contain:
+The main repository must not contain Captain of Industry binaries, decompiled MaFi source, proprietary third-party
+compiled/decompiled code, or private reference repositories/submodules containing those materials.
 
-- Captain of Industry binaries;
-- decompiled MaFi source;
-- proprietary third-party compiled/decompiled code;
-- private reference repositories/submodules containing those materials.
+`TajemnikTV/TajsCOI-Refs` is the private research repository. Use it for signatures, call flow, compatibility, and
+historical behavior while keeping TajsCOI implementation original and clean.
 
-`TajemnikTV/TajsCOI-Refs` is a separate private research repository.
-
-Use it to understand signatures, call flow, compatibility, and historical behavior, while keeping TajsCOI implementation
-original and clean.
-
-Do not paste large proprietary/decompiled source into comments, docs, tests, or PR descriptions.
-
-Avoid mentioning other mods, especially in public/user-facing material.
+Do not paste large proprietary/decompiled source into comments, docs, tests, issues, or PR descriptions. Avoid
+mentioning other mods in public/user-facing material.
 
 Record important reference conclusions so they do not need to be repeatedly rediscovered.
 
----
+### Versioned refs
+
+When private behavior matters:
+
+- use exact target refs under `TajsCOI-Refs/refs/<version>`;
+- use that version's Managed references for build/decompilation when required;
+- do not infer current signatures solely from older decompiled source;
+- treat older compatibility notes as stale when the seam changed.
+
+Latest recorded working baseline is CoI `0.8.7b`; tasks targeting another version must use that version's exact refs.
 
 ## Build and repository hygiene
 
-The repository is Rider-first but must remain compatible with normal `dotnet`/MSBuild workflows where supported.
+Rider-first, but normal `dotnet`/MSBuild workflows must remain supported where applicable.
 
-Before declaring a code change complete:
+Before completion:
 
 - build Debug;
+- run relevant Debug tests;
 - build Release;
-- use exact configured CoI references;
-- run available relevant tests;
-- inspect final diff for generated files, binaries, local paths, or accidental refs;
-- confirm no unintended build output remains.
+- run relevant Release tests;
+- use exact configured CoI refs;
+- inspect focused final diff/hygiene;
+- ensure no unintended build/deploy output remains.
 
-Do not commit local game paths, Rider user settings, build output, game DLLs, or recovered artifacts.
+Do not commit local game paths, Rider user settings, build output, game DLLs, or recovered/decompiled artifacts.
 
-Keep `src/Mods/Directory.Build.props` and `.targets` generic.
+Keep `src/Mods/Directory.Build.props` and `Directory.Build.targets` generic. Mod-specific hacks stay in the owning
+project unless truly required by every CoI mod.
 
-Normal local commands:
+Normal helpers:
 
 ```powershell
 .\build.ps1
@@ -774,138 +320,81 @@ Normal local commands:
 .\tail-log.ps1 -Pattern "Tajs|Path|Simulation"
 ```
 
-Test project references must disable deployment, Unity copying, and release packaging.
+Exact-ref direct validation for the recorded `0.8.7b` baseline:
 
-Per-mod project properties are authoritative for identity, version, game compatibility, manifests, and build metadata.
+```powershell
+$env:COI_ROOT = "E:\dev\CaptainOfIndustry\TajsCOI-Refs\refs\0.8.7b"
 
----
+dotnet build TajsCOI.slnx --configuration Debug --no-restore -m:1 -nr:false
+dotnet test  TajsCOI.slnx --configuration Debug --no-build --no-restore
+
+dotnet build TajsCOI.slnx --configuration Release --no-restore -m:1 -nr:false
+dotnet test  TajsCOI.slnx --configuration Release --no-build --no-restore
+```
+
+Adjust `COI_ROOT` for another target version.
+
+Test project references must disable deployment, Unity copying, and release packaging. Per-mod project properties are
+authoritative for identity, version, compatibility, manifests, and build metadata.
+
+Do not launch/deploy the game unless requested or required by acceptance criteria. Report build/test proof separately
+from in-game/runtime proof.
 
 ## Tests
 
-Unit-test pure logic, especially metrics, histories, comparisons, config parsing, version/signature selection, and
-formatting.
+Unit-test pure logic, especially metrics/histories/comparisons, config parsing/validation, version/signature selection,
+and generic formatting.
 
-Treat Harmony/game-runtime behavior as integration work.
+Treat Harmony/game-runtime behavior as integration work. Do not create fake unit tests that merely assert forwarding
+while missing the semantic interaction.
 
-Do not create fake tests that merely assert argument forwarding while missing the actual semantic interaction.
+Use targeted tests during implementation; run required broader Debug/Release gates after the relevant change batch.
 
-Use targeted tests during implementation; run broader required gates after relevant changes are complete unless a broad
-run is needed to diagnose a failure.
-
----
+Passing tests do not prove UI layout, patch installation, runtime lifecycle behavior, Unity/driver counter availability,
+or performance improvement unless they actually exercise those behaviors.
 
 ## GitHub / PR discipline
 
-Keep PRs conceptually coherent.
+Keep PRs conceptually coherent. Refactors should not silently add gameplay changes; profiler PRs should not quietly add
+optimizations; performance-fix PRs should explain evidence and validation.
 
-A refactor PR should not silently add gameplay changes.
+If investigation disproves the original hypothesis, update scope/title/body while keeping the final change coherent.
 
-A profiler PR should not quietly add an optimization.
+Before addressing review comments: verify each against current head, distinguish stale findings from valid ones, fix
+correctness rather than wording, and resolve only after the code actually addresses the issue.
 
-A performance-fix PR should explain what was slow and how the change was validated.
-
-If investigation disproves the original hypothesis, update scope/title/body as needed while keeping the final change
-coherent.
-
-Before addressing review comments:
-
-- verify each against current head;
-- distinguish stale findings from valid current issues;
-- fix correctness rather than blindly satisfying wording;
-- resolve threads only after code truly addresses them.
-
-End long work at a coherent commit/handoff boundary with:
-
-- current diff;
-- completed behavior;
-- canonical owners;
-- remaining acceptance criteria;
-- known failures;
-- validation;
-- excluded scope.
+End work at a coherent commit/handoff boundary with current diff, completed behavior, canonical owners, remaining
+acceptance criteria, known failures, validation, and excluded scope.
 
 After a large coherent feature implementation, commit it. Substantial follow-up fixes should normally be separate
 commits when practical.
 
----
+Do not let issue closure or adjacent work replace an explicitly requested PR/deliverable.
 
 ## Architectural anti-patterns
 
 Do not introduce:
 
-- god-like `TajsCore` features;
+- gameplay features into Core;
 - a Common dumping ground;
 - lateral mod dependencies without strong reason;
 - feature-specific MaFi knowledge in Common;
 - giant global `Managers`, `Services`, `Patches`, or `Interop` buckets;
 - speculative frameworks without concrete ownership/lifecycle need.
 
-Prefer the smallest local implementation with a clean boundary. Extract only after real reuse or cross-mod need appears.
+Prefer the smallest local implementation with a clean boundary. Extract only after real reuse or real cross-mod need.
 
----
+## Completion gate
 
-## Practical recovery examples
+A TajsCOI code-change task is complete when:
 
-### After compaction
+1. requested scope/behavior is satisfied;
+2. exact-version compatibility assumptions are checked where relevant;
+3. Debug build and relevant Debug tests pass;
+4. Release build and relevant Release tests pass;
+5. focused final diff/hygiene is clean and intentional;
+6. no local game paths, binaries, decompiled artifacts, generated junk, or accidental refs were introduced;
+7. architecture/ownership boundaries remain intact;
+8. no concrete unresolved correctness issue remains.
 
-Bad:
-
-```text
-rerun repository discovery
-reread references
-regenerate full plan
-repeat broad searches
-```
-
-Good:
-
-```text
-read TASK_STATE
-git status --short
-inspect focused diff if needed
-resume Next
-revisit prior evidence only if contradicted
-```
-
-### After validation
-
-Bad:
-
-```text
-Debug passes
-tests pass
-Release passes
-start another speculative audit
-reread giant implementation files
-```
-
-Good:
-
-```text
-Debug passes
-tests pass
-Release passes
-focused diff hygiene
-no concrete unresolved defect
-stop
-```
-
----
-
-## Final execution checklist
-
-Before finishing repository work, verify:
-
-1. Requested scope is satisfied.
-2. Acceptance criteria are satisfied or explicitly reported incomplete.
-3. No concrete correctness issue is being hidden.
-4. Required Debug build is green.
-5. Required Release build is green.
-6. Relevant tests are green.
-7. Final diff contains only intended changes.
-8. No local paths, binaries, generated artifacts, or accidental refs were introduced.
-9. Architectural ownership remains intact.
-10. Temporary task state is cleaned up or intentionally retained for handoff.
-11. No further non-speculative investigation is required.
-
-Then stop.
+Then stop. Do not begin another speculative audit or adjacent refactor.
