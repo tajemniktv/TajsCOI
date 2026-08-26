@@ -1166,8 +1166,13 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             {
                 if (entity is Machine machine)
                 {
+                    Percent oldBaseSpeed = (Percent)m_machineSpeedBase.GetValue(machine)!;
                     m_machineSpeedBase.SetValue(machine, percent.Percent());
                     m_machineUpdateSpeed.Invoke(machine, null);
+                    if (oldBaseSpeed.ToIntPercentRounded() != percent && machine.WorkedThisTick)
+                    {
+                        RestartActiveMachineAnimation(machine);
+                    }
                     RefreshConsumers(machine);
                     return true;
                 }
@@ -1218,6 +1223,32 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             {
                 m_log.Exception(exception, "Applying overclock rate failed.");
                 return false;
+            }
+        }
+
+        private void RestartActiveMachineAnimation(Machine machine)
+        {
+            try
+            {
+                if (!machine.RecipeProductionTicks.IsPositive)
+                {
+                    return;
+                }
+
+                FieldInfo? recipeResultField = typeof(Machine).GetField(
+                    "m_recipeResult", BindingFlags.Instance | BindingFlags.NonPublic);
+                object? recipeResult = recipeResultField?.GetValue(machine);
+                FieldInfo? durationField = recipeResult?.GetType().GetField(
+                    "Duration", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (durationField?.GetValue(recipeResult) is Duration duration && duration.IsPositive)
+                {
+                    machine.AnimationStatesProvider.Start(duration);
+                }
+            }
+            catch
+            {
+                // The native recipe timer remains authoritative if animation resynchronization
+                // is unavailable on a future COI build.
             }
         }
 

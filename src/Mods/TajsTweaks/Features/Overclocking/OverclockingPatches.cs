@@ -11,6 +11,7 @@ using Mafi.Core.Buildings.Offices;
 using Mafi.Core.Buildings.OreSorting;
 using Mafi.Core.Buildings.Waste;
 using Mafi.Core.Entities;
+using Mafi.Core.Entities.Animations;
 using Mafi.Core.Factory.ComputingPower;
 using Mafi.Core.Factory.ElectricPower;
 using Mafi.Core.Factory.Machines;
@@ -28,6 +29,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         private const string MinConfigKey = "TajsTweaks_OverclockMin";
         private const string MaxConfigKey = "TajsTweaks_OverclockMax";
         private static readonly Dictionary<Type, MethodInfo?> s_simUpdateMethods = new();
+        private static readonly FieldInfo? s_animationParamsField = AccessTools.Field(typeof(AnimationWithPauseState), "m_params");
 
         internal static void Install(Harmony harmony, TajsOverclockingFeature feature)
         {
@@ -44,6 +46,13 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             PatchSimUpdate(harmony, typeof(Machine), nameof(MachineSimUpdatePostfix), required: true);
             PatchSimUpdate(harmony, typeof(OfficeBuilding), nameof(ExtraWorkSimUpdatePostfix), required: false);
             PatchSimUpdate(harmony, typeof(WasteSortingPlant), nameof(ExtraWorkSimUpdatePostfix), required: false);
+
+            MethodInfo? animationStart = AccessTools.Method(typeof(AnimationWithPauseState), nameof(AnimationWithPauseState.Start));
+            if (animationStart is not null && s_animationParamsField is not null)
+            {
+                harmony.Patch(animationStart,
+                    prefix: new HarmonyMethod(typeof(OverclockingPatches), nameof(AnimationWithPauseStartPrefix)));
+            }
 
             MethodInfo addToConfig = AccessTools.Method(typeof(Machine), "AddToConfig")
                 ?? throw new MissingMethodException(typeof(Machine).FullName, "AddToConfig");
@@ -114,6 +123,55 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
 
             TajsOverclockingFeature.ReapplyMachine(__instance);
+        }
+
+        /// <summary>
+        /// COI's AnimationWithPauseState has a fixed animation timeline, while Machine gives it
+        /// the speed-scaled recipe duration. At an overclock the latter can become shorter than
+        /// the former. Adjust only the state-local duration passed to this animation state; the
+        /// machine's RecipeResult remains the authoritative production timer.
+        /// </summary>
+        internal static void AnimationWithPauseStartPrefix(
+            AnimationWithPauseState __instance,
+            IEntity entity,
+            ref Duration currentProcessDuration)
+        {
+            try
+            {
+                if (!TajsTweaksRuntimeState.Overclocking || entity is not Machine machine)
+                {
+                    return;
+                }
+
+                int overclockPercent = TajsOverclockingFeature.GetPercentFor(machine);
+                if (overclockPercent == 100 || s_animationParamsField is null)
+                {
+                    return;
+                }
+
+                if (s_animationParamsField.GetValue(__instance) is not AnimationWithPauseParams animationParams ||
+                    animationParams.FillMode != AnimationWithPauseParams.Mode.ExtendPauseToFit ||
+                    !animationParams.BaseSpeed.IsPositive || currentProcessDuration.IsNotPositive)
+                {
+                    return;
+                }
+
+                Duration effectiveAnimationDuration = animationParams.TotalDuration.ScaledBy(
+                    Percent.Hundred / animationParams.BaseSpeed);
+                int adjustedTicks = OverclockingMath.EnsureAnimationProcessFits(
+                    currentProcessDuration.Ticks,
+                    effectiveAnimationDuration.Ticks,
+                    overclockPercent);
+                if (adjustedTicks != currentProcessDuration.Ticks)
+                {
+                    currentProcessDuration = Duration.FromTicks(adjustedTicks);
+                }
+            }
+            catch
+            {
+                // Animation compatibility is optional. Preserve vanilla behavior if a private
+                // field or an unexpected animation parameter shape changes.
+            }
         }
 
         internal static void ExtraWorkSimUpdatePostfix(object __instance)

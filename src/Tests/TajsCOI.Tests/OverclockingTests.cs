@@ -46,6 +46,21 @@ namespace TajsCOI.Tests
             Assert.Equal(1, OverclockingMath.RampedCapacityValue(1, 300, 300, 300, increase: false));
         }
 
+        [Theory]
+        [InlineData(100, 193, 100, 100)]
+        [InlineData(100, 193, 140, 194)]
+        [InlineData(194, 193, 140, 194)]
+        [InlineData(250, 193, 80, 250)]
+        public void AnimationProcessFitOnlyAdjustsShortOverclockedTimelines(
+            int currentProcessTicks,
+            int animationTicks,
+            int overclockPercent,
+            int expectedTicks)
+        {
+            Assert.Equal(expectedTicks, OverclockingMath.EnsureAnimationProcessFits(
+                currentProcessTicks, animationTicks, overclockPercent));
+        }
+
         [Fact]
         public void GroupsEnforceSingleMembershipAndCanBeLocked()
         {

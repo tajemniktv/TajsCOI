@@ -23,6 +23,7 @@ desktop.ini
 Builds/
 artifacts/
 
+.codex
 src/ExampleMod
 src/ExampleMod.Unity
 src/TajsCOI.Unity

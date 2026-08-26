@@ -82,6 +82,27 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return Math.Max(1, (int)Math.Round(baseCost * CostMultiplier(percent, curvePercent)));
         }
 
+        /// <summary>
+        /// Keeps the process duration used by COI's ExtendPauseToFit animation state strictly
+        /// longer than the effective animation duration when a Tajs overclock shortens the
+        /// recipe below it. The returned value is only for the animation state; it must not be
+        /// fed back into recipe production timing.
+        /// </summary>
+        internal static int EnsureAnimationProcessFits(int currentProcessTicks, int animationTicks, int overclockPercent)
+        {
+            if (overclockPercent == 100 || currentProcessTicks > animationTicks)
+            {
+                return currentProcessTicks;
+            }
+
+            if (animationTicks == int.MaxValue)
+            {
+                return animationTicks;
+            }
+
+            return Math.Max(currentProcessTicks, animationTicks + 1);
+        }
+
         internal static int DesiredPercentForFill(
             float fillPercent,
             int minPercent,

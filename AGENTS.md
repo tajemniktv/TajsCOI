@@ -136,7 +136,8 @@ Default escalation:
 3. Expand nearby ranges only when required.
 4. Read the complete file only when overall structure/lifecycle materially matters.
 
-For files larger than roughly 500 lines:
+For files >500 lines, a single investigation step should normally inspect
+no more than 150-200 total source lines from that file, also:
 
 - search first;
 - prefer bounded ranges;
@@ -165,6 +166,25 @@ inspect one direct caller if ownership remains unclear
 record conclusion
 continue
 ```
+
+---
+
+### Tool-output budget
+
+Default shell commands should request no more than 4,000-6,000 output tokens.
+
+A command expected to exceed ~200 source lines or ~8,000 output tokens must be split or narrowed unless the complete output is specifically required.
+
+Do not use `max_output_tokens` above 12,000 for ordinary source investigation.
+
+Do not batch multiple large source reads into one tool call.
+
+If one tool result reaches its output limit, treat the query as too broad:
+
+- do not repeat it with a larger limit;
+- narrow by symbol, path, or line range.
+
+For source investigation, prefer several decision-dependent small reads over one speculative 30,000-token batch.
 
 ---
 
