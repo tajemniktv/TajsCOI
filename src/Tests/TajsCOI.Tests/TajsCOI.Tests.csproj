@@ -21,7 +21,8 @@
            Text="COI_ROOT must point to the Captain of Industry 0.8.7b reference root when building TajsCOI.Tests."/>
     <Error Condition="!Exists('$(COIManagedDir)\Mafi.dll') Or
                       !Exists('$(COIManagedDir)\Mafi.Core.dll') Or
-                      !Exists('$(COIManagedDir)\Mafi.Base.dll')"
+                      !Exists('$(COIManagedDir)\Mafi.Base.dll') Or
+                      !Exists('$(COIManagedDir)\Mafi.Unity.dll')"
            Text="Captain of Industry 0.8.7b test references were not found at '$(COIManagedDir)'."/>
   </Target>
 
@@ -52,6 +53,10 @@
     </Reference>
     <Reference Include="Mafi.Base">
       <HintPath>$(COIManagedDir)\Mafi.Base.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Mafi.Unity">
+      <HintPath>$(COIManagedDir)\Mafi.Unity.dll</HintPath>
       <Private>true</Private>
     </Reference>
     <Reference Include="System.Web.Extensions"/>

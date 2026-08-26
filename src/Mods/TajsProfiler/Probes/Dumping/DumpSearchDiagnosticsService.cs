@@ -722,18 +722,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 return;
             }
 
-            MethodInfo? dumpSearch = FindInstanceMethod(
-                typeof(TerrainDumpingManager),
-                "TryFindClosestReadyToDump",
-                typeof(bool),
-                typeof(Tile2i),
-                typeof(Option<LooseProductProto>),
-                typeof(Truck),
-                typeof(ulong?),
-                typeof(TerrainDesignation).MakeByRefType(),
-                typeof(IIndexable<MineTower>),
-                typeof(bool),
-                typeof(Lyst<TerrainDesignation>));
+            MethodInfo? dumpSearch = FindDumpSearchTarget();
 
             if (dumpSearch is null)
             {
@@ -783,10 +772,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
         private static void PatchTickBoundary(Harmony harmony)
         {
-            MethodInfo? simUpdate = FindInstanceMethod(
-                typeof(VehiclePathFindingManager),
-                "SimUpdateInternal",
-                typeof(void));
+            MethodInfo? simUpdate = FindPathFindingTickTarget();
             if (simUpdate is null)
             {
                 LogOptionalPatchFailure("VehiclePathFindingManager.SimUpdateInternal was not found");
@@ -808,12 +794,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
         private static void PatchPathFindingEnqueue(Harmony harmony)
         {
-            MethodInfo? enqueueTask = FindInstanceMethod(
-                typeof(VehiclePathFindingManager),
-                "EnqueueTask",
-                typeof(void),
-                typeof(IManagedVehiclePathFindingTask),
-                typeof(int));
+            MethodInfo? enqueueTask = FindPathFindingEnqueueTarget();
             if (enqueueTask is null)
             {
                 LogOptionalPatchFailure("VehiclePathFindingManager.EnqueueTask was not found");
@@ -837,27 +818,19 @@ namespace TajsCOI.Profiler.Probes.Dumping
         {
             PatchCaller(
                 harmony,
-                FindInstanceMethod(
-                    typeof(VehicleBuffersRegistry),
-                    "balanceBuffers",
-                    typeof(void),
-                    typeof(Percent)),
+                FindVehicleBuffersTarget(),
                 nameof(BeginVehicleBuffersBalanceBuffers),
                 "VehicleBuffersRegistry.balanceBuffers");
 
             PatchCaller(
                 harmony,
-                FindInstanceMethod(
-                    typeof(DefaultTruckJobProvider),
-                    "TryGetJobFor",
-                    typeof(bool),
-                    typeof(Truck)),
+                FindDefaultTruckJobTarget(),
                 nameof(BeginDefaultTruckJobProvider),
                 "DefaultTruckJobProvider.TryGetJobFor");
 
             PatchCaller(
                 harmony,
-                FindUniqueInstanceMethod(typeof(DumpingJob), "handleFindMoreDesignations", 0),
+                FindDumpingJobTarget(),
                 nameof(BeginDumpingJob),
                 "DumpingJob.handleFindMoreDesignations");
 
@@ -908,11 +881,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
         private static void PatchCacheMethods(Harmony harmony)
         {
-            MethodInfo? globalCache = FindInstanceMethod(
-                typeof(TerrainDumpingManager),
-                "getAllEligibleCached",
-                typeof(LystStruct<TerrainDesignation>),
-                typeof(bool));
+            MethodInfo? globalCache = FindGlobalEligibleCacheTarget();
             if (globalCache is not null)
             {
                 try
@@ -934,12 +903,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 LogOptionalPatchFailure("TerrainDumpingManager.getAllEligibleCached was not found");
             }
 
-            MethodInfo? towerCache = FindInstanceMethod(
-                typeof(TerrainDumpingManager),
-                "getAllEligibleCachedFor",
-                typeof(Lyst<TerrainDesignation>),
-                typeof(MineTower),
-                typeof(bool));
+            MethodInfo? towerCache = FindTowerEligibleCacheTarget();
             if (towerCache is not null)
             {
                 try
@@ -1003,16 +967,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
         private static void PatchBreakdownMethods(Harmony harmony)
         {
-            MethodInfo? bestSelection = FindInstanceMethod(
-                typeof(TerrainDesignationsManager),
-                "TryFindBestReadyToFulfill",
-                typeof(bool),
-                typeof(IEnumerable<TerrainDesignation>),
-                typeof(Tile2i),
-                typeof(Vehicle),
-                typeof(TerrainDesignation).MakeByRefType(),
-                typeof(Option<LooseProductProto>),
-                typeof(bool));
+            MethodInfo? bestSelection = FindBestDesignationTarget();
             if (bestSelection is null)
             {
                 LogOptionalPatchFailure("TerrainDesignationsManager.TryFindBestReadyToFulfill was not found");
@@ -1034,13 +989,7 @@ namespace TajsCOI.Profiler.Probes.Dumping
                 }
             }
 
-            MethodInfo? nearbyEligibility = FindInstanceMethod(
-                typeof(TerrainDumpingManager),
-                "isEligibleAsNearbyFor",
-                typeof(bool),
-                typeof(TerrainDesignation),
-                typeof(TerrainDesignation),
-                typeof(bool));
+            MethodInfo? nearbyEligibility = FindNearbyEligibilityTarget();
             if (nearbyEligibility is null)
             {
                 LogOptionalPatchFailure("TerrainDumpingManager.isEligibleAsNearbyFor was not found");
@@ -1555,30 +1504,21 @@ namespace TajsCOI.Profiler.Probes.Dumping
             LooseProductProto? product,
             IIndexable<MineTower>? towersToEnforce)
         {
-            if (product is null)
-            {
-                return SearchPath.UnknownProduct;
-            }
-
-            bool globalAllowed = dumpingManager.ProductsAllowedToDump.Contains(product);
+            bool globalAllowed = product is not null && dumpingManager.ProductsAllowedToDump.Contains(product);
             // This mirrors TerrainDumpingManager's `flag2 = towersToEnforce != null`: an empty,
             // non-null list is still an explicit enforced-tower search, not the global fallback.
-            if (towersToEnforce is not null)
-            {
-                if (globalAllowed)
+            return DumpSearchContract.Classify(
+                    product is not null,
+                    towersToEnforce is not null,
+                    globalAllowed) switch
                 {
-                    return SearchPath.ExplicitTower;
-                }
-
-                return SearchPath.ExplicitTowerGlobalForbiddenRejected;
-            }
-
-            if (globalAllowed)
-            {
-                return SearchPath.GlobalAllowed;
-            }
-
-            return SearchPath.GlobalForbiddenNoLocalTower;
+                    DumpSearchContractPath.UnknownProduct => SearchPath.UnknownProduct,
+                    DumpSearchContractPath.GlobalAllowed => SearchPath.GlobalAllowed,
+                    DumpSearchContractPath.GlobalForbiddenNoLocalTower => SearchPath.GlobalForbiddenNoLocalTower,
+                    DumpSearchContractPath.ExplicitTower => SearchPath.ExplicitTower,
+                    DumpSearchContractPath.ExplicitTowerGlobalForbiddenRejected => SearchPath.ExplicitTowerGlobalForbiddenRejected,
+                    _ => SearchPath.UnknownProduct,
+                };
         }
 
         private static ProductSearchStats GetOrCreateProductStats(string productId)
@@ -1733,6 +1673,83 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
             return builder.ToString();
         }
+
+        // These discovery methods are intentionally side-effect free.  Keeping the exact
+        // signatures in one place lets runtime-contract tests validate the same compatibility
+        // seam used by installation without installing a Harmony patch in the test process.
+        internal static MethodInfo? FindDumpSearchTarget() => FindInstanceMethod(
+            typeof(TerrainDumpingManager),
+            "TryFindClosestReadyToDump",
+            typeof(bool),
+            typeof(Tile2i),
+            typeof(Option<LooseProductProto>),
+            typeof(Truck),
+            typeof(ulong?),
+            typeof(TerrainDesignation).MakeByRefType(),
+            typeof(IIndexable<MineTower>),
+            typeof(bool),
+            typeof(Lyst<TerrainDesignation>));
+
+        internal static MethodInfo? FindPathFindingTickTarget() => FindInstanceMethod(
+            typeof(VehiclePathFindingManager),
+            "SimUpdateInternal",
+            typeof(void));
+
+        internal static MethodInfo? FindPathFindingEnqueueTarget() => FindInstanceMethod(
+            typeof(VehiclePathFindingManager),
+            "EnqueueTask",
+            typeof(void),
+            typeof(IManagedVehiclePathFindingTask),
+            typeof(int));
+
+        internal static MethodInfo? FindVehicleBuffersTarget() => FindInstanceMethod(
+            typeof(VehicleBuffersRegistry),
+            "balanceBuffers",
+            typeof(void),
+            typeof(Percent));
+
+        internal static MethodInfo? FindDefaultTruckJobTarget() => FindInstanceMethod(
+            typeof(DefaultTruckJobProvider),
+            "TryGetJobFor",
+            typeof(bool),
+            typeof(Truck));
+
+        internal static MethodInfo? FindDumpingJobTarget() => FindUniqueInstanceMethod(
+            typeof(DumpingJob),
+            "handleFindMoreDesignations",
+            0);
+
+        internal static MethodInfo? FindGlobalEligibleCacheTarget() => FindInstanceMethod(
+            typeof(TerrainDumpingManager),
+            "getAllEligibleCached",
+            typeof(LystStruct<TerrainDesignation>),
+            typeof(bool));
+
+        internal static MethodInfo? FindTowerEligibleCacheTarget() => FindInstanceMethod(
+            typeof(TerrainDumpingManager),
+            "getAllEligibleCachedFor",
+            typeof(Lyst<TerrainDesignation>),
+            typeof(MineTower),
+            typeof(bool));
+
+        internal static MethodInfo? FindBestDesignationTarget() => FindInstanceMethod(
+            typeof(TerrainDesignationsManager),
+            "TryFindBestReadyToFulfill",
+            typeof(bool),
+            typeof(IEnumerable<TerrainDesignation>),
+            typeof(Tile2i),
+            typeof(Vehicle),
+            typeof(TerrainDesignation).MakeByRefType(),
+            typeof(Option<LooseProductProto>),
+            typeof(bool));
+
+        internal static MethodInfo? FindNearbyEligibilityTarget() => FindInstanceMethod(
+            typeof(TerrainDumpingManager),
+            "isEligibleAsNearbyFor",
+            typeof(bool),
+            typeof(TerrainDesignation),
+            typeof(TerrainDesignation),
+            typeof(bool));
 
         private static MethodInfo? FindInstanceMethod(
             Type type,
@@ -2960,6 +2977,16 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
             public void MarkTowerEligibleCacheCall()
             {
+                if (!DumpSearchContract.IsLocalFallbackEligible(
+                        hasProduct: Path != SearchPath.UnknownProduct,
+                        globallyAllowed: Path is SearchPath.GlobalAllowed or SearchPath.ExplicitTower,
+                        localTowerAcceptsProduct: true,
+                        inRange: true,
+                        inspectionSucceeded: true))
+                {
+                    return;
+                }
+
                 if (Path == SearchPath.GlobalForbiddenNoLocalTower)
                 {
                     Path = SearchPath.GlobalForbiddenLocalFallback;
