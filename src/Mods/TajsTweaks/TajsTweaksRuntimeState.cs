@@ -32,6 +32,13 @@ namespace TajsCOI.Tweaks
         internal static bool PinnedLowOnly;
         internal static int PinnedLowThreshold;
         internal static int PinnedLowLimit;
+        internal static bool QuickRemoveOnDemolish;
+        internal static bool ClassicRecipeDisplay;
+        internal static string PlanningBuildingColor = "vanilla";
+        internal static double VehicleSoundRange;
+        internal static double MachineSoundRange;
+        internal static double TrainSoundVolume;
+        internal static double TrainSoundRange;
 
         internal static string DefaultsUnit = "vanilla";
         internal static string DefaultsLoose = "vanilla";
@@ -47,12 +54,21 @@ namespace TajsCOI.Tweaks
         internal static int ResourceOverlayLabelScale;
         internal static int ResourceOverlayLabelAlpha;
         internal static double ResourceOverlayLabelHeight;
+        internal static string ResourceTowerLineColor = "by_tower";
+        internal static double ResourceTowerLineWidth;
+        internal static double ResourceTowerZoomDamping;
+        internal static double ResourceTowerZoomStart;
+        internal static double ResourceTowerAreaHeight;
+        internal static string ResourceTowerColors = string.Empty;
         internal static bool InfiniteGroundwater;
+        internal static bool AllowSteam;
+        internal static bool AllowExhaust;
         internal static bool WorldOperations;
         internal static bool AutoWorldDelivery;
         internal static bool ShipPreload;
         internal static string ShipPreloadData = string.Empty;
         internal static bool RecoverTrucks;
+        internal static bool DumpToShipyard;
         internal static int RecoverPeriod;
         internal static bool StageMineTrucks;
         internal static int StageMineTrucksScan;
@@ -64,6 +80,8 @@ namespace TajsCOI.Tweaks
         internal static int HudScale;
         internal static string HudHidden = string.Empty;
         internal static string HudPositions = string.Empty;
+        internal static bool HudBackgrounds;
+        internal static bool ShowHudOnFullscreenViews;
         internal static bool StorageOverrides;
         internal static double StorageMultiplier;
         internal static double StorageThroughputMultiplier;
@@ -73,6 +91,16 @@ namespace TajsCOI.Tweaks
         internal static bool HideDesignations;
         internal static bool NotificationFilter;
         internal static bool FarmWarnings;
+        internal static bool FarmFullToggleAlways;
+        internal static bool BattleScoreOnMap;
+        internal static bool ElectricityComputingTotals;
+        internal static bool StackerDesignationOverlay;
+        internal static double KeepFullEmptyLabelScale;
+        internal static string ParkingHqOffloadMode = "vanilla";
+        internal static bool BridgeTrussEnabled;
+        internal static bool BridgeCableEnabled;
+        internal static string BridgeScaleMode = "off";
+        internal static bool CenterDriving;
         internal static bool FleetManager;
         internal static int FleetBatchLimit;
 
@@ -93,6 +121,13 @@ namespace TajsCOI.Tweaks
             PinnedLowOnly = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedLowOnly);
             PinnedLowThreshold = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedLowThreshold);
             PinnedLowLimit = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedLowLimit);
+            QuickRemoveOnDemolish = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.QuickRemoveOnDemolish);
+            ClassicRecipeDisplay = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ClassicRecipeDisplay);
+            PlanningBuildingColor = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PlanningBuildingColor);
+            VehicleSoundRange = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.VehicleSoundRange);
+            MachineSoundRange = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.MachineSoundRange);
+            TrainSoundVolume = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainSoundVolume);
+            TrainSoundRange = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainSoundRange);
 
             DefaultsUnit = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.DefaultsUnit);
             DefaultsLoose = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.DefaultsLoose);
@@ -108,12 +143,21 @@ namespace TajsCOI.Tweaks
             ResourceOverlayLabelScale = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceOverlayLabelScale);
             ResourceOverlayLabelAlpha = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceOverlayLabelAlpha);
             ResourceOverlayLabelHeight = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceOverlayLabelHeight);
+            ResourceTowerLineColor = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceTowerLineColor);
+            ResourceTowerLineWidth = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceTowerLineWidth);
+            ResourceTowerZoomDamping = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceTowerZoomDamping);
+            ResourceTowerZoomStart = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceTowerZoomStart);
+            ResourceTowerAreaHeight = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceTowerAreaHeight);
+            ResourceTowerColors = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceTowerColors);
             InfiniteGroundwater = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.InfiniteGroundwater);
+            AllowSteam = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AllowSteam);
+            AllowExhaust = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AllowExhaust);
             WorldOperations = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.WorldOperations);
             AutoWorldDelivery = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AutoWorldDelivery);
             ShipPreload = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShipPreload);
             ShipPreloadData = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShipPreloadData);
             RecoverTrucks = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.RecoverTrucks);
+            DumpToShipyard = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.DumpToShipyard);
             RecoverPeriod = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.RecoverPeriod);
             StageMineTrucks = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StageMineTrucks);
             StageMineTrucksScan = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StageMineTrucksScan);
@@ -125,6 +169,8 @@ namespace TajsCOI.Tweaks
             HudScale = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudScale);
             HudHidden = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudHidden);
             HudPositions = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudPositions);
+            HudBackgrounds = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudBackgrounds);
+            ShowHudOnFullscreenViews = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShowHudOnFullscreenViews);
             StorageOverrides = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StorageOverrides);
             StorageMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StorageMultiplier);
             StorageThroughputMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StorageThroughputMultiplier);
@@ -134,6 +180,16 @@ namespace TajsCOI.Tweaks
             HideDesignations = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HideDesignations);
             NotificationFilter = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.NotificationFilter);
             FarmWarnings = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.FarmWarnings);
+            FarmFullToggleAlways = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.FarmFullToggleAlways);
+            BattleScoreOnMap = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.BattleScoreOnMap);
+            ElectricityComputingTotals = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ElectricityComputingTotals);
+            StackerDesignationOverlay = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StackerDesignationOverlay);
+            KeepFullEmptyLabelScale = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.KeepFullEmptyLabelScale);
+            ParkingHqOffloadMode = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ParkingHqOffloadMode);
+            BridgeTrussEnabled = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.BridgeTrussEnabled);
+            BridgeCableEnabled = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.BridgeCableEnabled);
+            BridgeScaleMode = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.BridgeScaleMode);
+            CenterDriving = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.CenterDriving);
             FleetManager = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.FleetManager);
             FleetBatchLimit = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.FleetBatchLimit);
             s_mutedNotificationData = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.MutedNotifications);
@@ -209,6 +265,29 @@ namespace TajsCOI.Tweaks
             return result;
         }
 
+        internal static IReadOnlyDictionary<int, int> ParseTowerColors(string? text)
+        {
+            var result = new Dictionary<int, int>();
+            foreach (string part in (text ?? string.Empty).Split(new[] { ',', ';', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Take(256))
+            {
+                string[] pair = part.Split(new[] { '=' }, 2);
+                if (pair.Length != 2 || !int.TryParse(pair[0].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int towerId) ||
+                    !int.TryParse(pair[1].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int colorIndex) ||
+                    towerId < 0 || colorIndex < 0 || colorIndex > 8)
+                {
+                    continue;
+                }
+                result[towerId] = colorIndex;
+            }
+            return result;
+        }
+
+        internal static string FormatTowerColors(IReadOnlyDictionary<int, int> colors)
+        {
+            return string.Join(",", colors.OrderBy(x => x.Key).Take(256).Select(x =>
+                x.Key.ToString(CultureInfo.InvariantCulture) + "=" + x.Value.ToString(CultureInfo.InvariantCulture)));
+        }
+
         private static void SetBoolean(string key, bool value)
         {
             switch (key)
@@ -219,26 +298,40 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.PinnedBarColors: PinnedBarColors = value; break;
                 case TajsTweaksSettingsCatalog.PinnedAutoColumns: PinnedAutoColumns = value; break;
                 case TajsTweaksSettingsCatalog.PinnedLowOnly: PinnedLowOnly = value; break;
+                case TajsTweaksSettingsCatalog.QuickRemoveOnDemolish: QuickRemoveOnDemolish = value; break;
+                case TajsTweaksSettingsCatalog.ClassicRecipeDisplay: ClassicRecipeDisplay = value; break;
                 case TajsTweaksSettingsCatalog.ResourceOverlay: ResourceOverlay = value; break;
                 case TajsTweaksSettingsCatalog.ResourceOverlayDepth: ResourceOverlayDepth = value; break;
                 case TajsTweaksSettingsCatalog.ResourceOverlayTowerAreas: ResourceOverlayTowerAreas = value; break;
                 case TajsTweaksSettingsCatalog.ResourceOverlayTowerLabels: ResourceOverlayTowerLabels = value; break;
+                case TajsTweaksSettingsCatalog.ElectricityComputingTotals: ElectricityComputingTotals = value; break;
+                case TajsTweaksSettingsCatalog.StackerDesignationOverlay: StackerDesignationOverlay = value; break;
+                case TajsTweaksSettingsCatalog.BridgeTrussEnabled: BridgeTrussEnabled = value; break;
+                case TajsTweaksSettingsCatalog.BridgeCableEnabled: BridgeCableEnabled = value; break;
+                case TajsTweaksSettingsCatalog.CenterDriving: CenterDriving = value; break;
                 case TajsTweaksSettingsCatalog.InfiniteGroundwater: InfiniteGroundwater = value; break;
+                case TajsTweaksSettingsCatalog.AllowSteam: AllowSteam = value; break;
+                case TajsTweaksSettingsCatalog.AllowExhaust: AllowExhaust = value; break;
                 case TajsTweaksSettingsCatalog.WorldOperations: WorldOperations = value; break;
                 case TajsTweaksSettingsCatalog.AutoWorldDelivery: AutoWorldDelivery = value; break;
                 case TajsTweaksSettingsCatalog.ShipPreload: ShipPreload = value; break;
                 case TajsTweaksSettingsCatalog.RecoverTrucks: RecoverTrucks = value; break;
+                case TajsTweaksSettingsCatalog.DumpToShipyard: DumpToShipyard = value; break;
                 case TajsTweaksSettingsCatalog.StageMineTrucks: StageMineTrucks = value; break;
                 case TajsTweaksSettingsCatalog.FreeCamera: FreeCamera = value; break;
                 case TajsTweaksSettingsCatalog.UnlimitedZoom: UnlimitedZoom = value; break;
                 case TajsTweaksSettingsCatalog.GroundClipping: GroundClipping = value; break;
                 case TajsTweaksSettingsCatalog.HudLayout: HudLayout = value; break;
                 case TajsTweaksSettingsCatalog.HudDragLocked: HudDragLocked = value; break;
+                case TajsTweaksSettingsCatalog.HudBackgrounds: HudBackgrounds = value; break;
+                case TajsTweaksSettingsCatalog.ShowHudOnFullscreenViews: ShowHudOnFullscreenViews = value; break;
                 case TajsTweaksSettingsCatalog.StorageOverrides: StorageOverrides = value; break;
                 case TajsTweaksSettingsCatalog.DesignationControls: DesignationControls = value; break;
                 case TajsTweaksSettingsCatalog.HideDesignations: HideDesignations = value; break;
                 case TajsTweaksSettingsCatalog.NotificationFilter: NotificationFilter = value; break;
                 case TajsTweaksSettingsCatalog.FarmWarnings: FarmWarnings = value; break;
+                case TajsTweaksSettingsCatalog.FarmFullToggleAlways: FarmFullToggleAlways = value; break;
+                case TajsTweaksSettingsCatalog.BattleScoreOnMap: BattleScoreOnMap = value; break;
                 case TajsTweaksSettingsCatalog.FleetManager: FleetManager = value; break;
             }
         }
@@ -280,6 +373,42 @@ namespace TajsCOI.Tweaks
             {
                 ResourceOverlayLabelHeight = value;
             }
+            if (key == TajsTweaksSettingsCatalog.ResourceTowerLineWidth)
+            {
+                ResourceTowerLineWidth = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.ResourceTowerZoomDamping)
+            {
+                ResourceTowerZoomDamping = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.ResourceTowerZoomStart)
+            {
+                ResourceTowerZoomStart = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.ResourceTowerAreaHeight)
+            {
+                ResourceTowerAreaHeight = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.KeepFullEmptyLabelScale)
+            {
+                KeepFullEmptyLabelScale = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.VehicleSoundRange)
+            {
+                VehicleSoundRange = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.MachineSoundRange)
+            {
+                MachineSoundRange = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TrainSoundVolume)
+            {
+                TrainSoundVolume = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TrainSoundRange)
+            {
+                TrainSoundRange = value;
+            }
         }
 
         private static void SetText(string key, string value)
@@ -289,6 +418,9 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.LinePlacementShortcut: LinePlacementShortcut = value; break;
                 case TajsTweaksSettingsCatalog.PinnedSortDirection: PinnedSortDirection = value; break;
                 case TajsTweaksSettingsCatalog.PinnedSortMode: PinnedSortMode = value; break;
+                case TajsTweaksSettingsCatalog.PlanningBuildingColor: PlanningBuildingColor = value; break;
+                case TajsTweaksSettingsCatalog.ResourceTowerLineColor: ResourceTowerLineColor = value; break;
+                case TajsTweaksSettingsCatalog.ResourceTowerColors: ResourceTowerColors = value; break;
                 case TajsTweaksSettingsCatalog.DefaultsUnit: DefaultsUnit = value; break;
                 case TajsTweaksSettingsCatalog.DefaultsLoose: DefaultsLoose = value; break;
                 case TajsTweaksSettingsCatalog.DefaultsFluid: DefaultsFluid = value; break;
@@ -302,6 +434,8 @@ namespace TajsCOI.Tweaks
                     StorageOverrideData = value;
                     RebuildParsedValues();
                     break;
+                case TajsTweaksSettingsCatalog.ParkingHqOffloadMode: ParkingHqOffloadMode = value; break;
+                case TajsTweaksSettingsCatalog.BridgeScaleMode: BridgeScaleMode = value; break;
                 case TajsTweaksSettingsCatalog.MutedNotifications:
                     s_mutedNotificationData = value;
                     RebuildParsedValues();

@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Mafi;
 using Mafi.Unity.Ui.Hud;
 using TajsCOI.Common.Settings;
@@ -33,6 +34,11 @@ namespace TajsCOI.Tweaks
             internal PickingMode OriginalPickingMode;
             internal Vector2 Position;
             internal HudDragManipulator? Manipulator;
+        }
+
+        private sealed class BackgroundState
+        {
+            internal StyleEnum<DisplayStyle> OriginalDisplay;
         }
 
         private sealed class HudDragManipulator : PointerManipulator
@@ -143,9 +149,12 @@ namespace TajsCOI.Tweaks
         };
 
         private static readonly Dictionary<string, HudElementState> s_elements = new(StringComparer.Ordinal);
+        private static readonly ConditionalWeakTable<VisualElement, BackgroundState> s_backgrounds = new();
+        private static readonly List<WeakReference<object>> s_fullscreenWindows = new();
         private static readonly BindingFlags s_instanceFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         private static FieldInfo[]? s_hudFields;
         private static ITajsSettings? s_settings;
+        private static bool s_uiVisible = true;
 
         internal static void Install(DependencyResolver resolver, ITajsSettings settings)
         {
@@ -216,6 +225,9 @@ namespace TajsCOI.Tweaks
                 Restore(s_elements[stale]);
                 s_elements.Remove(stale);
             }
+
+            ApplyBackgrounds(hud);
+            ApplyFullscreenVisibility();
         }
 
         internal static string Reset(DependencyResolver resolver, ITajsSettings settings)
@@ -234,6 +246,36 @@ namespace TajsCOI.Tweaks
                    "; supported elements=" + s_elements.Count + "; drag positions are normalized to the current resolution.";
         }
 
+        internal static void OnFullscreenWindowChanged(object window, bool isOpen)
+        {
+            if (!IsTargetFullscreenWindow(window))
+            {
+                return;
+            }
+            s_fullscreenWindows.RemoveAll(reference => !reference.TryGetTarget(out object? target) || ReferenceEquals(target, window));
+            if (isOpen)
+            {
+                s_fullscreenWindows.Add(new WeakReference<object>(window));
+            }
+            ApplyFullscreenVisibility();
+        }
+
+        internal static void OnUiVisibilityChanged(bool visible)
+        {
+            s_uiVisible = visible;
+            ApplyFullscreenVisibility();
+        }
+
+        internal static void ClearFullscreenState()
+        {
+            s_fullscreenWindows.Clear();
+            s_uiVisible = true;
+            foreach (HudElementState state in s_elements.Values)
+            {
+                Restore(state);
+            }
+        }
+
         private static void ApplyState(HudElementState state)
         {
             VisualElement root = state.Root;
@@ -248,6 +290,88 @@ namespace TajsCOI.Tweaks
             }
             state.Manipulator.SetLocked(TajsTweaksRuntimeState.HudDragLocked);
             ApplyPosition(state);
+        }
+
+        private static void ApplyBackgrounds(HudController hud)
+        {
+            FieldInfo? topLeft = s_hudFields?.FirstOrDefault(field => field.Name == "m_topLeftContainer");
+            if (topLeft?.GetValue(hud) is not object component || GetRoot(component) is not VisualElement root)
+            {
+                return;
+            }
+            foreach (VisualElement candidate in root.Children())
+            {
+                if (!ContainsWindowPlate(candidate))
+                {
+                    continue;
+                }
+                BackgroundState state = s_backgrounds.GetValue(candidate, _ => new BackgroundState { OriginalDisplay = candidate.style.display });
+                if (TajsTweaksRuntimeState.HudBackgrounds)
+                {
+                    candidate.style.display = state.OriginalDisplay;
+                }
+                else
+                {
+                    candidate.style.display = DisplayStyle.None;
+                }
+            }
+        }
+
+        private static bool ContainsWindowPlate(VisualElement node)
+        {
+            if (node.GetClasses().Any(IsWindowClass))
+            {
+                return true;
+            }
+            foreach (VisualElement child in node.Children())
+            {
+                if (child.GetClasses().Any(IsWindowClass))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsWindowClass(string value) =>
+            string.Equals(value, "windowShadow", StringComparison.Ordinal) || string.Equals(value, "window", StringComparison.Ordinal);
+
+        private static void RestoreBackground(VisualElement element)
+        {
+            if (s_backgrounds.TryGetValue(element, out BackgroundState? state))
+            {
+                element.style.display = state.OriginalDisplay;
+            }
+        }
+
+        private static void ApplyFullscreenVisibility()
+        {
+            s_fullscreenWindows.RemoveAll(reference => !reference.TryGetTarget(out _));
+            bool hidden = !s_uiVisible || (!TajsTweaksRuntimeState.ShowHudOnFullscreenViews && s_fullscreenWindows.Count > 0);
+            foreach (HudElementState state in s_elements.Values)
+            {
+                if (hidden)
+                {
+                    state.Root.style.display = DisplayStyle.None;
+                }
+                else if (TajsTweaksRuntimeState.HudLayout)
+                {
+                    ApplyState(state);
+                }
+                else
+                {
+                    Restore(state);
+                }
+            }
+        }
+
+        private static bool IsTargetFullscreenWindow(object window)
+        {
+            string? fullName = window.GetType().FullName;
+            return fullName is not null &&
+                   (fullName == "Mafi.Unity.Ui.World.WorldMapWindow" ||
+                    fullName == "Mafi.Unity.Ui.Research.ResearchWindow" ||
+                    fullName.StartsWith("Mafi.Unity.Ui.SpaceProgram.", StringComparison.Ordinal));
         }
 
         private static void Move(HudElementState state, Vector2 delta)

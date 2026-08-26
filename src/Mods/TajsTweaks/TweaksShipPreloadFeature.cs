@@ -77,6 +77,14 @@ namespace TajsCOI.Tweaks
             s_registryField = typeof(Shipyard).GetField("m_vehicleBuffersRegistry", BindingFlags.Instance | BindingFlags.NonPublic);
             s_cargoField = typeof(Shipyard).GetField("m_cargo", BindingFlags.Instance | BindingFlags.NonPublic);
             s_getBufferMethod = AccessTools.Method(typeof(Shipyard), "getOrCreateCargoBufferFor");
+            Type? priorityProvider = typeof(Shipyard).GetNestedType("StoredCargoPriorityProvider", BindingFlags.Public | BindingFlags.NonPublic);
+            MethodInfo? outputPriority = priorityProvider is null
+                ? null
+                : AccessTools.Method(priorityProvider, "GetOutputPriority", new[] { typeof(OutputPriorityRequest) });
+            if (outputPriority is not null)
+            {
+                harmony.Patch(outputPriority, postfix: new HarmonyMethod(typeof(TweaksShipPreloadFeature), nameof(OutputPriorityPostfix)));
+            }
             ReloadTargets();
         }
 
@@ -173,6 +181,21 @@ namespace TajsCOI.Tweaks
             s_targets.TryGetValue(shipyard.Id.Value, out Dictionary<string, int>? targets) &&
             targets.ContainsKey(product.Id.Value);
 
+        internal static int GetReservedFor(IProductBuffer buffer)
+        {
+            if (buffer is null || !TajsTweaksRuntimeState.WorldOperations || !TajsTweaksRuntimeState.ShipPreload)
+            {
+                return 0;
+            }
+            if (!s_promotedBuffers.TryGetValue(buffer, out PromotionMarker? marker))
+            {
+                return 0;
+            }
+            // A reservation protects the requested stock level, not cargo above it. Once the
+            // buffer is over target, its excess must remain available to ordinary exports.
+            return buffer.Quantity.Value <= marker.Target ? marker.Target : 0;
+        }
+
         internal static bool RequestDelivery(Shipyard? shipyard, ProductProto? product, int quantity)
         {
             if (shipyard is null || product is null || quantity <= 0 || s_getBufferMethod is null)
@@ -255,6 +278,21 @@ namespace TajsCOI.Tweaks
         {
             s_shipyards.Add(new WeakReference<Shipyard>(__instance));
             Reconcile(__instance);
+        }
+
+        private static void OutputPriorityPostfix(OutputPriorityRequest request, ref BufferStrategy __result)
+        {
+            try
+            {
+                if (GetReservedFor(request.Buffer) > 0)
+                {
+                    __result = BufferStrategy.Ignore;
+                }
+            }
+            catch
+            {
+                // A changed output-priority shape must leave the native export policy intact.
+            }
         }
 
         private static void Reconcile(Shipyard shipyard)

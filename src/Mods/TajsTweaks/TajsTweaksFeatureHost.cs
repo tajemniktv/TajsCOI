@@ -57,12 +57,22 @@ namespace TajsCOI.Tweaks
 
             TryInstall(runtime, "LinePlacement", TweaksLinePlacementFeature.Install);
             TryInstall(runtime, "PinnedProducts", TweaksPinnedProductsFeature.Install);
+            TryInstall(runtime, "QuickRemoveOnDemolish", TweaksQuickRemoveFeature.Install);
+            TryInstall(runtime, "ClassicRecipeDisplay", TweaksClassicRecipeFeature.Install);
+            TryInstall(runtime, "PlanningBuildingColor", TweaksPlanningColorFeature.Install);
+            TryInstall(runtime, "AudioControls", TweaksAudioFeature.Install);
             TryInstall(runtime, "BuildDefaults", TweaksBuildDefaultsFeature.Install);
             TryInstall(runtime, "ResourceOverlays", TweaksResourceOverlayFeature.Install);
+            TryInstall(runtime, "MiningTowerColors", harmony => TweaksMiningTowerColorFeature.Install(harmony, settings));
+            TryInstall(runtime, "StackerDesignationOverlay", harmony => TweaksStackerDesignationFeature.Install(harmony, resolver));
+            TryInstall(runtime, "StatisticsTotals", TweaksStatisticsTotalsFeature.Install);
             TryInstall(runtime, "ResourceDepositClusters", TweaksResourceDepositFeature.Install);
             TryInstallResolved(runtime, "InfiniteGroundwater", m_infiniteGroundwater.Install);
+            TryInstall(runtime, "SteamAndExhaustStorage", harmony => TweaksSteamStorageFeature.Install(harmony, resolver));
             TryInstall(runtime, "ShipCargoPreload", harmony => TweaksShipPreloadFeature.Install(harmony, resolver, settings));
             TryInstall(runtime, "AutoWorldDelivery", harmony => TweaksAutoShipDeliveryFeature.Install(harmony, resolver));
+            TryInstall(runtime, "BattleScoreOnMap", TweaksBattleScoreFeature.Install);
+            TryInstall(runtime, "FarmFullToggle", TweaksFarmAlertFeature.Install);
             TryInstall(runtime, "CameraAndHud", TweaksCameraFeature.Install);
             bool designationInstalled = TryInstall(runtime, "DesignationControls", TweaksDesignationFeature.Install);
             RegisterDesignationIntegration(runtime, designationInstalled);
@@ -72,6 +82,12 @@ namespace TajsCOI.Tweaks
             TryInstall(runtime, "StuckTruckRecovery", TweaksStuckTruckRecoveryFeature.Install);
             TweaksStuckTruckRecoveryFeature.SetResolver(resolver);
             TryInstall(runtime, "StorageOverrides", harmony => TweaksStorageFeature.Install(harmony, resolver));
+            TryInstall(runtime, "TransportThroughput", TweaksTransportThroughputFeature.Install);
+            TryInstall(runtime, "GameplayPlusPlusBridge", harmony => TweaksGameplayPlusPlusFeature.Install(harmony, resolver));
+            TryInstall(runtime, "ParkingHqOffload", TweaksParkingHqOffloadFeature.Install);
+            TweaksParkingHqOffloadFeature.SetResolver(resolver);
+            TryInstall(runtime, "KeepFullEmptyMarkers", TweaksKeepFullEmptyMarkerFeature.Install);
+            TryInstall(runtime, "FullscreenHud", TweaksFullscreenHudFeature.Install);
             TryInstallResolved(runtime, "HudLayout", () => TweaksHudLayoutFeature.Install(resolver, settings));
 
             runtime.ReportCompatibility(
@@ -211,7 +227,9 @@ namespace TajsCOI.Tweaks
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.HudDragLocked ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.HudScale ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.HudHidden ||
-                change.Descriptor.Key == TajsTweaksSettingsCatalog.HudPositions)
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.HudPositions ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.HudBackgrounds ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.ShowHudOnFullscreenViews)
             {
                 TweaksHudLayoutFeature.Apply(m_resolver, m_settings);
             }
@@ -224,6 +242,10 @@ namespace TajsCOI.Tweaks
             {
                 m_infiniteGroundwater.RefreshFromSettings();
             }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.KeepFullEmptyLabelScale)
+            {
+                TweaksKeepFullEmptyMarkerFeature.Apply();
+            }
         }
 
         private void OnRenderUpdateEnd(GameTime _)
@@ -231,8 +253,10 @@ namespace TajsCOI.Tweaks
             if (++m_renderTick % 15 == 0)
             {
                 TweaksPinnedProductsFeature.Tick();
+                TweaksFarmAlertFeature.Tick();
                 TweaksShipPreloadFeature.Tick();
                 TweaksResourceDepositFeature.Tick(m_resolver);
+                TweaksKeepFullEmptyMarkerFeature.Apply();
                 TweaksHudLayoutFeature.Apply(m_resolver, m_settings);
             }
         }
@@ -243,6 +267,9 @@ namespace TajsCOI.Tweaks
             TweaksAutoShipDeliveryFeature.Reset();
             m_infiniteGroundwater.Dispose();
             TweaksResourceDepositFeature.Dispose();
+            TweaksStackerDesignationFeature.Dispose();
+            TweaksStuckTruckRecoveryFeature.ClearDestinations();
+            TweaksHudLayoutFeature.ClearFullscreenState();
             CloseWorldOperationsWindow();
             CloseFleetManagementWindow();
         }

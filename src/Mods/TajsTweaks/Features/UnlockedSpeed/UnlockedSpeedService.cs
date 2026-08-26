@@ -14,6 +14,7 @@ using Mafi.Core.Console;
 using Mafi.Core.GameLoop;
 using Mafi.Core.Input;
 using Mafi.Core.Simulation;
+using Mafi.Logging;
 using Mafi.Unity.InputControl;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
@@ -41,6 +42,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
         private readonly GameSpeedController m_speedController;
         private readonly IInputScheduler m_inputScheduler;
         private readonly ShortcutsManager m_shortcuts;
+        private readonly LazyResolve<IGameIdProvider> m_gameRunner;
         private readonly ITajsSettings m_settings;
         private readonly ITajsLogger m_log;
 
@@ -54,6 +56,10 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
         private int[] m_sequence = Array.Empty<int>();
         private bool m_installed;
         private SimAdaptiveSpeedMode m_originalAdaptiveModeForTransition;
+        private bool m_gameRunnerProbeAttempted;
+        private object? m_gameRunnerInstance;
+        private PropertyInfo? m_latestOvertimeProperty;
+        private PropertyInfo? m_overtimeDurationProperty;
 
         public UnlockedSpeedService(
             SimLoopEvents simLoop,
@@ -61,6 +67,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
             IInputScheduler inputScheduler,
             ShortcutsManager shortcuts,
             Mafi.Core.GameLoop.IGameLoopEvents gameLoop,
+            LazyResolve<IGameIdProvider> gameRunner,
             ITajsRuntime runtime,
             ITajsSettings settings)
         {
@@ -68,6 +75,7 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
             m_speedController = speedController;
             m_inputScheduler = inputScheduler;
             m_shortcuts = shortcuts;
+            m_gameRunner = gameRunner;
             m_settings = settings;
             m_log = runtime.GetLogger("TajsTweaks", "UnlockedSpeed");
 
@@ -398,8 +406,49 @@ namespace TajsCOI.Tweaks.Features.UnlockedSpeed
                 m_simLoop.SimStepsPerUpdate < m_simLoop.BudgetedSimSteps
                 ? "budget not fully reached in the latest update"
                 : "no shortfall reported by the latest update";
+            string overtime = ReadOvertimeStatus();
             return $"Requested simulation speed: {m_simLoop.SimSpeedMult}x ({state}); configured max: {MaxSpeed}x; adaptive mode: {m_simLoop.AdaptiveSimSpeedMode}; {budget}; {saturation}.\n" +
-                   $"Speed sequence ({m_sequenceMode}): {string.Join(",", m_sequence)}; resume on selection: {m_resumeOnSelect}.";
+                   $"Speed sequence ({m_sequenceMode}): {string.Join(",", m_sequence)}; resume on selection: {m_resumeOnSelect}; {overtime}.";
+        }
+
+        private string ReadOvertimeStatus()
+        {
+            try
+            {
+                if (!m_gameRunnerProbeAttempted)
+                {
+                    m_gameRunnerProbeAttempted = true;
+                    m_gameRunnerInstance = m_gameRunner.Value;
+                    if (m_gameRunnerInstance is not null)
+                    {
+                        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+                        Type runnerType = m_gameRunnerInstance.GetType();
+                        m_latestOvertimeProperty = runnerType.GetProperty("LatestSimUpdateWasOvertime", flags);
+                        m_overtimeDurationProperty = runnerType.GetProperty("LatestSimUpdateOvertimeDuration", flags);
+                    }
+                }
+
+                if (m_gameRunnerInstance is null || m_latestOvertimeProperty is null)
+                {
+                    return "overtime telemetry unavailable";
+                }
+
+                bool overtime = m_latestOvertimeProperty.GetValue(m_gameRunnerInstance) is true;
+                if (!overtime)
+                {
+                    return "latest simulation update within budget";
+                }
+
+                if (m_overtimeDurationProperty?.GetValue(m_gameRunnerInstance) is TimeSpan duration)
+                {
+                    return $"latest simulation update overtime ({duration.TotalMilliseconds:F1} ms)";
+                }
+                return "latest simulation update overtime";
+            }
+            catch (Exception exception)
+            {
+                return "overtime telemetry unavailable (" + exception.GetType().Name + ")";
+            }
         }
 
         [ConsoleCommand(

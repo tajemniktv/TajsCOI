@@ -1094,19 +1094,33 @@ namespace TajsCOI.Tweaks
         private static readonly Dictionary<int, float> s_nextChecks = new();
         private static readonly Dictionary<int, int> s_observations = new();
         private static readonly Dictionary<int, int> s_failures = new();
+        private static readonly Dictionary<int, WeakReference<Shipyard>> s_shipyardDestinations = new();
 
         internal static void Install(Harmony harmony)
         {
             MethodInfo target = AccessTools.Method(typeof(ParkAndWaitJobFactory), "TryEnqueueParkingJobIfNeeded")
                                 ?? throw new MissingMethodException(typeof(ParkAndWaitJobFactory).FullName, "TryEnqueueParkingJobIfNeeded");
             harmony.Patch(target, prefix: new HarmonyMethod(typeof(TweaksStuckTruckRecoveryFeature), nameof(Prefix)));
+            MethodInfo? simUpdate = AccessTools.Method(typeof(Truck), "SimUpdateInternal");
+            if (simUpdate is not null)
+            {
+                harmony.Patch(simUpdate, postfix: new HarmonyMethod(typeof(TweaksStuckTruckRecoveryFeature), nameof(TruckSimUpdatePostfix)));
+            }
         }
 
         internal static void SetResolver(DependencyResolver resolver) => s_resolver = new WeakReference<DependencyResolver>(resolver);
 
+        internal static void ClearDestinations()
+        {
+            lock (s_shipyardDestinations)
+            {
+                s_shipyardDestinations.Clear();
+            }
+        }
+
         private static bool Prefix(Vehicle vehicle, ref ILayoutEntity staticEntity, ref bool __result)
         {
-            if (!TajsTweaksRuntimeState.RecoverTrucks || vehicle is not Truck truck)
+            if ((!TajsTweaksRuntimeState.RecoverTrucks && !TajsTweaksRuntimeState.DumpToShipyard) || vehicle is not Truck truck)
             {
                 return true;
             }
@@ -1129,7 +1143,8 @@ namespace TajsCOI.Tweaks
                     BackOff(truck.Id.Value, TajsTweaksRuntimeState.RecoverPeriod);
                     return true;
                 }
-                if (TryQueueStorageRecovery(truck, resolver, out ILayoutEntity? storage))
+                if (TajsTweaksRuntimeState.RecoverTrucks && !TajsTweaksRuntimeState.DumpToShipyard &&
+                    TryQueueStorageRecovery(truck, resolver, out ILayoutEntity? storage))
                 {
                     truck.DeactivateCannotDeliver();
                     staticEntity = storage!;
@@ -1146,6 +1161,13 @@ namespace TajsCOI.Tweaks
                 truck.CancelAllJobsAndResetState();
                 StaticEntityVehicleGoal goal = goals.CreateGoal(shipyard);
                 navigation.EnqueueJob(truck, goal, navigateClosebyIsSufficient: true);
+                if (TajsTweaksRuntimeState.DumpToShipyard)
+                {
+                    lock (s_shipyardDestinations)
+                    {
+                        s_shipyardDestinations[truck.Id.Value] = new WeakReference<Shipyard>(shipyard);
+                    }
+                }
                 truck.DeactivateCannotDeliver();
                 staticEntity = shipyard;
                 __result = true;
@@ -1156,6 +1178,76 @@ namespace TajsCOI.Tweaks
             {
                 BackOff(truck.Id.Value, TajsTweaksRuntimeState.RecoverPeriod);
                 return true;
+            }
+        }
+
+        private static void TruckSimUpdatePostfix(Truck __instance)
+        {
+            if (!TajsTweaksRuntimeState.DumpToShipyard || __instance is null ||
+                !TryGetDestination(__instance.Id.Value, out Shipyard? shipyard) || shipyard is null || shipyard.IsDestroyed)
+            {
+                return;
+            }
+            try
+            {
+                if (__instance.Position2f.DistanceSqrTo(shipyard.Position2f) >= 2500)
+                {
+                    return;
+                }
+
+                var cargo = new Lyst<ProductQuantity>();
+                __instance.Cargo.GetCargoProducts(cargo);
+                bool moved = false;
+                foreach (ProductQuantity product in cargo)
+                {
+                    if (!product.Product.IsStorable || product.Quantity.IsNotPositive)
+                    {
+                        continue;
+                    }
+                    shipyard.StoreProduct(product);
+                    __instance.TakeCargo(product);
+                    moved = true;
+                }
+                if (!__instance.Cargo.IsEmpty)
+                {
+                    __instance.NotifyIffCannotDeliver(true, __instance.Cargo.FirstOrPhantom.Product);
+                    BackOff(__instance.Id.Value, TajsTweaksRuntimeState.RecoverPeriod);
+                    ForgetDestination(__instance.Id.Value);
+                    return;
+                }
+                if (moved || __instance.Cargo.IsEmpty)
+                {
+                    __instance.CancelAllJobsAndResetState();
+                    __instance.DeactivateCannotDeliver();
+                    ForgetDestination(__instance.Id.Value);
+                }
+            }
+            catch
+            {
+                // Leave cargo in the truck and retry only on the normal bounded sim-update path.
+            }
+        }
+
+        private static bool TryGetDestination(int vehicleId, out Shipyard? shipyard)
+        {
+            lock (s_shipyardDestinations)
+            {
+                if (s_shipyardDestinations.TryGetValue(vehicleId, out WeakReference<Shipyard>? reference) &&
+                    reference.TryGetTarget(out shipyard))
+                {
+                    return true;
+                }
+                s_shipyardDestinations.Remove(vehicleId);
+                shipyard = null;
+                return false;
+            }
+        }
+
+        private static void ForgetDestination(int vehicleId)
+        {
+            lock (s_shipyardDestinations)
+            {
+                s_shipyardDestinations.Remove(vehicleId);
             }
         }
 
@@ -1360,12 +1452,26 @@ namespace TajsCOI.Tweaks
             new(0.8f, 0.45f, 1f, 0.85f),
         };
 
+        private static readonly Color[] s_palette =
+        {
+            new(0f, 0f, 0f, 0f),
+            new(0.31f, 0.86f, 0.31f, 0.85f),
+            new(1f, 0.86f, 0.2f, 0.85f),
+            new(0.31f, 0.55f, 1f, 0.85f),
+            new(1f, 0.65f, 0f, 0.85f),
+            new(1f, 0.31f, 0.31f, 0.85f),
+            new(0.71f, 0.39f, 1f, 0.85f),
+            new(0.2f, 0.85f, 0.9f, 0.85f),
+            new(1f, 1f, 1f, 0.85f),
+        };
+
         private static FieldInfo? s_overlayDataField;
         private static PropertyInfo? s_overlayDataCount;
         private static PropertyInfo? s_overlayDataItem;
         private static FieldInfo? s_overlayTowerField;
         private static FieldInfo? s_overlayLineField;
         private static MethodInfo? s_lineSetColor;
+        private static MethodInfo? s_lineSetWidth;
         private static Type? s_textMeshType;
 
         internal static void Install(Harmony harmony)
@@ -1385,6 +1491,7 @@ namespace TajsCOI.Tweaks
                     s_overlayDataItem = s_overlayDataField.FieldType.GetProperty("Item", BindingFlags.Instance | BindingFlags.Public);
                 }
                 s_lineSetColor = Type.GetType("Mafi.Unity.LineMb, Mafi.Unity", false)?.GetMethod("SetColor", new[] { typeof(Color) });
+                s_lineSetWidth = Type.GetType("Mafi.Unity.LineMb, Mafi.Unity", false)?.GetMethod("SetWidth", new[] { typeof(float) });
             }
 
             // Deposit labels are owned by TweaksResourceDepositFeature. Keeping them outside
@@ -1428,7 +1535,11 @@ namespace TajsCOI.Tweaks
                     int id = tower.GetType().GetProperty("Id", BindingFlags.Instance | BindingFlags.Public)?.GetValue(tower) is Mafi.Core.EntityId entityId
                         ? entityId.Value
                         : index;
-                    s_lineSetColor.Invoke(line, new object[] { s_towerColors[Math.Abs(id) % s_towerColors.Length] });
+                    s_lineSetColor.Invoke(line, new object[] { GetTowerColor(id) });
+                    if (s_lineSetWidth is not null && TajsTweaksRuntimeState.ResourceTowerLineWidth > 0)
+                    {
+                        s_lineSetWidth.Invoke(line, new object[] { Mathf.Clamp((float)TajsTweaksRuntimeState.ResourceTowerLineWidth, 0.05f, 5f) });
+                    }
                     if (TajsTweaksRuntimeState.ResourceOverlayTowerLabels && labels is not null && s_textMeshType is not null &&
                         line is Component lineComponent)
                     {
@@ -1437,8 +1548,9 @@ namespace TajsCOI.Tweaks
                         {
                             label.transform.SetParent(parent.transform, true);
                         }
-                        label.transform.position = lineComponent.transform.position + Vector3.up * (float)TajsTweaksRuntimeState.ResourceOverlayLabelHeight;
+                        label.transform.position = lineComponent.transform.position + Vector3.up * (float)TajsTweaksRuntimeState.ResourceTowerAreaHeight;
                         SetLabelText(label, "tower " + id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        ApplyLabelZoom(label, lineComponent.transform.position);
                     }
                 }
                 if (labels is not null)
@@ -1450,6 +1562,49 @@ namespace TajsCOI.Tweaks
             {
                 // The native tower overlay remains authoritative if its private list changes.
             }
+        }
+
+        private static Color GetTowerColor(int id)
+        {
+            string mode = TajsTweaksRuntimeState.ResourceTowerLineColor;
+            if (!string.Equals(mode, "by_tower", StringComparison.Ordinal))
+            {
+                int index = mode switch
+                {
+                    "green" => 1,
+                    "yellow" => 2,
+                    "blue" => 3,
+                    "orange" => 4,
+                    "red" => 5,
+                    "purple" => 6,
+                    "white" => 8,
+                    _ => 3,
+                };
+                return s_palette[index];
+            }
+
+            IReadOnlyDictionary<int, int> overrides = TajsTweaksRuntimeState.ParseTowerColors(TajsTweaksRuntimeState.ResourceTowerColors);
+            if (overrides.TryGetValue(id, out int paletteIndex) && paletteIndex > 0 && paletteIndex < s_palette.Length)
+            {
+                return s_palette[paletteIndex];
+            }
+            return s_towerColors[Math.Abs(id) % s_towerColors.Length];
+        }
+
+        private static void ApplyLabelZoom(GameObject label, Vector3 worldPosition)
+        {
+            Camera? camera = Camera.main;
+            float damping = Mathf.Clamp01((float)TajsTweaksRuntimeState.ResourceTowerZoomDamping);
+            if (camera is null || damping <= 0f)
+            {
+                return;
+            }
+
+            float start = Mathf.Max(1f, (float)TajsTweaksRuntimeState.ResourceTowerZoomStart);
+            float distance = Vector3.Distance(camera.transform.position, worldPosition);
+            float farFactor = Mathf.Clamp(start / Mathf.Max(distance, 1f), 0.15f, 1f);
+            float scale = Mathf.Lerp(1f, farFactor, damping);
+            label.transform.localScale = Vector3.one * scale;
         }
 
         private static void SetTextProperty(Component component, string name, object value)

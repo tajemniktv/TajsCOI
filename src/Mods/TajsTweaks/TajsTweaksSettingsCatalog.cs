@@ -31,6 +31,13 @@ namespace TajsCOI.Tweaks
         internal const string PinnedLowOnly = "pinned_low_only";
         internal const string PinnedLowThreshold = "pinned_low_threshold_percent";
         internal const string PinnedLowLimit = "pinned_low_limit";
+        internal const string QuickRemoveOnDemolish = "quick_remove_on_demolish";
+        internal const string ClassicRecipeDisplay = "classic_recipe_display";
+        internal const string PlanningBuildingColor = "planning_building_color";
+        internal const string VehicleSoundRange = "vehicle_sound_range";
+        internal const string MachineSoundRange = "machine_sound_range";
+        internal const string TrainSoundVolume = "train_sound_volume";
+        internal const string TrainSoundRange = "train_sound_range";
 
         internal const string DefaultsUnit = "defaults_unit";
         internal const string DefaultsLoose = "defaults_loose";
@@ -46,7 +53,15 @@ namespace TajsCOI.Tweaks
         internal const string ResourceOverlayLabelScale = "resource_overlay_label_scale_percent";
         internal const string ResourceOverlayLabelAlpha = "resource_overlay_label_alpha_percent";
         internal const string ResourceOverlayLabelHeight = "resource_overlay_label_height";
+        internal const string ResourceTowerLineColor = "resource_tower_line_color";
+        internal const string ResourceTowerLineWidth = "resource_tower_line_width";
+        internal const string ResourceTowerZoomDamping = "resource_tower_zoom_damping";
+        internal const string ResourceTowerZoomStart = "resource_tower_zoom_start";
+        internal const string ResourceTowerAreaHeight = "resource_tower_area_height";
+        internal const string ResourceTowerColors = "resource_tower_colors";
         internal const string InfiniteGroundwater = "infinite_groundwater";
+        internal const string AllowSteam = "allow_steam";
+        internal const string AllowExhaust = "allow_exhaust";
 
         internal const string WorldOperations = "world_operations";
         internal const string AutoWorldDelivery = "auto_world_delivery";
@@ -66,6 +81,8 @@ namespace TajsCOI.Tweaks
         internal const string HudScale = "hud_scale_percent";
         internal const string HudHidden = "hud_hidden_keys";
         internal const string HudPositions = "hud_positions";
+        internal const string HudBackgrounds = "hud_backgrounds";
+        internal const string ShowHudOnFullscreenViews = "show_hud_on_fullscreen_views";
 
         internal const string StorageOverrides = "storage_overrides";
         internal const string StorageMultiplier = "storage_capacity_multiplier";
@@ -79,6 +96,17 @@ namespace TajsCOI.Tweaks
         internal const string NotificationFilter = "notification_filter";
         internal const string MutedNotifications = "muted_notification_ids";
         internal const string FarmWarnings = "filter_farm_warnings";
+        internal const string FarmFullToggleAlways = "farm_full_toggle_always";
+        internal const string BattleScoreOnMap = "battle_score_on_map";
+        internal const string ElectricityComputingTotals = "electricity_computing_totals";
+        internal const string StackerDesignationOverlay = "stacker_designation_overlay";
+        internal const string KeepFullEmptyLabelScale = "keep_full_empty_label_scale";
+        internal const string ParkingHqOffloadMode = "parking_hq_offload_mode";
+        internal const string DumpToShipyard = "dump_to_shipyard";
+        internal const string BridgeTrussEnabled = "bridge_truss_enabled";
+        internal const string BridgeCableEnabled = "bridge_cable_enabled";
+        internal const string BridgeScaleMode = "bridge_scale_mode";
+        internal const string CenterDriving = "center_driving";
 
         internal const string FleetManager = "fleet_manager";
         internal const string FleetBatchLimit = "fleet_batch_limit";
@@ -99,6 +127,45 @@ namespace TajsCOI.Tweaks
         private static readonly IReadOnlyList<SettingChoice> s_directions = new[]
         {
             new SettingChoice("descending", "High to low"), new SettingChoice("ascending", "Low to high"),
+        };
+
+        private static readonly IReadOnlyList<SettingChoice> s_planningColors = new[]
+        {
+            new SettingChoice("vanilla", "Vanilla"),
+            new SettingChoice("yellow", "Yellow"),
+            new SettingChoice("orange", "Orange"),
+            new SettingChoice("red", "Red"),
+            new SettingChoice("pink", "Pink"),
+            new SettingChoice("purple", "Purple"),
+            new SettingChoice("green", "Green"),
+            new SettingChoice("lime", "Lime"),
+            new SettingChoice("white", "White"),
+        };
+
+        private static readonly IReadOnlyList<SettingChoice> s_towerLineColors = new[]
+        {
+            new SettingChoice("by_tower", "By tower"),
+            new SettingChoice("blue", "Blue"),
+            new SettingChoice("yellow", "Yellow"),
+            new SettingChoice("red", "Red"),
+            new SettingChoice("green", "Green"),
+            new SettingChoice("white", "White"),
+            new SettingChoice("orange", "Orange"),
+            new SettingChoice("purple", "Purple"),
+        };
+
+        private static readonly IReadOnlyList<SettingChoice> s_parkingHqOffloadModes = new[]
+        {
+            new SettingChoice("vanilla", "Vanilla / provider default"),
+            new SettingChoice("enabled", "Enabled"),
+            new SettingChoice("disabled", "Disabled"),
+        };
+
+        private static readonly IReadOnlyList<SettingChoice> s_bridgeScaleModes = new[]
+        {
+            new SettingChoice("off", "Off"),
+            new SettingChoice("instant", "Instant"),
+            new SettingChoice("gradual", "Gradual"),
         };
 
         internal static IReadOnlyList<SettingDescriptor> All { get; } = new SettingDescriptor[]
@@ -281,6 +348,89 @@ namespace TajsCOI.Tweaks
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced,
                 componentRequirement: PinnedLowOnly),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                QuickRemoveOnDemolish,
+                "Quick-remove cargo on demolish",
+                "Schedules the normal paid quick-remove command when a storage/entity demolition is requested.",
+                false,
+                "Building",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                ClassicRecipeDisplay,
+                "Classic recipe display",
+                "Shows actual per-cycle recipe quantities in building panels while retaining the normalized rate in the duration tooltip.",
+                false,
+                "Building",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Choice(
+                ModId,
+                DisplayName,
+                PlanningBuildingColor,
+                "Planning building color",
+                "Presentation color for paused planned buildings; vanilla preserves the game's default blueprint color.",
+                "vanilla",
+                s_planningColors,
+                "Building",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                VehicleSoundRange,
+                "Vehicle sound range",
+                "Multiplier for vehicle sound audible distance; 1 preserves vanilla behavior.",
+                1,
+                1,
+                5,
+                0.1,
+                "Audio",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                MachineSoundRange,
+                "Machine sound range",
+                "Multiplier for machine/building sound audible distance; 1 preserves vanilla behavior.",
+                1,
+                1,
+                5,
+                0.1,
+                "Audio",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                TrainSoundVolume,
+                "Train sound volume",
+                "Multiplier for train audio volume; 1 preserves vanilla behavior.",
+                1,
+                0,
+                1,
+                0.05,
+                "Audio",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                TrainSoundRange,
+                "Train sound range",
+                "Multiplier for train sound audible distance; 1 preserves vanilla behavior.",
+                1,
+                0.1,
+                1,
+                0.05,
+                "Audio",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
             SettingDescriptor.Choice(
                 ModId,
                 DisplayName,
@@ -430,6 +580,85 @@ namespace TajsCOI.Tweaks
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced,
                 componentRequirement: ResourceOverlay),
+            SettingDescriptor.Choice(
+                ModId,
+                DisplayName,
+                ResourceTowerLineColor,
+                "Mining tower line color",
+                "Global color for mining tower area lines, or a deterministic color based on the tower ID.",
+                "by_tower",
+                s_towerLineColors,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: ResourceOverlayTowerAreas),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                ResourceTowerLineWidth,
+                "Mining tower line width",
+                "World-space width for mining tower area lines; zero preserves the native width.",
+                0,
+                0,
+                5,
+                0.05,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: ResourceOverlayTowerAreas),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                ResourceTowerZoomDamping,
+                "Mining tower zoom damping",
+                "Reduces mining tower label size at long camera distances.",
+                0,
+                0,
+                1,
+                0.05,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: ResourceOverlayTowerLabels),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                ResourceTowerZoomStart,
+                "Mining tower zoom start",
+                "Distance at which zoom damping begins, in world units.",
+                20,
+                1,
+                100,
+                1,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: ResourceOverlayTowerLabels),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                ResourceTowerAreaHeight,
+                "Mining tower label height",
+                "World-space height offset for mining tower labels.",
+                0.5,
+                -10,
+                10,
+                0.1,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: ResourceOverlayTowerLabels),
+            SettingDescriptor.String(
+                ModId,
+                DisplayName,
+                ResourceTowerColors,
+                "Mining tower colors",
+                "Internal bounded map of tower IDs to palette indexes; the mine-tower inspector edits this value.",
+                string.Empty,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: ResourceOverlayTowerAreas),
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,
@@ -440,6 +669,26 @@ namespace TajsCOI.Tweaks
                 "Simulation",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                AllowSteam,
+                "Allow steam in fluid logistics",
+                "Allows the game's supported steam variants in fluid storage and fluid trucks. Requires a game restart and is disabled by default.",
+                false,
+                "Simulation",
+                applyMode: SettingApplyMode.RestartGame,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                AllowExhaust,
+                "Allow exhaust in fluid logistics",
+                "Allows exhaust gas in fluid storage and fluid trucks. Requires a game restart and is disabled by default.",
+                false,
+                "Simulation",
+                applyMode: SettingApplyMode.RestartGame,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental),
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,
@@ -489,6 +738,16 @@ namespace TajsCOI.Tweaks
                 RecoverTrucks,
                 "Recover stranded loaded trucks",
                 "Allows bounded, backoff-based recovery attempts only for unassigned loaded trucks with no legitimate delivery job.",
+                false,
+                "Vehicles",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                DumpToShipyard,
+                "Dump stranded cargo to shipyard",
+                "Independently routes unassigned loaded trucks with an active cannot-deliver state to a shipyard and transfers only storable cargo on arrival.",
                 false,
                 "Vehicles",
                 applyMode: SettingApplyMode.Immediate,
@@ -621,6 +880,26 @@ namespace TajsCOI.Tweaks
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,
+                HudBackgrounds,
+                "HUD panel backgrounds",
+                "Keeps the vanilla background plates behind the notifications and research HUD panels when enabled.",
+                true,
+                "HUD",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                ShowHudOnFullscreenViews,
+                "Show HUD on fullscreen views",
+                "Keeps the normal HUD visible over world-map, research and space fullscreen views.",
+                false,
+                "HUD",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
                 StorageOverrides,
                 "Storage capacity overrides",
                 "Applies opt-in capacity and throughput overrides to future prototype-backed storages; existing quantities are never discarded.",
@@ -734,6 +1013,111 @@ namespace TajsCOI.Tweaks
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced,
                 componentRequirement: NotificationFilter),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                FarmFullToggleAlways,
+                "Show farm inventory-full toggle when empty",
+                "Keeps the existing farm inventory-full notification toggle visible before the farm has output in its buffer.",
+                false,
+                "Notifications",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                BattleScoreOnMap,
+                "Battle score on world map",
+                "Adds the current traveling-fleet battle score to the native world-map ship panel.",
+                false,
+                "World map",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                ElectricityComputingTotals,
+                "Electricity and computing totals",
+                "Adds current and maximum totals to the native electricity and computing statistics panels.",
+                false,
+                "Memory",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                StackerDesignationOverlay,
+                "Stacker designation overlay",
+                "Shows a bounded local preview of terrain designations around the selected stacker tower.",
+                false,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                KeepFullEmptyLabelScale,
+                "Keep Full / Keep Empty marker scale",
+                "Scale for the optional world-space marker provider when a compatible provider is installed; zero is a no-op.",
+                0,
+                0,
+                5,
+                0.1,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Choice(
+                ModId,
+                DisplayName,
+                ParkingHqOffloadMode,
+                "Parking HQ shipyard offload",
+                "Controls only the optional Gameplay++ Parking HQ offload hook. Vanilla leaves the provider's own setting untouched.",
+                "vanilla",
+                s_parkingHqOffloadModes,
+                "Vehicles",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                BridgeTrussEnabled,
+                "Bridge truss access",
+                "Enables truss bridge vehicle access through the optional Gameplay++ bridge integration. Requires a game restart.",
+                false,
+                "Building",
+                applyMode: SettingApplyMode.RestartGame,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                BridgeCableEnabled,
+                "Bridge cable access",
+                "Enables cable bridge vehicle access through the optional Gameplay++ bridge integration. Requires a game restart.",
+                false,
+                "Building",
+                applyMode: SettingApplyMode.RestartGame,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Choice(
+                ModId,
+                DisplayName,
+                BridgeScaleMode,
+                "Bridge vehicle scaling",
+                "Vehicle scaling mode supplied to the optional Gameplay++ bridge integration.",
+                "off",
+                s_bridgeScaleModes,
+                "Building",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                CenterDriving,
+                "Center driving on bridges",
+                "Uses center-driving lane masks through the optional Gameplay++ bridge integration. Requires a game restart.",
+                false,
+                "Building",
+                applyMode: SettingApplyMode.RestartGame,
+                flags: SettingFlags.Advanced),
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,

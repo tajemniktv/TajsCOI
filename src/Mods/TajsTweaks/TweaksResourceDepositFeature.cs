@@ -130,6 +130,9 @@ namespace TajsCOI.Tweaks
         private const int MaximumSamplesPerCluster = 128;
         private const float DirtyDebounceSeconds = 0.5f;
         private const int MaximumClusters = 512;
+        // The native renderer already owns the full resource view. This bounded secondary
+        // index must never turn opening that view into a whole-map hitch on large saves.
+        private const int MaximumIndexedChunks = 8192;
         private const double FullRefreshBudgetMilliseconds = 2.0;
 
         private static readonly BindingFlags InstanceFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -534,11 +537,18 @@ namespace TajsCOI.Tweaks
 
                 m_nativeChunkSets[product] = chunkEntries;
                 all.Clear();
+                int indexedBeforeProduct = m_productChunks.Values.Sum(x => x.Count);
                 foreach (object chunkEntry in chunkEntries)
                 {
                     if (chunkEntry is Chunk2i chunk)
                     {
                         all.Add(chunk);
+                        if (indexedBeforeProduct + all.Count > MaximumIndexedChunks)
+                        {
+                            m_nativeChunkSets.Clear();
+                            m_productChunks.Clear();
+                            return new List<DepositCluster>();
+                        }
                     }
                 }
 
