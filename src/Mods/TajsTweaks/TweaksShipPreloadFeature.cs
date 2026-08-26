@@ -1,4 +1,6 @@
 // Taj's COI Mods | TweaksShipPreloadFeature.cs
+// Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
+// All Rights Reserved.
 
 using System;
 using System.Collections;

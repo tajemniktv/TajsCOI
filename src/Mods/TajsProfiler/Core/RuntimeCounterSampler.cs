@@ -356,6 +356,7 @@ namespace TajsCOI.Profiler.Core
                     return null;
                 }
 
+                // ReSharper disable once RedundantCast
                 object recorder = constructor.Invoke(new[] { (object)category, statName, 1, Enum.ToObject(optionsType, ProfilerRecorderDefaultOptions) });
                 var handle = ProfilerRecorderHandle.Create(recorder, recorderType, expectedUnit);
                 if (handle is null || !handle.IsValid)

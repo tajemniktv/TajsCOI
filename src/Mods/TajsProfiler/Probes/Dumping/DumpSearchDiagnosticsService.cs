@@ -2724,6 +2724,8 @@ namespace TajsCOI.Profiler.Probes.Dumping
 
         private enum SearchCaller
         {
+            // Zero/default is the thread-local "no classified caller" sentinel.
+            // ReSharper disable once UnusedMember.Local
             Other,
             VehicleBuffersRegistryBalanceBuffers,
             DumpingJob,

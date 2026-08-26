@@ -1,4 +1,6 @@
 // Taj's COI Mods | RenderingLoadSheddingSettings.cs
+// Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
+// All Rights Reserved.
 
 namespace TajsCOI.Performance.Features.RenderingLoadShedding
 {

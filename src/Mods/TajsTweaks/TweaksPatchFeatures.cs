@@ -1,4 +1,6 @@
 // Taj's COI Mods | TweaksPatchFeatures.cs
+// Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
+// All Rights Reserved.
 
 using System;
 using System.Collections;
@@ -585,6 +587,7 @@ namespace TajsCOI.Tweaks
 
         private static bool UsesAreaLimit(MethodInfo method, IReadOnlyCollection<FieldInfo> fields)
         {
+            // ReSharper disable once RedundantArgumentDefaultValue
             foreach (CodeInstruction instruction in PatchProcessor.GetOriginalInstructions(method, null))
             {
                 if (instruction.opcode == OpCodes.Ldsfld && instruction.operand is FieldInfo field && fields.Contains(field))

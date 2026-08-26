@@ -577,9 +577,11 @@ namespace TajsCOI.Core.Settings
                                 if (result.Success)
                                 {
                                     bool currentValue = (bool)result.Value!;
+                                    // ReSharper disable once AccessToModifiedClosure
                                     stateButton.Value(BooleanStateText(currentValue).AsLoc()).Selected(currentValue);
                                 }
                             })
+                        // ReSharper disable once RedundantArgumentDefaultValue
                         .Toggleable(true)
                         .Selected(enabled)
                         .Compact();
@@ -588,6 +590,7 @@ namespace TajsCOI.Core.Settings
 
                 case SettingValueType.Choice:
                     SettingChoice currentChoice = FindChoice(descriptor, snapshot.Value);
+                    // ReSharper disable once UnusedParameter.Local
                     Dropdown<SettingChoice> dropdown = new Dropdown<SettingChoice>((choice, _, __) => new Label(choice.DisplayName.AsLoc()))
                         .SetOptions(descriptor.Choices)
                         .SetValue(currentChoice);
@@ -726,9 +729,11 @@ namespace TajsCOI.Core.Settings
                         if (result.Success)
                         {
                             bool currentValue = (bool)result.Value!;
+                            // ReSharper disable once AccessToModifiedClosure
                             stateButton.Value($"{label}: {BooleanStateText(currentValue)}".AsLoc()).Selected(currentValue);
                         }
                     })
+                // ReSharper disable once RedundantArgumentDefaultValue
                 .Toggleable(true)
                 .Selected(enabled)
                 .Compact();

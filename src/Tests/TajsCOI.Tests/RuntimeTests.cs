@@ -1,3 +1,7 @@
+// Taj's COI Mods | RuntimeTests.cs
+// Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
+// All Rights Reserved.
+
 using System;
 using System.Collections.Generic;
 using System.IO;

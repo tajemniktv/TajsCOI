@@ -1,15 +1,19 @@
 ﻿{
-"id":"TajsProfiler",
-"version":"0.2.0",
-"display_name":"Taj's Profiler",
-"description_short":"Behavior-neutral runtime diagnostics for Captain of Industry.",
-"authors":"TajemnikTV",
-"primary_dlls":["TajsProfiler.dll"],
-"mod_dependencies":["TajsCore>=0.1.0"],
-"primary_mod_class_name":"TajsProfilerMod",
-"min_game_version":"0.8.7",
-"max_verified_game_version":"0.8.7b",
-"non_locking_dll_load":true,
-"can_add_to_saved_game":true,
-"can_remove_from_saved_game":true
+  "id": "TajsProfiler",
+  "version": "0.2.0",
+  "display_name": "Taj's Profiler",
+  "description_short": "Behavior-neutral runtime diagnostics for Captain of Industry.",
+  "authors": "TajemnikTV",
+  "primary_dlls": [
+    "TajsProfiler.dll"
+  ],
+  "mod_dependencies": [
+    "TajsCore>=0.1.0"
+  ],
+  "primary_mod_class_name": "TajsProfilerMod",
+  "min_game_version": "0.8.7",
+  "max_verified_game_version": "0.8.7b",
+  "non_locking_dll_load": true,
+  "can_add_to_saved_game": true,
+  "can_remove_from_saved_game": true
 }

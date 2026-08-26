@@ -1,15 +1,19 @@
 ﻿{
-"id":"TajsPerformance",
-"version":"0.1.0",
-"display_name":"Taj's Performance",
-"description_short":"Evidence-backed, individually switchable performance fixes.",
-"authors":"TajemnikTV",
-"primary_dlls":["TajsPerformance.dll"],
-"mod_dependencies":["TajsCore>=0.1.0"],
-"primary_mod_class_name":"TajsPerformanceMod",
-"min_game_version":"0.8.7",
-"max_verified_game_version":"0.8.7b",
-"non_locking_dll_load":true,
-"can_add_to_saved_game":true,
-"can_remove_from_saved_game":true
+  "id": "TajsPerformance",
+  "version": "0.1.0",
+  "display_name": "Taj's Performance",
+  "description_short": "Evidence-backed, individually switchable performance fixes.",
+  "authors": "TajemnikTV",
+  "primary_dlls": [
+    "TajsPerformance.dll"
+  ],
+  "mod_dependencies": [
+    "TajsCore>=0.1.0"
+  ],
+  "primary_mod_class_name": "TajsPerformanceMod",
+  "min_game_version": "0.8.7",
+  "max_verified_game_version": "0.8.7b",
+  "non_locking_dll_load": true,
+  "can_add_to_saved_game": true,
+  "can_remove_from_saved_game": true
 }

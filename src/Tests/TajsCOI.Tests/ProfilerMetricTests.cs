@@ -266,10 +266,12 @@ namespace TajsCOI.Tests
             Assert.Equal(new long[] { 5, 6 }, interval.Select(x => x.Sequence));
         }
 
+        // ReSharper disable once UnusedParameter.Local
         private static void HarmonyAuditOverload(int value)
         {
         }
 
+        // ReSharper disable once UnusedParameter.Local
         private static void HarmonyAuditOverload(string value)
         {
         }

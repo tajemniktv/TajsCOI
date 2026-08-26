@@ -332,6 +332,7 @@ namespace TajsCOI.Tests
             {
                 for (int index = 1; index <= 10000; index++)
                 {
+                    // ReSharper disable once AccessToModifiedClosure
                     Volatile.Write(ref writeIndex, index);
                 }
             });
@@ -383,6 +384,7 @@ namespace TajsCOI.Tests
 
             Assert.True(available, reason);
             Assert.NotNull(access);
+            // ReSharper disable once RedundantSuppressNullableWarningExpression
             Assert.Equal(2048, access!.BufferSize);
             Assert.True(access.IsAvailable);
 
@@ -418,6 +420,7 @@ namespace TajsCOI.Tests
             var access = GameRunnerTimingAccess.TryCreate(fake, out string reason);
 
             Assert.NotNull(access);
+            // ReSharper disable once RedundantSuppressNullableWarningExpression
             Assert.True(access!.IsAvailable, reason);
             GameRunnerTimingSnapshot snapshot = access.Read();
             Assert.True(snapshot.UpdateTicks > 0);
@@ -443,6 +446,7 @@ namespace TajsCOI.Tests
 
             Assert.True(deferred.IsDiscoveryAttempted);
             Assert.NotNull(access);
+            // ReSharper disable once RedundantSuppressNullableWarningExpression
             Assert.True(access!.IsAvailable, reason);
         }
 
@@ -458,6 +462,9 @@ namespace TajsCOI.Tests
             Assert.Contains("GameRunner discovery failed", reason);
         }
 
+        // Reflection/DynamicMethod discovery intentionally requires this complete property surface.
+        // ReSharper disable UnusedAutoPropertyAccessor.Global
+        // ReSharper disable UnusedAutoPropertyAccessor.Local
         private sealed class FakeGameRunner : IGameIdProvider
         {
             public long GameId { get; set; }
@@ -475,5 +482,7 @@ namespace TajsCOI.Tests
             public int SimUpdateCount { get; set; }
             public int SimStepsSinceLoad { get; set; }
         }
+        // ReSharper restore UnusedAutoPropertyAccessor.Local
+        // ReSharper restore UnusedAutoPropertyAccessor.Global
     }
 }

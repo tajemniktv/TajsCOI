@@ -289,6 +289,7 @@ namespace TajsCOI.Common.Settings
             double number = Convert.ToDouble(input, CultureInfo.InvariantCulture);
             // Exact comparison is intentional: integer settings reject every fractional value.
 #pragma warning disable S1244
+            // ReSharper disable once CompareOfFloatsByEqualityOperator
             bool hasFraction = number != Math.Truncate(number);
 #pragma warning restore S1244
             if (!IsFinite(number) || hasFraction || number < int.MinValue || number > int.MaxValue)
@@ -423,6 +424,7 @@ namespace TajsCOI.Common.Settings
         private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
 
         private static object DefaultFor(SettingValueType type) =>
+            // ReSharper disable once RedundantCast
             type == SettingValueType.Boolean ? (object)false :
             type == SettingValueType.Integer ? 0 :
             type == SettingValueType.Float ? 0d : string.Empty;

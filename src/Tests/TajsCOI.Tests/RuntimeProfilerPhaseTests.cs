@@ -236,6 +236,7 @@ namespace TajsCOI.Tests
 
             Task simulation = Task.Run(() =>
             {
+                // ReSharper disable once AccessToDisposedClosure
                 start.Wait();
                 RuntimeTracePhaseContext.PhaseScope scope =
                     RuntimeTracePhaseContext.Enter(simulationEvent, RuntimeTracePhase.Unknown);
@@ -256,6 +257,7 @@ namespace TajsCOI.Tests
             });
             Task render = Task.Run(() =>
             {
+                // ReSharper disable once AccessToDisposedClosure
                 start.Wait();
                 RuntimeTracePhaseContext.PhaseScope scope =
                     RuntimeTracePhaseContext.Enter(renderEvent, RuntimeTracePhase.Unknown);
@@ -400,6 +402,7 @@ namespace TajsCOI.Tests
             RuntimeSpikeRecord? completed = spikes.Observe(after, 0, policy);
 
             Assert.True(completed.HasValue);
+            // ReSharper disable once RedundantSuppressNullableWarningExpression
             Assert.Equal(4, completed!.Value.Samples.Length);
             Assert.Equal(1, spikes.Count);
 

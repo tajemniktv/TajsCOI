@@ -63,6 +63,8 @@ namespace TajsCOI.Profiler.Core
         internal int SimStepsSinceLoad { get; }
         internal bool IsAvailable => UpdateTicks >= 0 || InputTicks >= 0 || SyncTicks >= 0 || RenderTicks >= 0 || SimTicks >= 0;
 
+        // These explicit arguments document the all-unavailable sentinel rather than relying on constructor defaults.
+        // ReSharper disable RedundantArgumentDefaultValue
         internal static GameRunnerTimingSnapshot Unavailable => new(
             -1,
             -1,
@@ -74,6 +76,7 @@ namespace TajsCOI.Profiler.Core
             false,
             -1,
             -1);
+        // ReSharper restore RedundantArgumentDefaultValue
     }
 
     internal sealed class GameRunnerTimingAccess
