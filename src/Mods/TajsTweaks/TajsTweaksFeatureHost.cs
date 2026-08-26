@@ -12,18 +12,22 @@ using Mafi.Core.Console;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Dynamic;
 using Mafi.Core.Factory.Transports;
+using Mafi.Core.Game;
 using Mafi.Core.GameLoop;
 using Mafi.Core.Input;
 using Mafi.Core.Prototypes;
+using Mafi.Core.SaveGame;
 using Mafi.Core.Vehicles.Commands;
 using Mafi.Core.Vehicles.Trucks;
 using Mafi.Core.World;
+using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
+using TajsCOI.Tweaks.Features.Difficulty;
 using TajsCOI.Tweaks.Features.Overclocking;
 
 namespace TajsCOI.Tweaks
@@ -44,9 +48,11 @@ namespace TajsCOI.Tweaks
         private readonly ITajsLogger m_log;
         private readonly TweaksInfiniteGroundwaterFeature m_infiniteGroundwater;
         private TajsOverclockingFeature? m_overclocking;
+        private TajsDifficultyFeature? m_difficulty;
         private bool m_overclockingInitializationAttempted;
         private Option<TajsWorldOperationsWindow> m_worldOperationsWindow;
         private Option<TajsFleetManagementWindow> m_fleetManagementWindow;
+        private Option<TajsDifficultyWindow> m_difficultyWindow;
         private int m_renderTick;
 
         public TajsTweaksFeatureHost(DependencyResolver resolver, IGameLoopEvents gameLoop, ITajsRuntime runtime, ITajsSettings settings)
@@ -326,6 +332,28 @@ namespace TajsCOI.Tweaks
                         TransportPillarRulesFeature.ApplyPillarConstraintOverrides(protosDb);
                     }
                 });
+            TryInstallResolved(m_runtime, TajsDifficultyFeature.ComponentId, InitializeDifficulty);
+        }
+
+        private void InitializeDifficulty()
+        {
+            if (m_difficulty is not null)
+            {
+                return;
+            }
+            if (!m_resolver.TryResolve(out GameDifficultyApplier applier) ||
+                !m_resolver.TryResolve(out IInputScheduler scheduler) ||
+                !m_resolver.TryResolve(out ISaveManager saveManager))
+            {
+                throw new InvalidOperationException("The active scene does not expose the native difficulty applier, input scheduler, and save manager.");
+            }
+
+            string saveName = string.IsNullOrWhiteSpace(saveManager.GameName) ? "current" : saveManager.GameName;
+            m_difficulty = new TajsDifficultyFeature(
+                applier,
+                scheduler,
+                saveName,
+                m_runtime.GetLogger(TajsTweaksSettingsCatalog.ModId, TajsDifficultyFeature.ComponentId));
         }
 
         private void EnsureOverclockingFeature()
@@ -369,6 +397,7 @@ namespace TajsCOI.Tweaks
             TweaksAutoShipDeliveryFeature.Reset();
             m_infiniteGroundwater.Dispose();
             m_overclocking?.Dispose();
+            m_difficulty?.Dispose();
             TweaksResourceDepositFeature.Dispose();
             TweaksStackerDesignationFeature.Dispose();
             TweaksTerrainGridFeature.Dispose();
@@ -378,6 +407,94 @@ namespace TajsCOI.Tweaks
             TweaksHudLayoutFeature.ClearFullscreenState();
             CloseWorldOperationsWindow();
             CloseFleetManagementWindow();
+            CloseDifficultyWindow();
+        }
+
+        [ConsoleCommand(
+            documentation: "Opens the advanced difficulty editor for the active save.",
+            customCommandName: "tajs_difficulty")]
+        public string ToggleDifficultyWindow()
+        {
+            if (m_difficulty is null)
+            {
+                return "Advanced difficulty editor is unavailable in this scene.";
+            }
+            if (m_difficultyWindow.HasValue && m_difficultyWindow.Value.IsOpen)
+            {
+                CloseDifficultyWindow();
+                return "Advanced difficulty window: hidden";
+            }
+            if (!m_resolver.TryResolve(out UiRoot uiRoot))
+            {
+                return "Advanced difficulty editor is unavailable in this scene.";
+            }
+
+            try
+            {
+                var window = new TajsDifficultyWindow(m_difficulty, uiRoot);
+                window.OnCloseStart += OnDifficultyWindowClose;
+                m_difficultyWindow = window;
+                return "Advanced difficulty window: shown";
+            }
+            catch (Exception exception)
+            {
+                m_log.Exception(exception, "Advanced difficulty window failed open.");
+                return "Advanced difficulty editor is unavailable in this scene.";
+            }
+        }
+
+        [ConsoleCommand(
+            documentation: "Shows supported difficulty values and lifecycle classifications.",
+            customCommandName: "tajs_difficulty_status")]
+        public string DifficultyStatus() => m_difficulty?.Status() ?? "Advanced difficulty editor is unavailable in this scene.";
+
+        [ConsoleCommand(
+            documentation: "Queues one runtime-safe difficulty value. Extreme values require CONFIRM.",
+            customCommandName: "tajs_difficulty_set")]
+        public string SetDifficulty(string? memberName, string? value, string? confirmation = null)
+        {
+            if (m_difficulty is null)
+            {
+                return "Advanced difficulty editor is unavailable in this scene.";
+            }
+            if (string.IsNullOrWhiteSpace(memberName) || string.IsNullOrWhiteSpace(value))
+            {
+                return "Usage: tajs_difficulty_set <GameDifficultyConfig member> <value> [CONFIRM]";
+            }
+            return m_difficulty.Set(memberName!, value, string.Equals(confirmation, "CONFIRM", StringComparison.OrdinalIgnoreCase));
+        }
+
+        [ConsoleCommand(
+            documentation: "Queues a reset of runtime-safe difficulty values to original save or vanilla values.",
+            customCommandName: "tajs_difficulty_reset")]
+        public string ResetDifficulty(string? target, string? confirmation = null)
+        {
+            if (m_difficulty is null)
+            {
+                return "Advanced difficulty editor is unavailable in this scene.";
+            }
+            return m_difficulty.Reset(target, string.Equals(confirmation, "CONFIRM", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void OnDifficultyWindowClose(Window window)
+        {
+            if (m_difficultyWindow.HasValue && ReferenceEquals(m_difficultyWindow.Value, window))
+            {
+                window.OnCloseStart -= OnDifficultyWindowClose;
+                m_difficultyWindow = Option<TajsDifficultyWindow>.None;
+            }
+        }
+
+        private void CloseDifficultyWindow()
+        {
+            if (!m_difficultyWindow.HasValue)
+            {
+                return;
+            }
+            TajsDifficultyWindow window = m_difficultyWindow.Value;
+            window.OnCloseStart -= OnDifficultyWindowClose;
+            window.CloseNoFade();
+            m_difficultyWindow = Option<TajsDifficultyWindow>.None;
         }
 
         [ConsoleCommand(

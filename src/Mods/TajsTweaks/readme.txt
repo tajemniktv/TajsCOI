@@ -31,6 +31,12 @@ Current feature:
   command below and still route through native support/collision validation.
 - The advanced Ignore pillar requirements setting disables pillar requirements for transports and
   elevated layout entities while retaining native terrain and occupancy checks. It requires a restart.
+- TajsDifficulty widens the native new-game difficulty choices with bounded custom percentage
+  ranges for economy, resources, settlements, environment, population, power, and progression.
+  In an active save, the dedicated editor exposes the same values with explicit safe/future,
+  reload, and new-game-only classifications. Live edits use the native difficulty command;
+  original-save values are kept in a scalar sidecar so they can be restored separately from the
+  save's vanilla preset defaults.
 
 Console commands:
 - set_game_speed_unlocked <speed>
@@ -50,3 +56,7 @@ Console commands:
 - tajs_fleet_cancel <scrap|replace> <comma-separated IDs> CONFIRM
 - tajs_hud_status
 - tajs_hud_reset
+- tajs_difficulty
+- tajs_difficulty_status
+- tajs_difficulty_set <GameDifficultyConfig-member> <value> [CONFIRM]
+- tajs_difficulty_reset <original|vanilla> CONFIRM

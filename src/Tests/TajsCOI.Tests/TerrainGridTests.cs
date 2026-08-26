@@ -2,7 +2,6 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
-using System;
 using System.Linq;
 using TajsCOI.Common.Settings;
 using TajsCOI.Tweaks;
@@ -15,8 +14,7 @@ namespace TajsCOI.Tests
         [Fact]
         public void TerrainGridIsAnImmediateOptInPreference()
         {
-            SettingDescriptor descriptor = TajsTweaksSettingsCatalog.All.Single(
-                x => x.Key == TajsTweaksSettingsCatalog.TerrainGrid);
+            SettingDescriptor descriptor = TajsTweaksSettingsCatalog.All.Single(x => x.Key == TajsTweaksSettingsCatalog.TerrainGrid);
 
             Assert.Equal(TajsTweaksSettingsCatalog.ModId, descriptor.ModId);
             Assert.Equal(false, descriptor.DefaultValue);

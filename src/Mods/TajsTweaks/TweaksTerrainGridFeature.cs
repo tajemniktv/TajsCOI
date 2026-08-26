@@ -143,10 +143,7 @@ namespace TajsCOI.Tweaks
 
         public bool InputUpdate() => false;
 
-        internal void ApplySettings()
-        {
-            ApplySettings(syncInputState: true);
-        }
+        internal void ApplySettings() => ApplySettings(syncInputState: true);
 
         private void ApplySettings(bool syncInputState)
         {
