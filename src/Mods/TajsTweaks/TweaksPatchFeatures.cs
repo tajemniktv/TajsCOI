@@ -540,6 +540,7 @@ namespace TajsCOI.Tweaks
             "Mafi.Unity.Ui.Controllers.Tools.AreaRemovalHandler, Mafi.Unity",
             "Mafi.Unity.Ui.Controllers.Tools.PropsRemovalInputController, Mafi.Unity",
             "Mafi.Unity.Ui.Controllers.Tools.FulfillDesignationsInputController, Mafi.Unity",
+            "Mafi.Unity.Ui.Controllers.Tools.BaseEntityCursorInputController, Mafi.Unity",
             "Mafi.Unity.Ui.Blueprints.BlueprintCreationController, Mafi.Unity",
             "Mafi.Unity.Ui.Controllers.TreeHarvestingDesignatorController, Mafi.Unity",
         };

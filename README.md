@@ -9,10 +9,29 @@ The current compatibility target is Captain of Industry 0.8.7b.
 
 ### Taj's Core
 
-Taj's Core provides the shared support used by the other Taj's COI mods. It also provides the
-in-game dashboard for viewing suite status and changing available settings.
+Taj's Core provides the shared support used by the other Taj's COI mods. It also provides the in-game dashboard for
+viewing suite status, changing available settings, and running audited save-repair tools.
 
 Core is intended to be quiet on its own and does not add gameplay changes by itself.
+
+#### Save sanitizer
+
+The Core sanitizer is opt-in and type-specific. Start with a dry-run report:
+
+```text
+tajs_save_sanitize_report
+```
+
+For a supported finding, repair into a new save slot with an explicit confirmation:
+
+```text
+tajs_save_sanitize_repair <target> CONFIRM <new-save-name>
+```
+
+Supported targets currently include `infinite_groundwater`, `ship_auto_explore`, and
+`world_map_quick_trades`. Existing `tajs_infinite_groundwater_migrate` and
+`tajs_ship_auto_explore_migrate` commands remain as detach-only compatibility aliases. Unknown or uncertain save data is
+reported but not changed, and existing/current save files are never overwritten by the Core repair command.
 
 ### Taj's Tweaks
 
@@ -36,6 +55,19 @@ tajs_infinite_groundwater_migrate
 Only save after the command reports success, preferably to a new save slot. The command detaches
 the legacy saveable callback and resolver object. You can then disable the standalone mod and load
 the new copy. If migration reports failure, do not save that game instance.
+
+#### Migrating an existing ShipAutoExplore save
+
+ShipAutoExplore also stores a runtime-only controller callback in the save. To uninstall it safely, keep the standalone
+mod enabled while loading the save, then run:
+
+```text
+tajs_ship_auto_explore_migrate
+```
+
+Only save after the command reports success, preferably to a new save slot. Quit and reload that new copy once, then
+disable the standalone ShipAutoExplore mod. Taj's Tweaks does not replace its auto-explore behavior; this command only
+removes the stale save callback and resolver object.
 
 #### Unlocked simulation speed
 

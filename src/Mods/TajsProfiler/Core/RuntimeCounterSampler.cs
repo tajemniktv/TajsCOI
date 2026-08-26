@@ -4,6 +4,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
@@ -48,6 +49,7 @@ namespace TajsCOI.Profiler.Core
         private readonly Func<long>? m_monoUsed;
         private readonly Func<long>? m_monoHeap;
         private readonly ProfilerRecorderHandle? m_gpuFrame;
+        private readonly FrameTimingGpuSampler? m_frameTimingGpu;
         private readonly ProfilerRecorderHandle? m_mainThread;
         private readonly ProfilerRecorderHandle? m_renderThread;
         private readonly ProfilerRecorderHandle? m_drawCalls;
@@ -59,6 +61,9 @@ namespace TajsCOI.Profiler.Core
         private readonly int m_supportedUnityCounters;
         private readonly int m_supportedProfilerCounters;
         private readonly string m_supportSummary;
+        private string m_gpuTelemetryStatus = "unavailable: no trusted player-build GPU time counter";
+        private long m_lastFrameTimingGpuTicks = -1;
+        private bool m_lastFrameTimingGpuTrusted;
         private long m_lastSampleTimestamp;
         private long m_previousManagedHeapBytes = -1;
         private long m_previousUnityAllocatedBytes = -1;
@@ -96,17 +101,25 @@ namespace TajsCOI.Profiler.Core
 
             Type? recorderType = FindType("Unity.Profiling.ProfilerRecorder", "UnityEngine.CoreModule");
             Type? recorderOptionsType = FindType("Unity.Profiling.ProfilerRecorderOptions", "UnityEngine.CoreModule");
-            m_gpuFrame = TryCreateRecorder(recorderType, recorderOptionsType, "Render", "GPU Frame Time", TimeNanosecondsUnit);
-            m_mainThread = TryCreateRecorder(recorderType, recorderOptionsType, "Internal", "Main Thread", TimeNanosecondsUnit);
-            m_renderThread = TryCreateRecorder(recorderType, recorderOptionsType, "Internal", "Render Thread", TimeNanosecondsUnit);
-            m_drawCalls = TryCreateRecorder(recorderType, recorderOptionsType, "Render", "Draw Calls Count", CountUnit);
-            m_batches = TryCreateRecorder(recorderType, recorderOptionsType, "Render", "Batches Count", CountUnit);
-            m_triangles = TryCreateRecorder(recorderType, recorderOptionsType, "Render", "Triangles Count", CountUnit);
-            m_vertices = TryCreateRecorder(recorderType, recorderOptionsType, "Render", "Vertices Count", CountUnit);
-            m_gcAlloc = TryCreateRecorder(recorderType, recorderOptionsType, "Internal", "GC.Alloc", BytesUnit);
+            Type? recorderCategoryType = FindType("Unity.Profiling.ProfilerCategory", "UnityEngine.CoreModule");
+            m_gpuFrame = TryCreateRecorder(recorderType, recorderOptionsType, recorderCategoryType, "Render", "GPU Frame Time", TimeNanosecondsUnit);
+            m_frameTimingGpu = FrameTimingGpuSampler.TryCreate();
+            m_mainThread = TryCreateRecorder(recorderType, recorderOptionsType, recorderCategoryType, "Internal", "Main Thread", TimeNanosecondsUnit);
+            m_renderThread = TryCreateRecorder(recorderType, recorderOptionsType, recorderCategoryType, "Internal", "Render Thread", TimeNanosecondsUnit);
+            m_drawCalls = TryCreateRecorder(recorderType, recorderOptionsType, recorderCategoryType, "Render", "Draw Calls Count", CountUnit);
+            m_batches = TryCreateRecorder(recorderType, recorderOptionsType, recorderCategoryType, "Render", "Batches Count", CountUnit);
+            m_triangles = TryCreateRecorder(recorderType, recorderOptionsType, recorderCategoryType, "Render", "Triangles Count", CountUnit);
+            m_vertices = TryCreateRecorder(recorderType, recorderOptionsType, recorderCategoryType, "Render", "Vertices Count", CountUnit);
+            m_gcAlloc = TryCreateRecorder(recorderType, recorderOptionsType, recorderCategoryType, "Internal", "GC.Alloc", BytesUnit);
+
+            m_gpuTelemetryStatus = m_gpuFrame is not null
+                ? "probing: Unity ProfilerRecorder Render/GPU Frame Time"
+                : m_frameTimingGpu is not null
+                    ? "probing: Unity FrameTimingManager GPU frame time"
+                    : "unavailable: no trusted player-build GPU time counter";
 
             m_supportedProfilerCounters =
-                (m_gpuFrame is null ? 0 : ProfilerGpuFrame) |
+                (m_gpuFrame is null && m_frameTimingGpu is null ? 0 : ProfilerGpuFrame) |
                 (m_mainThread is null ? 0 : ProfilerMainThread) |
                 (m_renderThread is null ? 0 : ProfilerRenderThread) |
                 (m_drawCalls is null ? 0 : ProfilerDrawCalls) |
@@ -121,9 +134,7 @@ namespace TajsCOI.Profiler.Core
         internal int SupportedProfilerCounters => m_supportedProfilerCounters;
         internal string SupportSummary => m_supportSummary;
 
-        internal string GpuTelemetryStatus => m_gpuFrame is null
-            ? "unavailable: no trusted player-build GPU time counter"
-            : "available: Unity ProfilerRecorder Render/GPU Frame Time";
+        internal string GpuTelemetryStatus => m_gpuTelemetryStatus;
 
         internal double IntervalMilliseconds => Volatile.Read(ref m_intervalTicks) * 1000.0 / Stopwatch.Frequency;
 
@@ -136,9 +147,9 @@ namespace TajsCOI.Profiler.Core
                 int gen0 = GC.CollectionCount(0);
                 int gen1 = GC.CollectionCount(1);
                 int gen2 = GC.CollectionCount(2);
-                RecorderSnapshot recorder = ReadProfilerRecorders();
                 bool readMemory = force || m_lastSampleTimestamp <= 0 ||
                                   timestamp - m_lastSampleTimestamp >= Volatile.Read(ref m_intervalTicks);
+                RecorderSnapshot recorder = ReadProfilerRecorders(force || readMemory);
                 if (!readMemory)
                 {
                     RuntimeCounterSnapshot interval = WithGcDeltas(timestamp, gen0, gen1, gen2, recorder);
@@ -266,10 +277,41 @@ namespace TajsCOI.Profiler.Core
                 recorder.Vertices,
                 recorder.GcAllocatedBytes);
 
-        private RecorderSnapshot ReadProfilerRecorders()
+        private RecorderSnapshot ReadProfilerRecorders(bool sampleFrameTiming)
         {
+            long gpuFrameTicks = ReadTimeTicks(m_gpuFrame, trusted: true, out bool gpuTrusted);
+            if (gpuTrusted)
+            {
+                m_gpuTelemetryStatus = "available: Unity ProfilerRecorder Render/GPU Frame Time";
+            }
+            else if (m_frameTimingGpu is not null)
+            {
+                if (sampleFrameTiming && m_frameTimingGpu.TryRead(out long frameTimingTicks))
+                {
+                    m_lastFrameTimingGpuTicks = frameTimingTicks;
+                    m_lastFrameTimingGpuTrusted = true;
+                    m_gpuTelemetryStatus = "available: Unity FrameTimingManager GPU frame time";
+                }
+                else if (sampleFrameTiming)
+                {
+                    m_lastFrameTimingGpuTicks = -1;
+                    m_lastFrameTimingGpuTrusted = false;
+                    m_gpuTelemetryStatus = "unavailable: FrameTimingManager returned no trusted GPU sample";
+                }
+
+                if (!gpuTrusted && m_lastFrameTimingGpuTrusted)
+                {
+                    gpuFrameTicks = m_lastFrameTimingGpuTicks;
+                    gpuTrusted = true;
+                }
+            }
+            else if (m_gpuFrame is not null)
+            {
+                m_gpuTelemetryStatus = "unavailable: Unity GPU counter returned no trusted sample";
+            }
+
             return new RecorderSnapshot(
-                ReadTimeTicks(m_gpuFrame, trusted: true, out bool gpuTrusted),
+                gpuFrameTicks,
                 gpuTrusted,
                 ReadTimeTicks(m_mainThread, trusted: false, out _),
                 ReadTimeTicks(m_renderThread, trusted: false, out _),
@@ -335,6 +377,7 @@ namespace TajsCOI.Profiler.Core
         private ProfilerRecorderHandle? TryCreateRecorder(
             Type? recorderType,
             Type? optionsType,
+            Type? categoryType,
             string category,
             string statName,
             int expectedUnit)
@@ -346,25 +389,60 @@ namespace TajsCOI.Profiler.Core
 
             try
             {
-                ConstructorInfo? constructor = recorderType.GetConstructor(
-                    BindingFlags.Instance | BindingFlags.Public,
-                    null,
-                    new[] { typeof(string), typeof(string), typeof(int), optionsType },
-                    null);
-                if (constructor is null)
+                object options = Enum.ToObject(optionsType, ProfilerRecorderDefaultOptions);
+                for (int attempt = 0; attempt < 3; attempt++)
                 {
-                    return null;
+                    bool useCategoryValue = attempt > 0 && categoryType is not null;
+                    string categoryName = attempt == 2 && string.Equals(category, "Render", StringComparison.Ordinal)
+                        ? "GPU"
+                        : category;
+                    ConstructorInfo? constructor = recorderType.GetConstructor(
+                        BindingFlags.Instance | BindingFlags.Public,
+                        null,
+                        useCategoryValue
+                            ? new[] { categoryType!, typeof(string), typeof(int), optionsType }
+                            : new[] { typeof(string), typeof(string), typeof(int), optionsType },
+                        null);
+                    if (constructor is null)
+                    {
+                        continue;
+                    }
+
+                    object? categoryValue = categoryName;
+                    if (useCategoryValue)
+                    {
+                        FieldInfo? categoryField = categoryType!.GetField(
+                            categoryName,
+                            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                        PropertyInfo? categoryProperty = categoryType.GetProperty(
+                            categoryName,
+                            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                        if (categoryField is null && categoryProperty is null)
+                        {
+                            continue;
+                        }
+                        categoryValue = categoryField is not null
+                            ? categoryField.GetValue(null)
+                            : categoryProperty!.GetValue(null, null);
+                    }
+
+                    try
+                    {
+                        object recorder = constructor.Invoke(new object?[] { categoryValue, statName, 1, options });
+                        var handle = ProfilerRecorderHandle.Create(recorder, recorderType, expectedUnit);
+                        if (handle is not null && handle.IsValid)
+                        {
+                            return handle;
+                        }
+                        handle?.Dispose();
+                    }
+                    catch
+                    {
+                        // Try the next compatible category spelling/constructor shape.
+                    }
                 }
 
-                // ReSharper disable once RedundantCast
-                object recorder = constructor.Invoke(new[] { (object)category, statName, 1, Enum.ToObject(optionsType, ProfilerRecorderDefaultOptions) });
-                var handle = ProfilerRecorderHandle.Create(recorder, recorderType, expectedUnit);
-                if (handle is null || !handle.IsValid)
-                {
-                    handle?.Dispose();
-                    return null;
-                }
-                return handle;
+                return null;
             }
             catch
             {
@@ -382,6 +460,7 @@ namespace TajsCOI.Profiler.Core
                 .Append(", mono-used=").Append(UnityStatus(m_monoUsed, "Profiler.GetMonoUsedSizeLong"))
                 .Append(", mono-heap=").Append(UnityStatus(m_monoHeap, "Profiler.GetMonoHeapSizeLong"))
                 .Append("; profiler: gpu-frame=").Append(RecorderStatus(m_gpuFrame, "Render/GPU Frame Time"))
+                .Append(", frame-timing-gpu=").Append(m_frameTimingGpu is null ? "unavailable" : "UnityEngine.FrameTimingManager")
                 .Append(", main-thread=").Append(RecorderStatus(m_mainThread, "Internal/Main Thread"))
                 .Append(", render-thread=").Append(RecorderStatus(m_renderThread, "Internal/Render Thread"))
                 .Append(", draw-calls=").Append(RecorderStatus(m_drawCalls, "Render/Draw Calls Count"))
@@ -463,6 +542,151 @@ namespace TajsCOI.Profiler.Core
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        ///     Player-safe GPU timing fallback. ProfilerRecorder's GPU counter is optional and is
+        ///     commonly absent in non-development/player builds. FrameTimingManager is the Unity
+        ///     public frame-timing surface intended for those builds; the newest completed frame
+        ///     is sampled at the same bounded cadence as the other slow counters.
+        /// </summary>
+        internal sealed class FrameTimingGpuSampler
+        {
+            private readonly MethodInfo m_captureFrameTimings;
+            private readonly MethodInfo m_getLatestTimings;
+            private readonly MethodInfo? m_isFeatureEnabled;
+            private readonly MethodInfo? m_getGpuTimerFrequency;
+            private readonly FieldInfo m_gpuFrameTime;
+            private readonly Array m_timings;
+
+            private FrameTimingGpuSampler(
+                MethodInfo captureFrameTimings,
+                MethodInfo getLatestTimings,
+                MethodInfo? isFeatureEnabled,
+                MethodInfo? getGpuTimerFrequency,
+                FieldInfo gpuFrameTime,
+                Array timings)
+            {
+                m_captureFrameTimings = captureFrameTimings;
+                m_getLatestTimings = getLatestTimings;
+                m_isFeatureEnabled = isFeatureEnabled;
+                m_getGpuTimerFrequency = getGpuTimerFrequency;
+                m_gpuFrameTime = gpuFrameTime;
+                m_timings = timings;
+            }
+
+            internal static FrameTimingGpuSampler? TryCreate()
+            {
+                try
+                {
+                    Type? manager = FindType("UnityEngine.FrameTimingManager", "UnityEngine.CoreModule");
+                    Type? frameTiming = FindType("UnityEngine.FrameTiming", "UnityEngine.CoreModule");
+                    if (manager is null || frameTiming is null)
+                    {
+                        return null;
+                    }
+
+                    MethodInfo? capture = manager.GetMethod(
+                        "CaptureFrameTimings",
+                        BindingFlags.Static | BindingFlags.Public,
+                        null,
+                        Type.EmptyTypes,
+                        null);
+                    MethodInfo? latest = manager.GetMethod(
+                        "GetLatestTimings",
+                        BindingFlags.Static | BindingFlags.Public,
+                        null,
+                        new[] { typeof(uint), frameTiming.MakeArrayType() },
+                        null);
+                    FieldInfo? gpuFrameTime = frameTiming.GetField(
+                        "gpuFrameTime",
+                        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (capture is null || latest is null || gpuFrameTime is null)
+                    {
+                        return null;
+                    }
+
+                    MethodInfo? featureEnabled = manager.GetMethod(
+                        "IsFeatureEnabled",
+                        BindingFlags.Static | BindingFlags.Public,
+                        null,
+                        Type.EmptyTypes,
+                        null);
+                    MethodInfo? gpuFrequency = manager.GetMethod(
+                        "GetGpuTimerFrequency",
+                        BindingFlags.Static | BindingFlags.Public,
+                        null,
+                        Type.EmptyTypes,
+                        null);
+                    return new FrameTimingGpuSampler(
+                        capture,
+                        latest,
+                        featureEnabled,
+                        gpuFrequency,
+                        gpuFrameTime,
+                        Array.CreateInstance(frameTiming, 1));
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            internal bool TryRead(out long stopwatchTicks)
+            {
+                stopwatchTicks = -1;
+                try
+                {
+                    if (m_isFeatureEnabled is not null &&
+                        !Convert.ToBoolean(m_isFeatureEnabled.Invoke(null, null), CultureInfo.InvariantCulture))
+                    {
+                        return false;
+                    }
+
+                    if (m_getGpuTimerFrequency is not null &&
+                        Convert.ToDouble(m_getGpuTimerFrequency.Invoke(null, null), CultureInfo.InvariantCulture) <= 0)
+                    {
+                        return false;
+                    }
+
+                    m_captureFrameTimings.Invoke(null, null);
+                    object? countValue = m_getLatestTimings.Invoke(null, new object?[] { (uint)1, m_timings });
+                    if (countValue is null || Convert.ToUInt32(countValue, CultureInfo.InvariantCulture) == 0)
+                    {
+                        return false;
+                    }
+
+                    object? first = m_timings.GetValue(0);
+                    if (first is null)
+                    {
+                        return false;
+                    }
+
+                    double milliseconds = Convert.ToDouble(
+                        m_gpuFrameTime.GetValue(first),
+                        CultureInfo.InvariantCulture);
+                    stopwatchTicks = MillisecondsToStopwatchTicks(milliseconds);
+                    return stopwatchTicks > 0;
+                }
+                catch
+                {
+                    stopwatchTicks = -1;
+                    return false;
+                }
+            }
+
+            internal static long MillisecondsToStopwatchTicks(double milliseconds)
+            {
+                if (double.IsNaN(milliseconds) || double.IsInfinity(milliseconds) || milliseconds <= 0)
+                {
+                    return -1;
+                }
+
+                double ticks = milliseconds * Stopwatch.Frequency / 1000.0;
+                return ticks >= long.MaxValue
+                    ? long.MaxValue
+                    : Math.Max(0, (long)Math.Round(ticks, MidpointRounding.AwayFromZero));
+            }
         }
 
         private readonly struct RecorderSnapshot

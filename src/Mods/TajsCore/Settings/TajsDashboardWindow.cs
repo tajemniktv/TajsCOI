@@ -16,25 +16,106 @@ using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
+using UnityEngine.UIElements;
+using Button = Mafi.Unity.UiToolkit.Library.Button;
+using Column = Mafi.Unity.UiToolkit.Library.Column;
+using Label = Mafi.Unity.UiToolkit.Library.Label;
+using TextField = Mafi.Unity.UiToolkit.Library.TextField;
 
 namespace TajsCOI.Core.Settings
 {
     internal sealed class TajsDashboardWindow : Window
     {
+        private sealed class DashboardResizeManipulator : PointerManipulator
+        {
+            private readonly Action<PointerDownEvent> m_onPointerDown;
+            private readonly Action<PointerMoveEvent> m_onPointerMove;
+            private readonly Action<PointerUpEvent> m_onPointerUp;
+            private readonly Action<PointerCaptureOutEvent> m_onPointerCaptureOut;
+
+            internal DashboardResizeManipulator(
+                Action<PointerDownEvent> onPointerDown,
+                Action<PointerMoveEvent> onPointerMove,
+                Action<PointerUpEvent> onPointerUp,
+                Action<PointerCaptureOutEvent> onPointerCaptureOut)
+            {
+                m_onPointerDown = onPointerDown;
+                m_onPointerMove = onPointerMove;
+                m_onPointerUp = onPointerUp;
+                m_onPointerCaptureOut = onPointerCaptureOut;
+            }
+
+            protected override void RegisterCallbacksOnTarget()
+            {
+                target.RegisterCallback<PointerDownEvent>(OnPointerDown);
+                target.RegisterCallback<PointerMoveEvent>(OnPointerMove);
+                target.RegisterCallback<PointerUpEvent>(OnPointerUp);
+                target.RegisterCallback<PointerCaptureOutEvent>(OnPointerCaptureOut);
+            }
+
+            protected override void UnregisterCallbacksFromTarget()
+            {
+                target.UnregisterCallback<PointerDownEvent>(OnPointerDown);
+                target.UnregisterCallback<PointerMoveEvent>(OnPointerMove);
+                target.UnregisterCallback<PointerUpEvent>(OnPointerUp);
+                target.UnregisterCallback<PointerCaptureOutEvent>(OnPointerCaptureOut);
+            }
+
+            private void OnPointerDown(PointerDownEvent evt)
+            {
+                if (evt.button != 0)
+                {
+                    return;
+                }
+
+                target.CapturePointer(evt.pointerId);
+                m_onPointerDown(evt);
+            }
+
+            private void OnPointerMove(PointerMoveEvent evt)
+            {
+                if (target.HasPointerCapture(evt.pointerId))
+                {
+                    m_onPointerMove(evt);
+                }
+            }
+
+            private void OnPointerUp(PointerUpEvent evt)
+            {
+                if (evt.button == 0 && target.HasPointerCapture(evt.pointerId))
+                {
+                    m_onPointerUp(evt);
+                    target.ReleasePointer(evt.pointerId);
+                }
+            }
+
+            private void OnPointerCaptureOut(PointerCaptureOutEvent evt) => m_onPointerCaptureOut(evt);
+        }
+
         private const string AllCategories = "All";
+        private const float MinimumWindowWidth = 760f;
+        private const float MinimumWindowHeight = 480f;
 
         private readonly ITajsSettings m_settings;
         private readonly ITajsRuntime m_runtime;
         private readonly GameConsoleCommandsExecutor m_consoleCommands;
         private readonly ScrollColumn m_pageContent;
+        private readonly Column m_dashboardShell;
+        private readonly ButtonIcon m_minimizeButton;
+        private readonly ButtonIcon m_maximizeButton;
+        private readonly UiComponent m_resizeHandle;
         private readonly Dictionary<DashboardPage, Column> m_pageContainers = new();
         private readonly HashSet<DashboardPage> m_builtPages = new();
-        private readonly Dictionary<DashboardPage, ButtonText> m_pageButtons = new();
-        private readonly Dictionary<string, ButtonText> m_categoryButtons = new(StringComparer.Ordinal);
+        private readonly Dictionary<DashboardPage, Button> m_pageButtons = new();
+        private readonly Dictionary<string, Button> m_categoryButtons = new(StringComparer.Ordinal);
         private string m_selectedCategory = AllCategories;
         private DashboardPage m_selectedPage = DashboardPage.Overview;
         private Label m_headerFeedback = null!;
         private bool m_refreshQueued;
+        private bool m_isMinimized;
+        private bool m_isMaximized;
+        private bool m_isResizing;
+        private float m_lastParentWidth = -1f;
         private ProfilerPageView? m_profilerPage;
         private LogsPageView? m_logsPage;
 
@@ -51,12 +132,38 @@ namespace TajsCOI.Core.Settings
             m_runtime = runtime;
             m_consoleCommands = consoleCommands;
             m_pageContent = new ScrollColumn().Fill().AlignItemsStretch().Gap(5.pt());
+            m_dashboardShell = new Column(6.pt()).Fill().AlignItemsStretch();
+            m_minimizeButton = new ButtonIcon(
+                    Button.Header,
+                    "Assets/Unity/UserInterface/General/Minimize.svg",
+                    ToggleMinimized)
+                .ObserveSelected(() => m_isMinimized);
+            m_maximizeButton = new ButtonIcon(
+                    Button.Header,
+                    "Assets/Unity/UserInterface/General/Maximize.svg",
+                    ToggleMaximized)
+                .ObserveSelected(() => m_isMaximized);
+            m_resizeHandle = new Icon("Assets/Unity/UserInterface/General/ResCornerBR32.png")
+                .AbsolutePosition(null, 2.px(), 2.px(), null)
+                .Width(16.px())
+                .Height(16.px());
+            m_resizeHandle.RootElement.AddManipulator(
+                new DashboardResizeManipulator(
+                    BeginResize,
+                    ContinueResize,
+                    EndResize,
+                    _ => m_isResizing = false));
 
             BuildShell();
+            Frame.Add(m_resizeHandle);
             WindowSize(1180.px(), 860.px());
             MakeMovableAndEnablePositionSaving();
+            EnablePinning();
+            AddHeaderButton(m_minimizeButton);
+            AddHeaderButton(m_maximizeButton);
             CloseOnClickOutside();
             OnCloseStart += _ => m_refreshQueued = false;
+            Schedule.Execute(UpdateResponsiveWindowSize).Every(20L);
             RebuildPage();
             Open(uiRoot);
         }
@@ -66,18 +173,32 @@ namespace TajsCOI.Core.Settings
             Panel header = new Panel(true).ReducedPadding().BodyGap(2.pt());
             m_headerFeedback = new Label().FontSize(11).Hide();
 
-            Column title = new Column(1.pt())
+            Column titleText = new Column(1.pt())
             {
-                new Label("TajsCOI control center".AsLoc()).FontBold().FontSize(19),
+                new Label("TajsCOI Control Center".AsLoc()).FontBold().FontSize(19),
                 new Label("Live diagnostics, suite configuration, and safe maintenance tools for the active save.".AsLoc())
                     .FontSize(12),
-            }.FlexGrow(1f);
+            };
+
+            Row title = new Row(4.pt()).AlignItemsCenter().FlexGrow(1f);
+            title.Add(
+                new Icon("Assets/Unity/UserInterface/General/ModLarge.svg")
+                    .Width(30.px())
+                    .Height(30.px()),
+                titleText);
 
             Row actions = new Row(2.pt()).AlignItemsCenter();
             actions.Add(
-                new ButtonText(Button.Area, "Refresh".AsLoc(), QueueRefresh).Compact(),
-                new ButtonText(Button.Area, "Export trace".AsLoc(), ExportTrace).Compact(),
-                new ButtonText(Button.General, "Close".AsLoc(), Close).Compact());
+                TajsDashboardUi.ActionButton(
+                    Button.Area,
+                    "Refresh",
+                    "Assets/Unity/UserInterface/General/Repeat.svg",
+                    QueueRefresh),
+                TajsDashboardUi.ActionButton(
+                    Button.Area,
+                    "Export trace",
+                    "Assets/Unity/UserInterface/General/ExportToString.svg",
+                    ExportTrace));
             header.Body.Add(new Row(4.pt()) { title, actions }.AlignItemsCenter());
             header.Body.Add(m_headerFeedback);
 
@@ -85,9 +206,110 @@ namespace TajsCOI.Core.Settings
             BuildPageContainers();
             body.Add(BuildSidebar(), m_pageContent);
 
-            Column shell = new Column(6.pt()).Fill().AlignItemsStretch();
-            shell.Add(header, body);
-            AddBodySingle(shell);
+            m_dashboardShell.Add(header, body);
+            AddBodySingle(m_dashboardShell);
+        }
+
+        private void ToggleMinimized()
+        {
+            m_isMinimized = !m_isMinimized;
+            m_isResizing = false;
+            if (m_isMinimized)
+            {
+                m_dashboardShell.Hide();
+                m_resizeHandle.Hide();
+                WindowSize(GetCurrentWindowWidth().px(), 76.px());
+            }
+            else
+            {
+                m_dashboardShell.Show();
+                UpdateResizeHandleVisibility();
+                m_lastParentWidth = -1f;
+                UpdateResponsiveWindowSize();
+            }
+        }
+
+        private void ToggleMaximized()
+        {
+            if (m_isMinimized)
+            {
+                m_isMinimized = false;
+                m_dashboardShell.Show();
+            }
+
+            m_isMaximized = !m_isMaximized;
+            m_isResizing = false;
+            UpdateResizeHandleVisibility();
+            m_lastParentWidth = -1f;
+            UpdateResponsiveWindowSize();
+        }
+
+        private void UpdateResponsiveWindowSize()
+        {
+            if (m_isMinimized || Parent.IsNone || Parent.Value.ResolvedWidth <= 1f)
+            {
+                return;
+            }
+
+            float parentWidth = Parent.Value.ResolvedWidth;
+            if (m_lastParentWidth > 0f && Math.Abs(parentWidth - m_lastParentWidth) < 1f)
+            {
+                return;
+            }
+
+            m_lastParentWidth = parentWidth;
+            float width = Math.Min(m_isMaximized ? 2000f : 1180f, parentWidth * 0.9f);
+            WindowSize(Math.Max(MinimumWindowWidth, width).px(), (m_isMaximized ? 90 : 80).Percent());
+        }
+
+        private float GetCurrentWindowWidth() => Frame.ResolvedWidth > 1f ? Frame.ResolvedWidth : 1180f;
+
+        private void UpdateResizeHandleVisibility()
+        {
+            if (m_isMaximized || m_isMinimized)
+            {
+                m_resizeHandle.Hide();
+            }
+            else
+            {
+                m_resizeHandle.Show();
+            }
+        }
+
+        private void BeginResize(PointerDownEvent evt)
+        {
+            if (evt.button != 0 || m_isMaximized || m_isMinimized || Frame.ResolvedWidth <= 1f)
+            {
+                return;
+            }
+
+            m_isResizing = true;
+            evt.StopPropagation();
+        }
+
+        private void ContinueResize(PointerMoveEvent evt)
+        {
+            if (!m_isResizing || Parent.IsNone)
+            {
+                return;
+            }
+
+            float maxWidth = Math.Max(MinimumWindowWidth, Parent.Value.ResolvedWidth * 0.96f);
+            float maxHeight = Math.Max(MinimumWindowHeight, Parent.Value.ResolvedHeight * 0.96f);
+            float width = Math.Max(MinimumWindowWidth, Math.Min(maxWidth, Frame.ResolvedWidth + evt.deltaPosition.x));
+            float height = Math.Max(MinimumWindowHeight, Math.Min(maxHeight, Frame.ResolvedHeight + evt.deltaPosition.y));
+            WindowSize(width.px(), height.px());
+            m_lastParentWidth = Parent.Value.ResolvedWidth;
+            evt.StopPropagation();
+        }
+
+        private void EndResize(PointerUpEvent evt)
+        {
+            if (evt.button == 0 && m_isResizing)
+            {
+                m_isResizing = false;
+                evt.StopPropagation();
+            }
         }
 
         private void BuildPageContainers()
@@ -100,13 +322,14 @@ namespace TajsCOI.Core.Settings
                 m_pageContent.Add(container);
             }
             CurrentPage.Show();
+            m_pageContent.ScrollToStart();
         }
 
         private Column BuildSidebar()
         {
-            Column sidebar = new Column(2.pt()).Width(188.px()).FlexShrink(0f).AlignItemsStretch();
-            Panel navigation = new Panel(true).ReducedPadding().BodyGap(2.pt()).FlexGrow(1f);
-            navigation.Body.Add(new Label("Dashboard".AsLoc()).FontBold().FontSize(13));
+            Column sidebar = new Column(2.pt()).Width(214.px()).FlexShrink(0f).AlignItemsStretch();
+            Panel navigation = new Panel(true).ReducedPadding().FlexGrow(1f).AlignItemsStretch();
+            ScrollColumn navigationScroll = new ScrollColumn().Fill().AlignItemsStretch().Gap(2.pt());
 
             Column pageNavigation = new Column(1.pt()).AlignItemsStretch();
             AddPageButton(pageNavigation, DashboardPage.Overview, "Overview");
@@ -118,47 +341,116 @@ namespace TajsCOI.Core.Settings
             AddPageButton(pageNavigation, DashboardPage.Rendering, "Rendering");
             AddPageButton(pageNavigation, DashboardPage.Compatibility, "Compatibility");
             AddPageButton(pageNavigation, DashboardPage.Logs, "Logs");
-            navigation.Body.Add(pageNavigation);
 
-            navigation.Body.Add(new Label("Settings".AsLoc()).FontBold().FontSize(11).MarginTop(4.pt()));
             Column settingNavigation = new Column(1.pt()).AlignItemsStretch();
-            AddPageButton(settingNavigation, DashboardPage.Settings, "All settings");
+            IReadOnlyList<SettingSnapshot> settings = m_settings.GetSnapshot();
+            AddPageButton(settingNavigation, DashboardPage.Settings, "All settings", settings.Count);
 
-            foreach (IGrouping<string, SettingSnapshot> category in GetCategories(m_settings.GetSnapshot()))
+            foreach (IGrouping<string, SettingSnapshot> category in GetCategories(settings))
             {
-                ButtonText button = CreateCategoryButton(category.Key, category.Count(), settingNavigation);
+                Button button = CreateCategoryButton(category.Key, category.Count(), settingNavigation);
                 m_categoryButtons[category.Key] = button;
             }
 
-            navigation.Body.Add(settingNavigation);
+            navigationScroll.Add(
+                TajsDashboardUi.NavigationSectionLabel("Dashboard"),
+                pageNavigation,
+                TajsDashboardUi.NavigationSectionLabel("Settings"),
+                settingNavigation);
+            navigation.Body.Add(navigationScroll);
             sidebar.Add(navigation);
             UpdateNavigationSelection();
             return sidebar;
         }
 
-        private void AddPageButton(Column container, DashboardPage page, string text)
+        private void AddPageButton(Column container, DashboardPage page, string text, int? count = null)
         {
-            ButtonText button = new ButtonText(
-                Button.Area,
-                text.AsLoc(),
-                () => SelectPage(page)).Compact();
+            Button button = TajsDashboardUi.NavigationButton(
+                text,
+                PageIcon(page),
+                () => SelectPage(page),
+                count);
             container.Add(button);
             m_pageButtons[page] = button;
         }
 
-        private ButtonText CreateCategoryButton(string category, int count, Column container)
+        private Button CreateCategoryButton(string category, int count, Column container)
         {
-            ButtonText button = new ButtonText(
-                Button.Area,
-                $"{category} ({count})".AsLoc(),
-                () => SelectCategory(category)).Compact();
+            Button button = TajsDashboardUi.NavigationButton(
+                category,
+                CategoryIcon(category),
+                () => SelectCategory(category),
+                count);
             container.Add(button);
             return button;
+        }
+
+        private static string PageIcon(DashboardPage page) =>
+            page switch
+            {
+                DashboardPage.Overview => "Assets/Unity/UserInterface/General/Home.svg",
+                DashboardPage.Profiler => "Assets/Unity/UserInterface/Toolbar/Stats.svg",
+                DashboardPage.Performance => "Assets/Unity/UserInterface/General/UptimeStats.svg",
+                DashboardPage.Tweaks => "Assets/Unity/UserInterface/General/Configure.svg",
+                DashboardPage.SaveLoad => "Assets/Unity/UserInterface/General/Save.svg",
+                DashboardPage.Memory => "Assets/Unity/UserInterface/General/Package.svg",
+                DashboardPage.Rendering => "Assets/Unity/UserInterface/General/Layers.svg",
+                DashboardPage.Compatibility => "Assets/Unity/UserInterface/General/Handshake.svg",
+                DashboardPage.Logs => "Assets/Unity/UserInterface/General/Message.svg",
+                DashboardPage.Settings => "Assets/Unity/UserInterface/General/Mod.svg",
+                _ => "Assets/Unity/UserInterface/General/Mod.svg",
+            };
+
+        private static string CategoryIcon(string category)
+        {
+            if (category.IndexOf("Building", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Assets/Unity/UserInterface/General/Build.svg";
+            }
+            if (category.IndexOf("Camera", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Assets/Unity/UserInterface/General/FocusPoint.svg";
+            }
+            if (category.IndexOf("Designation", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Assets/Unity/UserInterface/EntityIcons/Designation.png";
+            }
+            if (category.IndexOf("Fleet", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                category.IndexOf("Vehicle", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Assets/Unity/UserInterface/General/VehicleFilterGlobal.svg";
+            }
+            if (category.IndexOf("Memory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                category.IndexOf("Storage", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Assets/Unity/UserInterface/General/Package.svg";
+            }
+            if (category.IndexOf("Notification", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Assets/Unity/UserInterface/General/Message.svg";
+            }
+            if (category.IndexOf("Overlay", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                category.IndexOf("Rendering", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Assets/Unity/UserInterface/General/Layers.svg";
+            }
+            if (category.IndexOf("Profiler", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Assets/Unity/UserInterface/Toolbar/Stats.svg";
+            }
+            if (category.IndexOf("World", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Assets/Unity/UserInterface/General/MapBounds.svg";
+            }
+            return "Assets/Unity/UserInterface/General/Configure.svg";
         }
 
         private void SelectPage(DashboardPage page)
         {
             m_selectedPage = page;
+            // Each page shares one ScrollColumn. Reset its viewport when navigation changes so
+            // a previously deep settings scroll cannot clip the new page's heading.
+            m_pageContent.ScrollToStart();
             UpdateNavigationSelection();
             QueueRefresh();
         }
@@ -167,18 +459,19 @@ namespace TajsCOI.Core.Settings
         {
             m_selectedCategory = category;
             m_selectedPage = DashboardPage.Settings;
+            m_pageContent.ScrollToStart();
             UpdateNavigationSelection();
             QueueRefresh();
         }
 
         private void UpdateNavigationSelection()
         {
-            foreach (KeyValuePair<DashboardPage, ButtonText> button in m_pageButtons)
+            foreach (KeyValuePair<DashboardPage, Button> button in m_pageButtons)
             {
                 button.Value.Selected(button.Key == m_selectedPage);
             }
 
-            foreach (KeyValuePair<string, ButtonText> button in m_categoryButtons)
+            foreach (KeyValuePair<string, Button> button in m_categoryButtons)
             {
                 button.Value.Selected(
                     m_selectedPage == DashboardPage.Settings &&
@@ -269,12 +562,7 @@ namespace TajsCOI.Core.Settings
                 case DashboardPage.SaveLoad:
                     if (m_builtPages.Add(m_selectedPage))
                     {
-                        AddDomainPage(
-                            "Save & Load",
-                            "Settings and lifecycle controls that apply at save reload or game restart.",
-                            LoadSettings(),
-                            new[] { "Save", "Load" },
-                            includeMaintenance: false);
+                        AddSaveLoadPage(LoadSettings());
                     }
                     break;
                 case DashboardPage.Memory:
@@ -383,24 +671,68 @@ namespace TajsCOI.Core.Settings
 
             Row metrics = new Row(4.pt()).Wrap().AlignItemsStretch();
             metrics.Add(
-                TajsDashboardUi.MetricTile("Mods loaded", mods.Count.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan),
-                TajsDashboardUi.MetricTile("Active settings", activeSettings.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan),
-                TajsDashboardUi.MetricTile("Compatibility", healthy ? "Healthy" : "Attention", healthy ? TajsDashboardUi.Green : TajsDashboardUi.Yellow),
+                TajsDashboardUi.MetricTile(
+                    "Mods loaded",
+                    mods.Count.ToString(CultureInfo.InvariantCulture),
+                    "Active",
+                    TajsDashboardUi.Cyan),
+                TajsDashboardUi.MetricTile(
+                    "Active settings",
+                    activeSettings.ToString(CultureInfo.InvariantCulture),
+                    "In use",
+                    TajsDashboardUi.Cyan),
+                TajsDashboardUi.MetricTile(
+                    "Compatibility",
+                    healthy ? "Healthy" : "Attention",
+                    "See details",
+                    healthy ? TajsDashboardUi.Green : TajsDashboardUi.Yellow),
                 TajsDashboardUi.MetricTile(
                     "Runtime status",
                     profiler.IsAvailable ? "Recording" : "Unavailable",
+                    "Live",
                     profiler.IsAvailable ? TajsDashboardUi.Green : TajsDashboardUi.Red),
                 TajsDashboardUi.MetricTile(
                     "Load errors",
                     loadErrors.ToString(CultureInfo.InvariantCulture),
+                    "Issues",
                     loadErrors == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Red));
             CurrentPage.Add(metrics);
 
-            CurrentPage.Add(BuildLiveProfilerPanel(profiler));
-            CurrentPage.Add(BuildQuickActionsPanel());
-            CurrentPage.Add(BuildRuntimeSnapshotPanel(profiler));
-            CurrentPage.Add(BuildCompatibilitySummary(reports));
-            CurrentPage.Add(BuildLoadedModsPanel(mods));
+            Panel runtime = TajsDashboardUi.Card(
+                "Runtime health",
+                "Detailed profiler controls and trace actions remain on the Profiler tab.");
+            Row runtimeStatuses = new Row(3.pt()).Wrap().AlignItemsCenter();
+            runtimeStatuses.Add(
+                TajsDashboardUi.StatusBadge(
+                    profiler.IsAvailable ? "Recording" : "Unavailable",
+                    profiler.IsAvailable ? TajsDashboardUi.Green : TajsDashboardUi.Red),
+                TajsDashboardUi.StatusBadge(
+                    "Deep trace: " + Truncate(profiler.DeepTrace, 32),
+                    profiler.DeepTrace.IndexOf("active", StringComparison.OrdinalIgnoreCase) >= 0
+                        ? TajsDashboardUi.Yellow
+                        : TajsDashboardUi.Cyan),
+                TajsDashboardUi.StatusBadge(
+                    "GPU: " + Truncate(profiler.GpuTiming, 32),
+                    profiler.GpuTiming.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0
+                        ? TajsDashboardUi.Yellow
+                        : TajsDashboardUi.Green));
+            Row runtimeRow = new Row(4.pt())
+            {
+                runtimeStatuses.FlexGrow(1f),
+                TajsDashboardUi.ActionButton(
+                    Button.Area,
+                    "View profiler",
+                    "Assets/Unity/UserInterface/Toolbar/Stats.svg",
+                    () => SelectPage(DashboardPage.Profiler)),
+            }.AlignItemsCenter();
+            runtime.Body.Add(runtimeRow);
+            CurrentPage.Add(runtime);
+
+            Row summaries = new Row(5.pt()).AlignItemsStretch();
+            summaries.Add(
+                BuildCompatibilitySummary(reports).FlexGrow(1f),
+                BuildLoadedModsPanel(mods).FlexGrow(1f));
+            CurrentPage.Add(summaries);
         }
 
         private void AddDomainPage(
@@ -429,6 +761,57 @@ namespace TajsCOI.Core.Settings
             }
 
             AddSettingsList(filtered, $"{title} settings");
+        }
+
+        private void AddSaveLoadPage(IReadOnlyList<SettingSnapshot> settings)
+        {
+            CurrentPage.Add(
+                TajsDashboardUi.SectionHeader("Save & Load"),
+                new Label("Settings and lifecycle controls that apply at save reload or game restart.".AsLoc())
+                    .FontSize(12),
+                BuildSaveRepairPanel());
+
+            IReadOnlyList<SettingSnapshot> filtered = settings
+                .Where(snapshot => MatchesDomain(snapshot.Descriptor, new[] { "Save", "Load" }))
+                .ToArray();
+            if (filtered.Count == 0)
+            {
+                CurrentPage.Add(
+                    TajsDashboardUi.Card(
+                        "No registered settings",
+                        "This surface is ready for settings from the loaded suite; the current scene did not report any matching descriptors."));
+                return;
+            }
+
+            AddSettingsList(filtered, $"Save & Load settings");
+        }
+
+        private Panel BuildSaveRepairPanel()
+        {
+            Panel panel = TajsDashboardUi.Card(
+                "Save sanitizer",
+                "Core reports only audited, type-specific findings. Unknown or uncertain save data is left untouched.");
+            Row buttons = new Row(3.pt()).Wrap();
+            Label feedback = new Label().FontSize(11).Hide();
+            if (!AddCommandButton(
+                    buttons,
+                    Button.Area,
+                    "Run dry-run report",
+                    "tajs_save_sanitize_report",
+                    feedback))
+            {
+                panel.Body.Add(new Label("The Core save sanitizer is unavailable in this scene.".AsLoc()).FontSize(12));
+                return panel;
+            }
+
+            panel.Body.Add(buttons);
+            panel.Body.Add(
+                new Label(
+                        "For a repair, use tajs_save_sanitize_repair <target> CONFIRM <new-save-name>. The command refuses to overwrite an existing or currently loaded save."
+                            .AsLoc())
+                    .FontSize(11));
+            panel.Body.Add(feedback);
+            return panel;
         }
 
         private void AddCompatibilityPage(
@@ -621,7 +1004,10 @@ namespace TajsCOI.Core.Settings
 
             editor.FlexShrink(0f).MaxWidth(280.px());
 
-            var body = new Column(2.pt()) { new Row(4.pt()) { description, editor }.AlignItemsStart(), feedback };
+            Row settingRow = new Row(4.pt()).Width(100.Percent()).AlignItemsStart();
+            settingRow.Add(description, editor);
+            Column body = new Column(2.pt()).Width(100.Percent()).AlignItemsStretch();
+            body.Add(settingRow, feedback);
             return new Panel(true).ReducedPadding().BodyGap(2.pt()).BodyAdd(body).StyleGroupDark();
         }
 
@@ -683,12 +1069,6 @@ namespace TajsCOI.Core.Settings
             any |= AddCommandButton(buttons, Button.Area, "Export trace", "tajs_profiler_trace_export runtime", feedback);
             any |= AddCommandButton(buttons, Button.Area, "Clear runtime history", "tajs_profiler_runtime_clear", feedback);
             any |= AddCommandButton(buttons, Button.Warning, "Trim unused assets", "trim_unused_assets", feedback);
-            any |= AddSettingToggleButton(
-                buttons,
-                "TajsPerformance",
-                "render_load_shedding",
-                "Rendering load shedding",
-                feedback);
             if (any)
             {
                 panel.Body.Add(buttons);
@@ -697,48 +1077,14 @@ namespace TajsCOI.Core.Settings
             {
                 panel.Body.Add(new Label("No profiler or maintenance commands are available in this scene.".AsLoc()).FontSize(12));
             }
-            panel.Body.Add(new ButtonText(Button.Area, "Refresh diagnostics".AsLoc(), QueueRefresh).Compact());
+            panel.Body.Add(
+                TajsDashboardUi.ActionButton(
+                    Button.Area,
+                    "Refresh diagnostics",
+                    "Assets/Unity/UserInterface/General/Repeat.svg",
+                    QueueRefresh));
             panel.Body.Add(feedback);
             return panel;
-        }
-
-        private bool AddSettingToggleButton(
-            Row buttons,
-            string modId,
-            string key,
-            string label,
-            Label feedback)
-        {
-            SettingSnapshot? snapshot = m_settings.GetSnapshot().FirstOrDefault(item =>
-                string.Equals(item.Descriptor.ModId, modId, StringComparison.Ordinal) &&
-                string.Equals(item.Descriptor.Key, key, StringComparison.Ordinal));
-            if (snapshot is null || snapshot.Value is not bool enabled)
-            {
-                return false;
-            }
-
-            ButtonText stateButton = null!;
-            stateButton = new ButtonText(
-                    Button.ToggleGroup,
-                    $"{label}: {BooleanStateText(enabled)}".AsLoc(),
-                    () =>
-                    {
-                        bool nextValue = !m_settings.Get<bool>(modId, key);
-                        SettingSetResult result = m_settings.TrySet(modId, key, nextValue);
-                        feedback.Value((result.Success ? ApplyModeText(result.ApplyMode) : result.Error).AsLoc()).Show();
-                        if (result.Success)
-                        {
-                            bool currentValue = (bool)result.Value!;
-                            // ReSharper disable once AccessToModifiedClosure
-                            stateButton.Value($"{label}: {BooleanStateText(currentValue)}".AsLoc()).Selected(currentValue);
-                        }
-                    })
-                // ReSharper disable once RedundantArgumentDefaultValue
-                .Toggleable(true)
-                .Selected(enabled)
-                .Compact();
-            buttons.Add(stateButton);
-            return true;
         }
 
         private Panel BuildMaintenancePanel()
@@ -834,11 +1180,33 @@ namespace TajsCOI.Core.Settings
             }
 
             buttons.Add(
-                new ButtonText(
+                TajsDashboardUi.ActionButton(
                     variant,
-                    text.AsLoc(),
-                    () => ExecuteConsoleCommand(command, feedback)).Compact());
+                    text,
+                    CommandIcon(command),
+                    () => ExecuteConsoleCommand(command, feedback)));
             return true;
+        }
+
+        private static string CommandIcon(string command)
+        {
+            if (command.IndexOf("trace", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Assets/Unity/UserInterface/General/ExportToString.svg";
+            }
+            if (command.IndexOf("clear", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Assets/Unity/UserInterface/General/Reset.svg";
+            }
+            if (command.IndexOf("trim", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Assets/Unity/UserInterface/General/Maintenance.svg";
+            }
+            if (command.IndexOf("deep", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Assets/Unity/UserInterface/Toolbar/Stats.svg";
+            }
+            return "Assets/Unity/UserInterface/General/Configure.svg";
         }
 
         private void ExportTrace()
@@ -1232,9 +1600,58 @@ namespace TajsCOI.Core.Settings
         internal static readonly ColorRgba Green = new(130, 220, 150);
         internal static readonly ColorRgba Yellow = new(245, 195, 90);
         internal static readonly ColorRgba Red = new(240, 105, 105);
+        internal static readonly ColorRgba Muted = new(170, 180, 195);
 
         internal static Label SectionHeader(string text) =>
-            new Label(text.AsLoc()).FontBold().FontSize(20).MarginTop(4.pt()).MarginBottom(1.pt());
+            new Label(text.AsLoc()).FontBold().FontSize(18).MarginTop(3.pt()).MarginBottom(1.pt());
+
+        internal static Label NavigationSectionLabel(string text) =>
+            new Label(text.ToUpperInvariant().AsLoc())
+                .FontBold()
+                .FontSize(10)
+                .Color(Muted)
+                .MarginTop(3.pt())
+                .MarginBottom(1.pt());
+
+        internal static Button NavigationButton(
+            string text,
+            string iconPath,
+            Action onClick,
+            int? count = null)
+        {
+            Button button = new Button(Button.Area, onClick).Compact();
+            Row content = new Row(3.pt()).Width(100.Percent()).AlignItemsCenter();
+            content.Add(
+                new Icon(iconPath).Width(16.px()).Height(16.px()),
+                new Label(text.AsLoc()).FontSize(12).FlexGrow(1f));
+            if (count.HasValue)
+            {
+                content.Add(CountBadge(count.Value));
+            }
+            button.Add(content);
+            return button;
+        }
+
+        internal static Button ActionButton(
+            ButtonVariant variant,
+            string text,
+            string iconPath,
+            Action onClick)
+        {
+            Button button = new Button(variant, onClick).Compact();
+            Row content = new Row(3.pt()).AlignItemsCenter();
+            content.Add(
+                new Icon(iconPath).Width(14.px()).Height(14.px()),
+                new Label(text.AsLoc()).FontSize(11));
+            button.Add(content);
+            return button;
+        }
+
+        internal static Label CountBadge(int count) =>
+            new Label(count.ToString(CultureInfo.InvariantCulture).AsLoc())
+                .StyleChip()
+                .FontSize(10)
+                .Color(Muted);
 
         internal static Panel Card(string title, string subtitle, params UiComponent[] children)
         {
@@ -1242,10 +1659,10 @@ namespace TajsCOI.Core.Settings
                 .ReducedPadding()
                 .BodyGap(3.pt())
                 .StyleGroupDark();
-            panel.Body.Add(new Label(title.AsLoc()).FontBold().FontSize(15));
+            panel.Body.Add(new Label(title.AsLoc()).FontBold().FontSize(14));
             if (!string.IsNullOrWhiteSpace(subtitle))
             {
-                panel.Body.Add(new Label(subtitle.AsLoc()).FontSize(11));
+                panel.Body.Add(new Label(subtitle.AsLoc()).FontSize(11).Color(Muted));
             }
             panel.Body.Add(children);
             return panel;
@@ -1256,17 +1673,29 @@ namespace TajsCOI.Core.Settings
             new Label(value.AsLoc()).FontBold().FontSize(17).Color(color),
             color);
 
+        internal static Panel MetricTile(string title, string value, string detail, ColorRgba color) => MetricTile(
+            title,
+            new Label(value.AsLoc()).FontBold().FontSize(17).Color(color),
+            detail,
+            color);
+
         internal static Panel MetricTile(string title, Label value, ColorRgba color)
+            => MetricTile(title, value, string.Empty, color);
+
+        internal static Panel MetricTile(string title, Label value, string detail, ColorRgba color)
         {
-            return new Panel(true)
+            Panel panel = new Panel(true)
                 .ReducedPadding()
                 .BodyGap(1.pt())
                 .StyleGroupDark()
                 .MinWidth(130.px())
                 .FlexGrow(1f)
-                .BodyAdd(
-                    new Label(title.AsLoc()).FontSize(11),
-                    value.Color(color));
+                .BodyAdd(new Label(title.AsLoc()).FontSize(11), value.Color(color));
+            if (!string.IsNullOrWhiteSpace(detail))
+            {
+                panel.Body.Add(new Label(detail.AsLoc()).FontSize(10).Color(Muted));
+            }
+            return panel;
         }
 
         internal static Label StatusBadge(string text, ColorRgba color) =>

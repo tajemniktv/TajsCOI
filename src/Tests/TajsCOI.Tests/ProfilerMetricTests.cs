@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -198,10 +199,11 @@ namespace TajsCOI.Tests
         {
             using var sampler = new RuntimeCounterSampler(intervalSeconds: 0.05);
 
-            RuntimeCounterSnapshot snapshot = sampler.Read(System.Diagnostics.Stopwatch.GetTimestamp(), force: true);
+            RuntimeCounterSnapshot snapshot = sampler.Read(Stopwatch.GetTimestamp(), force: true);
 
             Assert.Contains("unity:", sampler.SupportSummary);
             Assert.Contains("profiler:", sampler.SupportSummary);
+            Assert.Contains("frame-timing-gpu=", sampler.SupportSummary);
             if (sampler.GpuTelemetryStatus.IndexOf("unavailable", StringComparison.Ordinal) >= 0)
             {
                 Assert.False(snapshot.HasGpuTelemetry);
@@ -211,6 +213,17 @@ namespace TajsCOI.Tests
             {
                 Assert.True(snapshot.GpuFrameTicks >= -1);
             }
+        }
+
+        [Fact]
+        public void FrameTimingGpuConversionUsesStopwatchTicksAndRejectsUnavailableValues()
+        {
+            Assert.Equal(-1, RuntimeCounterSampler.FrameTimingGpuSampler.MillisecondsToStopwatchTicks(0));
+            Assert.Equal(-1, RuntimeCounterSampler.FrameTimingGpuSampler.MillisecondsToStopwatchTicks(double.NaN));
+
+            long expected = Stopwatch.Frequency / 60;
+            long actual = RuntimeCounterSampler.FrameTimingGpuSampler.MillisecondsToStopwatchTicks(1000.0 / 60.0);
+            Assert.InRange(actual, expected - 1, expected + 1);
         }
 
         [Fact]

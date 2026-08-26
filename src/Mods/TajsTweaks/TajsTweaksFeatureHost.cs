@@ -268,11 +268,6 @@ namespace TajsCOI.Tweaks
             }
         }
 
-        [ConsoleCommand(
-            documentation: "Detaches the legacy standalone InfiniteGroundwater save callback. Run after loading with that mod enabled, save a new copy, then disable the standalone mod.",
-            customCommandName: "tajs_infinite_groundwater_migrate")]
-        public string MigrateLegacyInfiniteGroundwaterSave() => m_infiniteGroundwater.DetachLegacyStandaloneMod();
-
         private void OnWorldOperationsWindowClose(Window window)
         {
             if (m_worldOperationsWindow.HasValue && ReferenceEquals(m_worldOperationsWindow.Value, window))
