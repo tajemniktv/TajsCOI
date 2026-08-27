@@ -11,16 +11,18 @@ loaded assembly with a different version or location. `BootstrapApi.Disable()` r
 resolver and leaves the normal no-bootstrap mod installation untouched.
 
 The assembly also exposes UnityDoorstop's required `Doorstop.Entrypoint.Start()` method. It
-discovers the running game root (using Doorstop's `DOORSTOP_PROCESS_PATH` when supplied), looks for the installer-owned
+discovers the running game root (using Doorstop's `DOORSTOP_PROCESS_PATH` when supplied), honors
+the install manifest's explicit disabled state, looks for the installer-owned
 `TajsCOI/Bootstrap/0Harmony.dll`, and initializes the same API. The entrypoint is fail-open: an
-unavailable payload or incompatible Harmony assembly is reported through `BootstrapApi.Status`
-without preventing vanilla startup. A Doorstop configuration must target
-`TajsCOI/Bootstrap/TajsBootstrap.dll`; the external Doorstop proxy and its configuration remain
-operator-owned.
+unavailable payload, unreadable/foreign install manifest, or incompatible Harmony assembly is
+reported through `BootstrapApi.Status` without preventing vanilla startup. A Doorstop
+configuration must target `TajsCOI/Bootstrap/TajsBootstrap.dll`; the external Doorstop proxy and
+its configuration remain operator-owned.
 
 The loader deliberately does not guess a Steam installation path. `InitializeFromGameRoot` only
 checks the bounded root candidates (`0Harmony.dll`, `Captain of Industry_Data/Managed/0Harmony.dll`,
-and `Mods/TajsCore/0Harmony.dll`) for an explicit feasibility probe. `BootstrapInstaller` is the
+`Mods/TajsCore/0Harmony.dll`, and `TajsCOI/Bootstrap/0Harmony.dll`) for an explicit feasibility
+probe. `BootstrapInstaller` is the
 explicit installer/repair boundary: it discovers a root from the running executable (or accepts a
 caller-supplied root), copies only the Tajs bootstrap payload, and records owned files and SHA-256
 hashes in `TajsCOI/TajsBootstrap.install.json`. It supports verify, repair, disable, and uninstall.

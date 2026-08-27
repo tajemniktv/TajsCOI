@@ -30,6 +30,7 @@ namespace TajsCOI.Tweaks.Features.EntityMetadata
     {
         private sealed class Marker
         {
+            internal readonly List<UiComponent> Elements = new();
         }
 
         private static readonly ConditionalWeakTable<object, Marker> s_augmented = new();
@@ -77,13 +78,24 @@ namespace TajsCOI.Tweaks.Features.EntityMetadata
         private static void OnInspectorActivated(IEntity entity, ref IEntityInspector inspector)
         {
             IEntityMetadataLookup? lookup = s_lookup;
-            if (lookup is null || entity is null || inspector is null || s_augmented.TryGetValue(inspector, out _))
+            if (lookup is null || entity is null || inspector is null)
             {
                 return;
             }
 
             try
             {
+                if (!s_augmented.TryGetValue(inspector, out Marker? marker))
+                {
+                    marker = new Marker();
+                    s_augmented.Add(inspector, marker);
+                }
+                foreach (UiComponent element in marker.Elements)
+                {
+                    element.RemoveFromHierarchy();
+                }
+                marker.Elements.Clear();
+
                 var identity = new EntityMetadataIdentity(entity.Id.Value, "proto:" + entity.Prototype.Id.Value);
                 if (!lookup.TryGetEntityMetadata(identity, out EntityMetadataRecord? metadata) || metadata is null ||
                     metadata.Alias.Length == 0 && metadata.Note.Length == 0)
@@ -97,13 +109,16 @@ namespace TajsCOI.Tweaks.Features.EntityMetadata
 
                 if (metadata.Alias.Length != 0)
                 {
-                    body.Add(new Label(("Alias: " + metadata.Alias).AsLoc()).FontBold());
+                    Label alias = new Label(("Alias: " + metadata.Alias).AsLoc()).FontBold();
+                    body.Add(alias);
+                    marker.Elements.Add(alias);
                 }
                 if (metadata.Note.Length != 0)
                 {
-                    body.Add(new Label(("Note: " + metadata.Note).AsLoc()).FontSize(11));
+                    Label note = new Label(("Note: " + metadata.Note).AsLoc()).FontSize(11);
+                    body.Add(note);
+                    marker.Elements.Add(note);
                 }
-                s_augmented.Add(inspector, new Marker());
             }
             catch
             {
