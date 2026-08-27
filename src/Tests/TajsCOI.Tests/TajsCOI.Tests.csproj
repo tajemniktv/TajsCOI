@@ -34,6 +34,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="All"/>
 
     <ProjectReference Include="..\..\Libraries\TajsCOI.Common\TajsCOI.Common.csproj"/>
+    <ProjectReference Include="..\..\Bootstrap\TajsBootstrap\TajsBootstrap.csproj"/>
     <ProjectReference Include="..\..\Mods\TajsCore\TajsCore.csproj"
                       AdditionalProperties="DeployToModsFolder=false;CopyToUnityProject=false;CreateReleaseZip=false"/>
     <ProjectReference Include="..\..\Mods\TajsProfiler\TajsProfiler.csproj"
