@@ -14,6 +14,17 @@ viewing suite status, changing available settings, and running audited save-repa
 
 Core is intended to be quiet on its own and does not add gameplay changes by itself.
 
+Core also owns optional per-save entity metadata. Aliases, notes, and groups are keyed by the
+native entity ID plus a prototype fingerprint, so recycled IDs do not inherit old labels. Use
+`tajs_metadata_list` to inspect the active sidecar and `tajs_metadata_set` to update a record.
+Metadata is supplementary: other suite modules may display it, but gameplay remains valid without
+the sidecar.
+
+Settings profiles are available through `tajs_profile_capture`, `tajs_profile_preview`,
+`tajs_profile_apply`, and the duplicate/rename/delete/import/export commands. Only descriptors
+explicitly marked profile-safe are captured or applied; every entry is validated before any
+setting is changed.
+
 #### Save sanitizer
 
 The Core sanitizer is opt-in and type-specific. Start with a dry-run report:
