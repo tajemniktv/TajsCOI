@@ -23,6 +23,7 @@ using Mafi.Core.Products;
 using Mafi.Core.SaveGame;
 using Mafi.Unity.Entities;
 using TajsCOI.Common.Logging;
+using TajsCOI.Common.Metadata;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
 using UnityEngine;
@@ -66,6 +67,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
         private readonly DependencyResolver m_resolver;
         private readonly ITajsSettings m_settings;
+        private readonly IEntityMetadataLookup? m_metadata;
         private readonly ITajsLogger m_log;
         private readonly OverclockingStateStore m_store = new();
         private readonly IEntitiesManager m_entities;
@@ -112,6 +114,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             resolver.TryResolve(out m_electricity);
             resolver.TryResolve(out m_workers);
             resolver.TryResolve(out m_rendering);
+            resolver.TryResolve(out m_metadata);
             m_selection = new OverclockingSelectionTool(m_entities, this);
 
             BindingFlags privateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -929,8 +932,9 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
 
             OverclockEffectivePolicy policy = GetEffectivePolicy(id.Value);
-            return "Entity " + id.Value + ": rate=" + GetPercent(id) + "%, auto=" + policy.Auto +
-                   ", bounds=" + policy.MinPercent + "-" + policy.MaxPercent + "%, group=" + policy.GroupId + ".";
+            string display = GetMetadataDisplay(id, out string note);
+            return "Entity " + id.Value + display + ": rate=" + GetPercent(id) + "%, auto=" + policy.Auto +
+                   ", bounds=" + policy.MinPercent + "-" + policy.MaxPercent + "%, group=" + policy.GroupId + note + ".";
         }
 
         internal string ListEntities(string? typeFilter, string? stateFilter, int? groupId, string? sort)
@@ -978,9 +982,49 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             };
 
             string[] lines = ordered.Take(1024).Select(item =>
-                item.Entity.Id.Value + " type=" + item.Type + " rate=" + item.Rate + "% auto=" + item.Policy.Auto +
-                " group=" + item.Policy.GroupId).ToArray();
+            {
+                string display = GetMetadataDisplay(item.Entity, out string note);
+                return item.Entity.Id.Value + display + " type=" + item.Type + " rate=" + item.Rate + "% auto=" + item.Policy.Auto +
+                       " group=" + item.Policy.GroupId + note;
+            }).ToArray();
             return lines.Length == 0 ? "No supported entities matched." : string.Join(" | ", lines);
+        }
+
+        private string GetMetadataDisplay(EntityId id, out string note)
+        {
+            note = string.Empty;
+            if (m_metadata is null || !TryGetSupportedEntity(id, out object? entity) || entity is not IEntity typed)
+            {
+                return string.Empty;
+            }
+            return GetMetadataDisplay(typed, out note);
+        }
+
+        private string GetMetadataDisplay(IEntity entity, out string note)
+        {
+            note = string.Empty;
+            if (m_metadata is null)
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                var identity = new EntityMetadataIdentity(entity.Id.Value, "proto:" + entity.Prototype.Id.Value);
+                if (!m_metadata.TryGetEntityMetadata(identity, out EntityMetadataRecord? metadata) || metadata is null)
+                {
+                    return string.Empty;
+                }
+                if (metadata.Note.Length != 0)
+                {
+                    note = " note=\"" + metadata.Note.Replace("\"", "'") + "\"";
+                }
+                return metadata.Alias.Length == 0 ? string.Empty : " alias=\"" + metadata.Alias.Replace("\"", "'") + "\"";
+            }
+            catch
+            {
+                return string.Empty;
+            }
         }
 
         internal static int GetPercentFor(object instance)
