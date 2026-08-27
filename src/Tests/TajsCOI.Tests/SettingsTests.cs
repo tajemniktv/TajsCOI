@@ -166,6 +166,29 @@ namespace TajsCOI.Tests
             }
         }
 
+        [Fact]
+        public void DashboardLayoutStateRoundTripsFiniteDimensionsAndRejectsInvalidValues()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "TajsCOI-dashboard-tests-" + Guid.NewGuid().ToString("N"));
+            string path = Path.Combine(directory, "layout.txt");
+            try
+            {
+                Assert.True(DashboardLayoutState.TrySave(path, 1024f, 768f));
+                Assert.True(DashboardLayoutState.TryLoad(path, out float width, out float height));
+                Assert.Equal(1024f, width);
+                Assert.Equal(768f, height);
+                File.WriteAllLines(path, new[] { "TajsCoreDashboardLayoutV1", "NaN", "768" }, Encoding.UTF8);
+                Assert.False(DashboardLayoutState.TryLoad(path, out _, out _));
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, true);
+                }
+            }
+        }
+
         private static SettingDescriptor CreateSpeedDescriptor() =>
             SettingDescriptor.Integer(
                 "TajsTweaks",

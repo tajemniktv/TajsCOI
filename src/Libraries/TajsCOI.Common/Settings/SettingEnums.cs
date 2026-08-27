@@ -47,5 +47,7 @@ namespace TajsCOI.Common.Settings
         Advanced = 1 << 0,
         Experimental = 1 << 1,
         Dangerous = 1 << 2,
+        /// <summary>Descriptor is explicitly approved for settings profiles.</summary>
+        ProfileSafe = 1 << 3,
     }
 }

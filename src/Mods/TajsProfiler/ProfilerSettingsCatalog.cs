@@ -13,7 +13,7 @@ namespace TajsCOI.Profiler
     {
         internal const string ModId = "TajsProfiler";
         private const string ModDisplayName = "Taj's Profiler";
-        private const SettingFlags Flags = SettingFlags.Advanced;
+        private const SettingFlags Flags = SettingFlags.Advanced | SettingFlags.ProfileSafe;
 
         internal const string FrameMillisecondsKey = "spike_frame_ms";
         internal const string WaitMillisecondsKey = "spike_wait_ms";

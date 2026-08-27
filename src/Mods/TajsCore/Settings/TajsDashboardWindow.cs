@@ -15,6 +15,7 @@ using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Localization;
+using TajsCOI.Common.Profiles;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
 using TajsCOI.Common.Shortcuts;
@@ -97,12 +98,15 @@ namespace TajsCOI.Core.Settings
         private const string AllCategories = "All";
         private const float MinimumWindowWidth = 760f;
         private const float MinimumWindowHeight = 480f;
+        private const float DefaultWindowWidth = 1180f;
+        private const float DefaultWindowHeight = 860f;
 
         private readonly ITajsSettings m_settings;
         private readonly ITajsRuntime m_runtime;
         private readonly IShortcutRegistry m_shortcuts;
         private readonly ILocalizationService m_localization;
         private readonly GameConsoleCommandsExecutor m_consoleCommands;
+        private readonly ISettingsProfileService m_profiles;
         private readonly ScrollColumn m_pageContent;
         private readonly Column m_dashboardShell;
         private readonly ButtonIcon m_minimizeButton;
@@ -120,6 +124,9 @@ namespace TajsCOI.Core.Settings
         private bool m_isMaximized;
         private bool m_isResizing;
         private float m_lastParentWidth = -1f;
+        private float m_lastParentHeight = -1f;
+        private float m_savedWidth = DefaultWindowWidth;
+        private float m_savedHeight = DefaultWindowHeight;
         private ProfilerPageView? m_profilerPage;
         private LogsPageView? m_logsPage;
 
@@ -131,7 +138,8 @@ namespace TajsCOI.Core.Settings
             GameConsoleCommandsExecutor consoleCommands,
             UiRoot uiRoot,
             IShortcutRegistry shortcuts,
-            ILocalizationService localization)
+            ILocalizationService localization,
+            ISettingsProfileService profiles)
             : base("TajsCOI Dashboard".AsLoc())
         {
             m_settings = settings;
@@ -139,6 +147,7 @@ namespace TajsCOI.Core.Settings
             m_shortcuts = shortcuts;
             m_localization = localization;
             m_consoleCommands = consoleCommands;
+            m_profiles = profiles ?? throw new ArgumentNullException(nameof(profiles));
             m_pageContent = new ScrollColumn().Fill().AlignItemsStretch().Gap(5.pt());
             m_dashboardShell = new Column(6.pt()).Fill().AlignItemsStretch();
             m_minimizeButton = new ButtonIcon(
@@ -164,7 +173,10 @@ namespace TajsCOI.Core.Settings
 
             BuildShell();
             Frame.Add(m_resizeHandle);
-            WindowSize(1180.px(), 860.px());
+            bool hasSavedSize = DashboardLayoutState.TryLoad(out m_savedWidth, out m_savedHeight);
+            WindowSize(
+                (hasSavedSize ? m_savedWidth : DefaultWindowWidth).px(),
+                (hasSavedSize ? m_savedHeight : DefaultWindowHeight).px());
             MakeMovableAndEnablePositionSaving();
             EnablePinning();
             AddHeaderButton(m_minimizeButton);
@@ -242,6 +254,7 @@ namespace TajsCOI.Core.Settings
                 m_dashboardShell.Show();
                 UpdateResizeHandleVisibility();
                 m_lastParentWidth = -1f;
+                m_lastParentHeight = -1f;
                 UpdateResponsiveWindowSize();
             }
         }
@@ -258,6 +271,7 @@ namespace TajsCOI.Core.Settings
             m_isResizing = false;
             UpdateResizeHandleVisibility();
             m_lastParentWidth = -1f;
+            m_lastParentHeight = -1f;
             UpdateResponsiveWindowSize();
         }
 
@@ -269,17 +283,27 @@ namespace TajsCOI.Core.Settings
             }
 
             float parentWidth = Parent.Value.ResolvedWidth;
-            if (m_lastParentWidth > 0f && Math.Abs(parentWidth - m_lastParentWidth) < 1f)
+            float parentHeight = Parent.Value.ResolvedHeight;
+            if (m_lastParentWidth > 0f && m_lastParentHeight > 0f &&
+                Math.Abs(parentWidth - m_lastParentWidth) < 1f && Math.Abs(parentHeight - m_lastParentHeight) < 1f)
             {
                 return;
             }
 
             m_lastParentWidth = parentWidth;
-            float width = Math.Min(m_isMaximized ? 2000f : 1180f, parentWidth * 0.9f);
-            WindowSize(Math.Max(MinimumWindowWidth, width).px(), (m_isMaximized ? 90 : 80).Percent());
+            m_lastParentHeight = parentHeight;
+            float maxWidth = Math.Max(MinimumWindowWidth, parentWidth * 0.96f);
+            float maxHeight = Math.Max(MinimumWindowHeight, parentHeight * 0.96f);
+            float width = m_isMaximized
+                ? maxWidth
+                : Math.Min(Math.Max(MinimumWindowWidth, m_savedWidth), maxWidth);
+            float height = m_isMaximized
+                ? maxHeight
+                : Math.Min(Math.Max(MinimumWindowHeight, m_savedHeight), maxHeight);
+            WindowSize(width.px(), height.px());
         }
 
-        private float GetCurrentWindowWidth() => Frame.ResolvedWidth > 1f ? Frame.ResolvedWidth : 1180f;
+        private float GetCurrentWindowWidth() => Frame.ResolvedWidth > 1f ? Frame.ResolvedWidth : DefaultWindowWidth;
 
         private void UpdateResizeHandleVisibility()
         {
@@ -316,7 +340,10 @@ namespace TajsCOI.Core.Settings
             float width = Math.Max(MinimumWindowWidth, Math.Min(maxWidth, Frame.ResolvedWidth + evt.deltaPosition.x));
             float height = Math.Max(MinimumWindowHeight, Math.Min(maxHeight, Frame.ResolvedHeight + evt.deltaPosition.y));
             WindowSize(width.px(), height.px());
+            m_savedWidth = width;
+            m_savedHeight = height;
             m_lastParentWidth = Parent.Value.ResolvedWidth;
+            m_lastParentHeight = Parent.Value.ResolvedHeight;
             evt.StopPropagation();
         }
 
@@ -325,6 +352,7 @@ namespace TajsCOI.Core.Settings
             if (evt.button == 0 && m_isResizing)
             {
                 m_isResizing = false;
+                _ = DashboardLayoutState.TrySave(m_savedWidth, m_savedHeight);
                 evt.StopPropagation();
             }
         }
@@ -1144,6 +1172,7 @@ namespace TajsCOI.Core.Settings
 
             CurrentPage.Add(
                 TajsDashboardUi.SectionHeader("Settings"),
+                BuildProfilesPanel(),
                 TajsDashboardUi.Card(
                     "Settings index",
                     "All descriptors remain available here; use the sidebar or these compact filters to focus the list.",
@@ -1159,7 +1188,65 @@ namespace TajsCOI.Core.Settings
                 visible,
                 string.Equals(m_selectedCategory, AllCategories, StringComparison.Ordinal)
                     ? "All settings"
-                    : $"Settings · {m_selectedCategory}");
+                : $"Settings · {m_selectedCategory}");
+        }
+
+        private Panel BuildProfilesPanel()
+        {
+            Panel panel = TajsDashboardUi.Card(
+                "Settings profiles",
+                "Profiles contain only settings explicitly marked profile-safe. Preview validates every entry before apply; unknown IDs are skipped and reported.");
+            IReadOnlyList<SettingsProfile> profiles = m_profiles.List();
+            if (profiles.Count == 0)
+            {
+                panel.Body.Add(new Label("No profiles saved. Capture one with tajs_profile_capture <name> from the console.".AsLoc()).FontSize(11));
+                return panel;
+            }
+
+            foreach (SettingsProfile profile in profiles)
+            {
+                Label feedback = new Label().FontSize(11).Hide();
+                Row actions = new Row(2.pt()).AlignItemsCenter();
+                actions.Add(
+                    TajsDashboardUi.ActionButton(
+                        Button.Area,
+                        "Preview",
+                        "Assets/Unity/UserInterface/General/Configure.svg",
+                        () =>
+                        {
+                            SettingsProfilePreview preview = m_profiles.Preview(profile);
+                            feedback.Value(
+                                    (preview.Profile.Name + ": " +
+                                     string.Join(", ", preview.Entries.GroupBy(entry => entry.State).Select(group => group.Key + "=" + group.Count())) +
+                                     (preview.SkippedIds.Count == 0 ? string.Empty : "; skipped=" + preview.SkippedIds.Count)).AsLoc())
+                                .Show();
+                        }),
+                    TajsDashboardUi.ActionButton(
+                        Button.Area,
+                        "Apply",
+                        "Assets/Unity/UserInterface/General/Configure.svg",
+                        () =>
+                        {
+                            SettingsProfileApplyResult result = m_profiles.Apply(profile);
+                            feedback.Value(
+                                    (profile.Name + ": applied=" + result.AppliedCount + ", skipped=" + result.SkippedIds.Count +
+                                     ", errors=" + result.Errors.Count).AsLoc())
+                                .Show();
+                            QueueRefresh();
+                        }));
+                panel.Body.Add(
+                    new Row(4.pt())
+                    {
+                        new Column(1.pt())
+                        {
+                            new Label(profile.Name.AsLoc()).FontBold(),
+                            new Label((profile.Values.Count + " saved value(s) · schema " + profile.Schema).AsLoc()).FontSize(11),
+                            feedback,
+                        }.FlexGrow(1f),
+                        actions,
+                    }.AlignItemsCenter());
+            }
+            return panel;
         }
 
         private ButtonText CreateInlineCategoryButton(string category, int count)
