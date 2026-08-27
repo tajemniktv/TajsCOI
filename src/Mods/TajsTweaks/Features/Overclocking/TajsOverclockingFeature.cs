@@ -281,8 +281,9 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 : group is not null
                     ? group.MaxPercent
                     : TajsTweaksRuntimeState.OverclockMaxPercent;
-            min = Math.Max(10, Math.Min(100, min));
-            max = Math.Max(min, Math.Min(1000, max));
+            OverclockBounds normalizedBounds = OverclockBounds.Normalize(min, max);
+            min = normalizedBounds.MinPercent;
+            max = normalizedBounds.MaxPercent;
             // COI's non-machine production timers only have a safe accelerated path. Keep
             // ore sorting, offices, and waste sorting at vanilla speed when underclocking is
             // requested; Machines alone support the 10%..100% range.
@@ -508,7 +509,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return true;
         }
 
-        internal bool ApplyManual(EntityId id, int percent, out string message)
+        // Execution-only methods are called by input-command processors (and by the native
+        // config restore seam). Player-facing callers must use the Queue* methods above so
+        // mutations retain deterministic input ordering.
+        internal bool ExecuteSetManual(EntityId id, int percent, out string message)
         {
             message = string.Empty;
             if (!TajsTweaksRuntimeState.Overclocking)
@@ -541,7 +545,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return true;
         }
 
-        internal bool ApplyAutoPolicy(EntityId id, bool enabled, int? minimum, int? maximum, out string message)
+        internal bool ExecuteSetAuto(EntityId id, bool enabled, int? minimum, int? maximum, out string message)
         {
             message = string.Empty;
             if (!TajsTweaksRuntimeState.Overclocking)
@@ -565,8 +569,11 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             {
                 OverclockEffectivePolicy current = GetEffectivePolicy(id.Value);
                 policy.HasBoundsOverride = true;
-                policy.MinPercent = Math.Max(10, minimum ?? current.MinPercent);
-                policy.MaxPercent = Math.Max(policy.MinPercent, maximum ?? current.MaxPercent);
+                OverclockBounds bounds = OverclockBounds.Normalize(
+                    minimum ?? current.MinPercent,
+                    maximum ?? current.MaxPercent);
+                policy.MinPercent = bounds.MinPercent;
+                policy.MaxPercent = bounds.MaxPercent;
             }
 
             OverclockEffectivePolicy effective = GetEffectivePolicy(id.Value);
@@ -583,7 +590,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return true;
         }
 
-        internal bool ApplyResetPolicy(EntityId id, out string message)
+        internal bool ExecuteResetPolicy(EntityId id, out string message)
         {
             message = string.Empty;
             if (!TajsTweaksRuntimeState.Overclocking)
@@ -653,7 +660,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         internal bool CanControl(EntityId entityId) =>
             TajsTweaksRuntimeState.Overclocking && TryGetSupportedEntity(entityId, out _);
 
-        internal bool ApplyDeleteGroup(int groupId)
+        internal bool ExecuteDeleteGroup(int groupId)
         {
             OverclockGroup? group = m_store.GetGroup(groupId);
             if (group is null || group.Locked)
@@ -784,7 +791,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             m_highlights.Clear();
         }
 
-        internal bool ApplyAddToGroup(int groupId, EntityId id)
+        internal bool ExecuteAddToGroup(int groupId, EntityId id)
         {
             if (!TryGetSupportedEntity(id, out object? entity) || !m_store.AddMember(groupId, id.Value))
             {
@@ -796,7 +803,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return true;
         }
 
-        internal bool ApplyRemoveFromGroup(int groupId, EntityId id)
+        internal bool ExecuteRemoveFromGroup(int groupId, EntityId id)
         {
             if (!m_store.RemoveMember(groupId, id.Value))
             {
@@ -812,7 +819,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return true;
         }
 
-        internal bool ApplyGroupDefault(int groupId, int percent, out string message)
+        internal bool ExecuteGroupDefault(int groupId, int percent, out string message)
         {
             OverclockGroup? group = m_store.GetGroup(groupId);
             if (group is null || group.Locked)
@@ -842,7 +849,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return true;
         }
 
-        internal bool ApplyGroupToMembers(int groupId, int percent, out string message)
+        internal bool ExecuteApplyGroupToMembers(int groupId, int percent, out string message)
         {
             OverclockGroup? group = m_store.GetGroup(groupId);
             if (group is null || group.Locked)
@@ -877,7 +884,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return true;
         }
 
-        internal bool ApplyGroupAuto(int groupId, bool enabled, int? minimum, int? maximum, out string message)
+        internal bool ExecuteGroupAuto(int groupId, bool enabled, int? minimum, int? maximum, out string message)
         {
             OverclockGroup? group = m_store.GetGroup(groupId);
             if (group is null || group.Locked)
@@ -887,14 +894,13 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
 
             group.Auto = enabled;
-            if (minimum.HasValue)
+            if (minimum.HasValue || maximum.HasValue)
             {
-                group.MinPercent = minimum.Value;
-            }
-
-            if (maximum.HasValue)
-            {
-                group.MaxPercent = maximum.Value;
+                OverclockBounds bounds = OverclockBounds.Normalize(
+                    minimum ?? group.MinPercent,
+                    maximum ?? group.MaxPercent);
+                group.MinPercent = bounds.MinPercent;
+                group.MaxPercent = bounds.MaxPercent;
             }
 
             foreach (int id in group.Members.ToArray())

@@ -18,6 +18,8 @@ using Mafi.Core.Factory.Machines;
 using Mafi.Core.Factory.Transports;
 using Mafi.Core.Maintenance;
 using Mafi.Core.Population;
+using TajsCOI.Common.Configuration;
+using TajsCOI.Tweaks.Configuration;
 
 namespace TajsCOI.Tweaks.Features.Overclocking
 {
@@ -205,6 +207,117 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
         }
 
+        internal static IReadOnlyDictionary<string, object> ReadBlueprintValues(object runtimeEntity)
+        {
+            TajsOverclockingFeature? feature = TajsOverclockingFeature.Current;
+            if (!TajsTweaksRuntimeState.Overclocking || feature is null || runtimeEntity is not IEntity entity ||
+                !feature.CanControl(entity.Id))
+            {
+                return new Dictionary<string, object>(StringComparer.Ordinal);
+            }
+
+            var values = new Dictionary<string, object>(StringComparer.Ordinal);
+            if (feature.TryGetEntityPolicy(entity.Id, out OverclockEntityPolicy? policy) && policy is not null)
+            {
+                if (policy.HasManualOverride)
+                {
+                    values[ConfigKey] = policy.ManualPercent;
+                }
+                if (policy.HasAutoOverride)
+                {
+                    values[AutoConfigKey] = policy.Auto;
+                }
+                if (policy.HasBoundsOverride)
+                {
+                    values[MinConfigKey] = policy.MinPercent;
+                    values[MaxConfigKey] = policy.MaxPercent;
+                }
+            }
+            else
+            {
+                int percent = feature.GetPercent(entity.Id);
+                if (percent != 100)
+                {
+                    values[ConfigKey] = percent;
+                }
+            }
+
+            return values;
+        }
+
+        internal static bool ApplyBlueprintValues(object runtimeEntity, IReadOnlyDictionary<string, object> values)
+        {
+            TajsOverclockingFeature? feature = TajsOverclockingFeature.Current;
+            if (!TajsTweaksRuntimeState.Overclocking || feature is null || runtimeEntity is not IEntity entity || values is null ||
+                !feature.CanControl(entity.Id))
+            {
+                return false;
+            }
+
+            int? percent = null;
+            bool? auto = null;
+            int? minimum = null;
+            int? maximum = null;
+            foreach (KeyValuePair<string, object> pair in values)
+            {
+                if (pair.Key == ConfigKey && TryReadInt(pair.Value, out int parsedPercent))
+                {
+                    percent = parsedPercent;
+                }
+                else if (pair.Key == AutoConfigKey && pair.Value is bool parsedAuto)
+                {
+                    auto = parsedAuto;
+                }
+                else if (pair.Key == MinConfigKey && TryReadInt(pair.Value, out int parsedMinimum))
+                {
+                    minimum = parsedMinimum;
+                }
+                else if (pair.Key == MaxConfigKey && TryReadInt(pair.Value, out int parsedMaximum))
+                {
+                    maximum = parsedMaximum;
+                }
+                else if (pair.Key == ConfigKey || pair.Key == AutoConfigKey || pair.Key == MinConfigKey || pair.Key == MaxConfigKey)
+                {
+                    return false;
+                }
+            }
+
+            if (!percent.HasValue && !auto.HasValue && !minimum.HasValue && !maximum.HasValue)
+            {
+                return false;
+            }
+
+            if (percent.HasValue && !feature.ExecuteSetManual(entity.Id, percent.Value, out _))
+            {
+                return false;
+            }
+
+            if (auto.HasValue || minimum.HasValue || maximum.HasValue)
+            {
+                bool enabled = auto ?? feature.IsAuto(entity.Id);
+                if (!feature.ExecuteSetAuto(entity.Id, enabled, minimum, maximum, out _))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool TryReadInt(object value, out int result)
+        {
+            try
+            {
+                result = Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
+                return true;
+            }
+            catch (Exception exception) when (exception is FormatException || exception is InvalidCastException || exception is OverflowException)
+            {
+                result = default;
+                return false;
+            }
+        }
+
         internal static void AddToConfigPostfix(Machine __instance, EntityConfigData data)
         {
             if (!TajsTweaksRuntimeState.Overclocking)
@@ -214,6 +327,11 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
             TajsOverclockingFeature? feature = TajsOverclockingFeature.Current;
             if (feature is null)
+            {
+                return;
+            }
+
+            if (TajsConfigurationPipeline.TryCapture(__instance, data))
             {
                 return;
             }
@@ -252,24 +370,34 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return;
             }
 
+            if (TajsConfigurationPipeline.TryApply(__instance, data))
+            {
+                return;
+            }
+
             int? percent = data.GetInt(ConfigKey);
             bool? auto = data.GetBool(AutoConfigKey);
             int? minimum = data.GetInt(MinConfigKey);
             int? maximum = data.GetInt(MaxConfigKey);
             if (percent.HasValue)
             {
-                feature.ApplyManual(__instance.Id, percent.Value, out _);
+                feature.ExecuteSetManual(__instance.Id, percent.Value, out _);
             }
 
             if (auto.HasValue || minimum.HasValue || maximum.HasValue)
             {
-                feature.ApplyAutoPolicy(__instance.Id, auto == true, minimum, maximum, out _);
+                feature.ExecuteSetAuto(__instance.Id, auto == true, minimum, maximum, out _);
             }
         }
 
         internal static void TransportAddToConfigPostfix(Transport __instance, EntityConfigData data)
         {
             if (!TajsTweaksRuntimeState.Overclocking || TajsOverclockingFeature.Current is not TajsOverclockingFeature feature)
+            {
+                return;
+            }
+
+            if (TajsConfigurationPipeline.TryCapture(__instance, data))
             {
                 return;
             }
@@ -309,18 +437,23 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return;
             }
 
+            if (TajsConfigurationPipeline.TryApply(__instance, data))
+            {
+                return;
+            }
+
             int? percent = data.GetInt(ConfigKey);
             bool? auto = data.GetBool(AutoConfigKey);
             int? minimum = data.GetInt(MinConfigKey);
             int? maximum = data.GetInt(MaxConfigKey);
             if (percent.HasValue)
             {
-                feature.ApplyManual(__instance.Id, percent.Value, out _);
+                feature.ExecuteSetManual(__instance.Id, percent.Value, out _);
             }
 
             if (auto.HasValue || minimum.HasValue || maximum.HasValue)
             {
-                feature.ApplyAutoPolicy(__instance.Id, auto == true, minimum, maximum, out _);
+                feature.ExecuteSetAuto(__instance.Id, auto == true, minimum, maximum, out _);
             }
         }
 

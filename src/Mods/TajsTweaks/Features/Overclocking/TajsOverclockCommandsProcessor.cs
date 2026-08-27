@@ -34,7 +34,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return;
             }
 
-            ApplyManual(feature, command, command.TargetId, command.Rate.ToIntPercentRounded());
+            ExecuteManual(feature, command, command.TargetId, command.Rate.ToIntPercentRounded());
         }
 
         public void Invoke(TajsOverclockPolicyCmd command)
@@ -49,7 +49,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             switch (command.Operation)
             {
                 case TajsOverclockPolicyOperation.SetManual:
-                    ApplyManual(feature, command, command.TargetId, command.Percent);
+                    ExecuteManual(feature, command, command.TargetId, command.Percent);
                     return;
 
                 case TajsOverclockPolicyOperation.SetAuto:
@@ -82,30 +82,30 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             switch (command.Operation)
             {
                 case TajsOverclockPolicyOperation.AddToGroup:
-                    applied = feature.ApplyAddToGroup(command.GroupId, command.TargetId);
+                    applied = feature.ExecuteAddToGroup(command.GroupId, command.TargetId);
                     message = applied ? string.Empty : "Entity/group missing, locked, or unsupported.";
                     break;
 
                 case TajsOverclockPolicyOperation.RemoveFromGroup:
-                    applied = feature.ApplyRemoveFromGroup(command.GroupId, command.TargetId);
+                    applied = feature.ExecuteRemoveFromGroup(command.GroupId, command.TargetId);
                     message = applied ? string.Empty : "Entity/group missing, locked, or not a member.";
                     break;
 
                 case TajsOverclockPolicyOperation.DeleteGroup:
-                    applied = feature.ApplyDeleteGroup(command.GroupId);
+                    applied = feature.ExecuteDeleteGroup(command.GroupId);
                     message = applied ? string.Empty : "Group is missing or locked.";
                     break;
 
                 case TajsOverclockPolicyOperation.SetGroupDefault:
-                    applied = feature.ApplyGroupDefault(command.GroupId, command.Percent, out message);
+                    applied = feature.ExecuteGroupDefault(command.GroupId, command.Percent, out message);
                     break;
 
                 case TajsOverclockPolicyOperation.ApplyGroup:
-                    applied = feature.ApplyGroupToMembers(command.GroupId, command.Percent, out message);
+                    applied = feature.ExecuteApplyGroupToMembers(command.GroupId, command.Percent, out message);
                     break;
 
                 case TajsOverclockPolicyOperation.SetGroupAuto:
-                    applied = feature.ApplyGroupAuto(
+                    applied = feature.ExecuteGroupAuto(
                         command.GroupId,
                         command.Enabled,
                         command.HasMinimum ? command.Minimum : null,
@@ -129,13 +129,13 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             RefreshEntities(affected);
         }
 
-        private static void ApplyManual(
+        private static void ExecuteManual(
             TajsOverclockingFeature feature,
             InputCommand command,
             EntityId entityId,
             int percent)
         {
-            if (feature.ApplyManual(entityId, percent, out string message))
+            if (feature.ExecuteSetManual(entityId, percent, out string message))
             {
                 command.SetResultSuccess();
                 OverclockingInspectorPatch.CommandApplied(
@@ -158,7 +158,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         {
             int? minimum = command.HasMinimum ? command.Minimum : null;
             int? maximum = command.HasMaximum ? command.Maximum : null;
-            if (feature.ApplyAutoPolicy(command.TargetId, command.Enabled, minimum, maximum, out string message))
+            if (feature.ExecuteSetAuto(command.TargetId, command.Enabled, minimum, maximum, out string message))
             {
                 command.SetResultSuccess();
                 OverclockingInspectorPatch.CommandApplied(
@@ -179,7 +179,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
         private static void ApplyReset(TajsOverclockingFeature feature, TajsOverclockPolicyCmd command)
         {
-            if (feature.ApplyResetPolicy(command.TargetId, out string message))
+            if (feature.ExecuteResetPolicy(command.TargetId, out string message))
             {
                 command.SetResultSuccess();
                 OverclockingInspectorPatch.CommandApplied(

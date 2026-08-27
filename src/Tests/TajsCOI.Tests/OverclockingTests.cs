@@ -50,6 +50,22 @@ namespace TajsCOI.Tests
             Assert.Equal(100, OverclockingMath.ApplyHysteresis(110, 50, bounds, 0, 25, 5));
         }
 
+        [Theory]
+        [InlineData(-50, 5000, 10, 1000)]
+        [InlineData(125, 80, 100, 100)]
+        [InlineData(40, 260, 40, 260)]
+        public void UserPolicyBoundsNormalizeToDeterministicSupportedDomain(
+            int minimum,
+            int maximum,
+            int expectedMinimum,
+            int expectedMaximum)
+        {
+            OverclockBounds bounds = OverclockBounds.Normalize(minimum, maximum);
+
+            Assert.Equal(expectedMinimum, bounds.MinPercent);
+            Assert.Equal(expectedMaximum, bounds.MaxPercent);
+        }
+
         [Fact]
         public void TransportCapacityCompensationIsBoundedAndRamped()
         {

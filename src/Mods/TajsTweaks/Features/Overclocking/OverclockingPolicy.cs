@@ -18,6 +18,18 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         internal int MaxPercent { get; }
 
         internal int Clamp(int percent) => Math.Max(MinPercent, Math.Min(MaxPercent, percent));
+
+        /// <summary>
+        ///     Normalizes user-provided policy bounds to the supported command domain.  Keeping
+        ///     this in the pure policy layer makes console, inspector, group, and restored-state
+        ///     paths agree on the same deterministic limits.
+        /// </summary>
+        internal static OverclockBounds Normalize(int minimum, int maximum)
+        {
+            int min = Math.Max(10, Math.Min(100, minimum));
+            int max = Math.Max(min, Math.Min(1000, maximum));
+            return new OverclockBounds(min, max);
+        }
     }
 
     internal readonly struct OverclockEffectivePolicy
