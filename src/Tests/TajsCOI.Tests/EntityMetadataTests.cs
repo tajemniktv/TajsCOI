@@ -65,9 +65,13 @@ namespace TajsCOI.Tests
 
                 var collision = new EntityMetadataStateStore(root);
                 collision.Load("second");
+                var staleIdentity = new EntityMetadataIdentity(9, "proto:stale");
+                store.SetEntity(new EntityMetadataRecord(staleIdentity, "stale", string.Empty, null));
                 Assert.True(collision.Save());
 
                 Assert.False(store.Rebind("second"));
+                Assert.Empty(store.Entities);
+                Assert.Empty(store.Groups);
                 Assert.False(store.Save());
             }
             finally

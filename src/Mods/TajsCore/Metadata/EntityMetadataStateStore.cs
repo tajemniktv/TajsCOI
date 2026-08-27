@@ -94,9 +94,13 @@ namespace TajsCOI.Core.Metadata
 
             // A save identity is deliberately content/file based. If a sidecar already exists
             // for the new identity, refuse to overwrite it: this is an identity collision, not
-            // evidence that the active records belong to that save.
+            // evidence that the active records belong to that save. Clear the previous save's
+            // records before returning so callers cannot accidentally expose stale metadata
+            // while the collision is being reported.
             if (File.Exists(nextPath))
             {
+                ClearLoadedState();
+                m_filePath = null;
                 m_allowWrite = false;
                 return false;
             }
