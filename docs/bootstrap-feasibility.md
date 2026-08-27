@@ -12,9 +12,14 @@ resolver and leaves the normal no-bootstrap mod installation untouched.
 
 The loader deliberately does not guess a Steam installation path. `InitializeFromGameRoot` only
 checks the bounded root candidates (`0Harmony.dll`, `Captain of Industry_Data/Managed/0Harmony.dll`,
-and `Mods/TajsCore/0Harmony.dll`) for an explicit feasibility probe. A real deployment still needs
-the installer/repair PR to discover the game root and pass the recorded canonical path.
+and `Mods/TajsCore/0Harmony.dll`) for an explicit feasibility probe. `BootstrapInstaller` is the
+explicit installer/repair boundary: it discovers a root from the running executable (or accepts a
+caller-supplied root), copies only the Tajs bootstrap payload, and records owned files and SHA-256
+hashes in `TajsCOI/TajsBootstrap.install.json`. It supports verify, repair, disable, and uninstall.
+Repair and uninstall refuse drifted files. Root `winhttp.dll` and other external UnityDoorstop
+files are never copied, replaced, elevated, or removed; an operator must manage those files
+separately.
 
-This PR proves the BCL-only loader contract and closed failure behavior in unit tests. Successful
-UnityDoorstop startup on the supported 0.8.7b distribution remains an external acceptance step;
-no game process is launched by the repository build.
+The BCL-only loader and custody operations are covered by unit tests. Successful UnityDoorstop
+startup on the supported 0.8.7b distribution remains an external acceptance step; no game process
+is launched by the repository build.
