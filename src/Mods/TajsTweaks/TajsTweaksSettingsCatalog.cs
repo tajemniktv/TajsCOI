@@ -33,6 +33,11 @@ namespace TajsCOI.Tweaks
         internal const string PinnedLowLimit = "pinned_low_limit";
         internal const string QuickRemoveOnDemolish = "quick_remove_on_demolish";
         internal const string ClassicRecipeDisplay = "classic_recipe_display";
+        internal const string ResearchTreeLayout = "research_tree_layout";
+        internal const string RecipePickerDensity = "recipe_picker_density";
+        internal const string RecipePickerTileSize = "recipe_picker_tile_size";
+        internal const string RecipePickerSpacing = "recipe_picker_spacing";
+        internal const string RecipePickerColumns = "recipe_picker_columns";
         internal const string PlanningBuildingColor = "planning_building_color";
         internal const string VehicleSoundRange = "vehicle_sound_range";
         internal const string MachineSoundRange = "machine_sound_range";
@@ -208,6 +213,19 @@ namespace TajsCOI.Tweaks
         private static readonly IReadOnlyList<SettingChoice> s_efficiencyOverlayModes = new[]
         {
             new SettingChoice("percentage", "Percentage"), new SettingChoice("status", "Status"), new SettingChoice("compact", "Compact marker"),
+        };
+
+        private static readonly IReadOnlyList<SettingChoice> s_researchTreeLayouts = new[]
+        {
+            new SettingChoice("vanilla", "Vanilla spacing"),
+            new SettingChoice("compact", "Compact spacing"),
+        };
+
+        private static readonly IReadOnlyList<SettingChoice> s_recipePickerDensities = new[]
+        {
+            new SettingChoice("vanilla", "Vanilla list"),
+            new SettingChoice("compact", "Compact columns"),
+            new SettingChoice("custom", "Custom"),
         };
 
         private static readonly IReadOnlyList<SettingChoice> s_groundwaterPolicies = new[]
@@ -420,6 +438,70 @@ namespace TajsCOI.Tweaks
                 "Building",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced),
+            SettingDescriptor.Choice(
+                ModId,
+                DisplayName,
+                ResearchTreeLayout,
+                "Research tree layout",
+                "Uses the native research tree coordinates with either vanilla or compact spacing. Connectors and hitboxes use the same coordinates.",
+                "vanilla",
+                s_researchTreeLayouts,
+                "Research",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Choice(
+                ModId,
+                DisplayName,
+                RecipePickerDensity,
+                "Recipe picker density",
+                "Keeps the native recipe picker in vanilla mode, uses a compact two-column policy, or uses the custom tile/spacing/column values below.",
+                "vanilla",
+                s_recipePickerDensities,
+                "Research",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Integer(
+                ModId,
+                DisplayName,
+                RecipePickerTileSize,
+                "Recipe picker tile size",
+                "Target recipe tile size in pixels; 36 matches the captured 0.8.7b product icon height.",
+                36,
+                24,
+                72,
+                1,
+                "Research",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: RecipePickerDensity),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                RecipePickerSpacing,
+                "Recipe picker spacing",
+                "Gap between recipe cards in points; 1 point (4 pixels) matches the captured vanilla RecipesColumn gap.",
+                1,
+                0,
+                8,
+                0.25,
+                "Research",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: RecipePickerDensity),
+            SettingDescriptor.Integer(
+                ModId,
+                DisplayName,
+                RecipePickerColumns,
+                "Recipe picker columns",
+                "Number of vertical recipe columns when custom density is selected; vanilla and compact policies choose their own safe default.",
+                1,
+                1,
+                4,
+                1,
+                "Research",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: RecipePickerDensity),
             SettingDescriptor.Choice(
                 ModId,
                 DisplayName,

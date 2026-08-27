@@ -36,6 +36,7 @@ using TajsCOI.Tweaks.Configuration;
 using TajsCOI.Tweaks.Features.Difficulty;
 using TajsCOI.Tweaks.Features.EntityMetadata;
 using TajsCOI.Tweaks.Features.Overclocking;
+using TajsCOI.Tweaks.Features.Presentation;
 using TajsCOI.Tweaks.Features.Storage;
 
 namespace TajsCOI.Tweaks
@@ -94,6 +95,8 @@ namespace TajsCOI.Tweaks
             TryInstall(runtime, "PinnedProducts", TweaksPinnedProductsFeature.Install);
             TryInstall(runtime, "QuickRemoveOnDemolish", TweaksQuickRemoveFeature.Install);
             TryInstall(runtime, "ClassicRecipeDisplay", TweaksClassicRecipeFeature.Install);
+            TryInstall(runtime, "ResearchTreeLayout", ResearchTreeLayoutFeature.Install);
+            TryInstall(runtime, "RecipePickerLayout", RecipePickerLayoutFeature.Install);
             TryInstall(runtime, "PlanningBuildingColor", TweaksPlanningColorFeature.Install);
             TryInstall(runtime, "AudioControls", TweaksAudioFeature.Install);
             TryInstall(runtime, "BuildDefaults", TweaksBuildDefaultsFeature.Install);
@@ -373,6 +376,17 @@ namespace TajsCOI.Tweaks
             {
                 TweaksTerrainGridFeature.ApplySettings();
             }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.ResearchTreeLayout)
+            {
+                ResearchTreeLayoutFeature.RefreshAll();
+            }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.RecipePickerDensity ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.RecipePickerTileSize ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.RecipePickerSpacing ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.RecipePickerColumns)
+            {
+                RecipePickerLayoutFeature.RefreshAll();
+            }
             if (change.Descriptor.Key == TajsTweaksSettingsCatalog.Overclocking ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockTransportCapacityCompensation ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.OverclockTransportSpacingBonus ||
@@ -402,6 +416,7 @@ namespace TajsCOI.Tweaks
             if (++m_renderTick % 15 == 0)
             {
                 TweaksPinnedProductsFeature.Tick();
+                RecipePickerLayoutFeature.Tick();
                 TweaksFarmAlertFeature.Tick();
                 TweaksShipPreloadFeature.Tick();
                 TweaksResourceDepositFeature.Tick(m_resolver);
@@ -544,6 +559,8 @@ namespace TajsCOI.Tweaks
         {
             m_settings.Changed -= OnSettingChanged;
             TweaksAutoShipDeliveryFeature.Reset();
+            ResearchTreeLayoutFeature.Reset();
+            RecipePickerLayoutFeature.Reset();
             m_infiniteGroundwater.Dispose();
             m_overclocking?.Dispose();
             m_metadataSelection?.Deactivate();

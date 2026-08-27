@@ -34,6 +34,11 @@ namespace TajsCOI.Tweaks
         internal static int PinnedLowLimit;
         internal static bool QuickRemoveOnDemolish;
         internal static bool ClassicRecipeDisplay;
+        internal static string ResearchTreeLayout = "vanilla";
+        internal static string RecipePickerDensity = "vanilla";
+        internal static int RecipePickerTileSize = 36;
+        internal static double RecipePickerSpacing = 1;
+        internal static int RecipePickerColumns = 1;
         internal static string PlanningBuildingColor = "vanilla";
         internal static double VehicleSoundRange;
         internal static double MachineSoundRange;
@@ -162,6 +167,11 @@ namespace TajsCOI.Tweaks
             PinnedLowLimit = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PinnedLowLimit);
             QuickRemoveOnDemolish = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.QuickRemoveOnDemolish);
             ClassicRecipeDisplay = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ClassicRecipeDisplay);
+            ResearchTreeLayout = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResearchTreeLayout);
+            RecipePickerDensity = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.RecipePickerDensity);
+            RecipePickerTileSize = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.RecipePickerTileSize);
+            RecipePickerSpacing = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.RecipePickerSpacing);
+            RecipePickerColumns = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.RecipePickerColumns);
             PlanningBuildingColor = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PlanningBuildingColor);
             VehicleSoundRange = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.VehicleSoundRange);
             MachineSoundRange = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.MachineSoundRange);
@@ -460,6 +470,8 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.PinnedRowsPerColumn: PinnedRowsPerColumn = value; break;
                 case TajsTweaksSettingsCatalog.PinnedLowThreshold: PinnedLowThreshold = value; break;
                 case TajsTweaksSettingsCatalog.PinnedLowLimit: PinnedLowLimit = value; break;
+                case TajsTweaksSettingsCatalog.RecipePickerTileSize: RecipePickerTileSize = value; break;
+                case TajsTweaksSettingsCatalog.RecipePickerColumns: RecipePickerColumns = value; break;
                 case TajsTweaksSettingsCatalog.RecoverPeriod: RecoverPeriod = value; break;
                 case TajsTweaksSettingsCatalog.StageMineTrucksScan: StageMineTrucksScan = value; break;
                 case TajsTweaksSettingsCatalog.HudScale: HudScale = value; break;
@@ -497,6 +509,10 @@ namespace TajsCOI.Tweaks
             if (key == TajsTweaksSettingsCatalog.PinnedHysteresis)
             {
                 PinnedHysteresisPercent = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.RecipePickerSpacing)
+            {
+                RecipePickerSpacing = value;
             }
             if (key == TajsTweaksSettingsCatalog.StorageMultiplier)
             {
@@ -571,6 +587,8 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.LinePlacementShortcut: LinePlacementShortcut = value; break;
                 case TajsTweaksSettingsCatalog.PinnedSortDirection: PinnedSortDirection = value; break;
                 case TajsTweaksSettingsCatalog.PinnedSortMode: PinnedSortMode = value; break;
+                case TajsTweaksSettingsCatalog.ResearchTreeLayout: ResearchTreeLayout = value; break;
+                case TajsTweaksSettingsCatalog.RecipePickerDensity: RecipePickerDensity = value; break;
                 case TajsTweaksSettingsCatalog.PlanningBuildingColor: PlanningBuildingColor = value; break;
                 case TajsTweaksSettingsCatalog.ResourceTowerLineColor: ResourceTowerLineColor = value; break;
                 case TajsTweaksSettingsCatalog.ResourceTowerColors: ResourceTowerColors = value; break;
