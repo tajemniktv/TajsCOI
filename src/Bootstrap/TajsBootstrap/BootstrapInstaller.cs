@@ -182,10 +182,22 @@ namespace TajsCOI.Bootstrap
                 return new BootstrapInstallResult(BootstrapInstallState.Drifted,
                     readError ?? "Bootstrap is not installed.", manifestPath);
             }
+            if (!string.Equals(manifest.GameRoot, root, StringComparison.OrdinalIgnoreCase))
+            {
+                return Refused(manifestPath, "Install manifest belongs to another game root.");
+            }
 
             foreach (BootstrapFileRecord record in manifest.Files ?? Array.Empty<BootstrapFileRecord>())
             {
-                string path = SafeCombine(root, record.RelativePath);
+                string path;
+                try
+                {
+                    path = SafeCombine(root, record.RelativePath);
+                }
+                catch (Exception exception)
+                {
+                    return Refused(manifestPath, "Install manifest contains an unsafe path: " + exception.Message);
+                }
                 if (!File.Exists(path) || !string.Equals(ComputeSha256(path), record.Sha256, StringComparison.OrdinalIgnoreCase))
                 {
                     return new BootstrapInstallResult(BootstrapInstallState.Drifted,
@@ -208,6 +220,10 @@ namespace TajsCOI.Bootstrap
             if (readError is not null || manifest is null)
             {
                 return Refused(manifestPath, readError ?? "Bootstrap is not installed; install first.");
+            }
+            if (!string.Equals(manifest.GameRoot, root, StringComparison.OrdinalIgnoreCase))
+            {
+                return Refused(manifestPath, "Install manifest belongs to another game root.");
             }
             BootstrapFileRecord[] expected = BuildExpectedRecords(root, bootstrapSource, harmonySource);
             if (!OwnsExpectedFiles(manifest, expected))
@@ -251,9 +267,21 @@ namespace TajsCOI.Bootstrap
             {
                 return Refused(manifestPath, readError ?? "Bootstrap is not installed.");
             }
+            if (!string.Equals(manifest.GameRoot, root, StringComparison.OrdinalIgnoreCase))
+            {
+                return Refused(manifestPath, "Install manifest belongs to another game root.");
+            }
             foreach (BootstrapFileRecord record in manifest.Files ?? Array.Empty<BootstrapFileRecord>())
             {
-                string path = SafeCombine(root, record.RelativePath);
+                string path;
+                try
+                {
+                    path = SafeCombine(root, record.RelativePath);
+                }
+                catch (Exception exception)
+                {
+                    return Refused(manifestPath, "Install manifest contains an unsafe path: " + exception.Message);
+                }
                 if (File.Exists(path) && !string.Equals(ComputeSha256(path), record.Sha256, StringComparison.OrdinalIgnoreCase))
                 {
                     return Refused(manifestPath, "Refusing to remove a drifted file: " + record.RelativePath);
@@ -298,6 +326,10 @@ namespace TajsCOI.Bootstrap
             if (readError is not null || manifest is null)
             {
                 return Refused(manifestPath, readError ?? "Bootstrap is not installed.");
+            }
+            if (!string.Equals(manifest.GameRoot, root, StringComparison.OrdinalIgnoreCase))
+            {
+                return Refused(manifestPath, "Install manifest belongs to another game root.");
             }
             try
             {
