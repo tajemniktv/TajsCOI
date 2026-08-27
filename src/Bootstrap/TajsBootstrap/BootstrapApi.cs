@@ -87,7 +87,7 @@ namespace TajsCOI.Bootstrap
             }
         }
 
-        public static BootstrapStatus InitializeFromGameRoot(string? gameRoot)
+        public static BootstrapStatus InitializeFromGameRoot(string? gameRoot, string? bootstrapAssemblyPath = null)
         {
             if (!BootstrapInstaller.TryGetEnabled(gameRoot, out bool enabled, out string gateMessage))
             {
@@ -103,7 +103,7 @@ namespace TajsCOI.Bootstrap
                     "Bootstrap disabled by its install manifest; the normal no-bootstrap installation remains available.");
             }
 
-            string? path = BootstrapLoader.FindCanonicalHarmony(gameRoot);
+            string? path = BootstrapLoader.FindCanonicalHarmony(gameRoot, bootstrapAssemblyPath);
             return Initialize(path);
         }
 
@@ -145,7 +145,7 @@ namespace TajsCOI.Bootstrap
         private static string? s_canonicalPath;
         private static string? s_canonicalVersion;
 
-        internal static string? FindCanonicalHarmony(string? gameRoot)
+        internal static string? FindCanonicalHarmony(string? gameRoot, string? bootstrapAssemblyPath = null)
         {
             if (string.IsNullOrWhiteSpace(gameRoot))
             {
@@ -153,13 +153,27 @@ namespace TajsCOI.Bootstrap
             }
 
             string root = Path.GetFullPath(gameRoot!.Trim());
-            string[] candidates =
+            var candidates = new System.Collections.Generic.List<string>();
+            if (!string.IsNullOrWhiteSpace(bootstrapAssemblyPath))
             {
-                Path.Combine(root, "0Harmony.dll"),
-                Path.Combine(root, "Captain of Industry_Data", "Managed", "0Harmony.dll"),
-                Path.Combine(root, "Mods", "TajsCore", "0Harmony.dll"),
-                Path.Combine(root, "TajsCOI", "Bootstrap", "0Harmony.dll"),
-            };
+                try
+                {
+                    string? directory = Path.GetDirectoryName(Path.GetFullPath(bootstrapAssemblyPath!.Trim()));
+                    if (!string.IsNullOrWhiteSpace(directory))
+                    {
+                        candidates.Add(Path.Combine(directory, "0Harmony.dll"));
+                    }
+                }
+                catch
+                {
+                    // Fall back to the known game-root locations below.
+                }
+            }
+
+            candidates.Add(Path.Combine(root, "0Harmony.dll"));
+            candidates.Add(Path.Combine(root, "Captain of Industry_Data", "Managed", "0Harmony.dll"));
+            candidates.Add(Path.Combine(root, "Mods", "TajsCore", "0Harmony.dll"));
+            candidates.Add(Path.Combine(root, "TajsCOI", "Bootstrap", "0Harmony.dll"));
             return candidates.FirstOrDefault(File.Exists);
         }
 

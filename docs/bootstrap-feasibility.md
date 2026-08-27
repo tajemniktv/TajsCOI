@@ -12,17 +12,21 @@ resolver and leaves the normal no-bootstrap mod installation untouched.
 
 The assembly also exposes UnityDoorstop's required `Doorstop.Entrypoint.Start()` method. It
 discovers the running game root (using Doorstop's `DOORSTOP_PROCESS_PATH` when supplied), honors
-the install manifest's explicit disabled state, looks for the installer-owned
-`TajsCOI/Bootstrap/0Harmony.dll`, and initializes the same API. The entrypoint is fail-open: an
-unavailable payload, unreadable/foreign install manifest, or incompatible Harmony assembly is
-reported through `BootstrapApi.Status` without preventing vanilla startup. The installer supplies
-the x64 UnityDoorstop `winhttp.dll` proxy and a `doorstop_config.ini` targeting
-`TajsCOI/Bootstrap/TajsBootstrap.dll`; an existing `version.dll` is never used or modified.
+the install manifest's explicit disabled state, prefers the `0Harmony.dll` beside the Doorstop
+target, and initializes the same API. The entrypoint is fail-open: an unavailable payload,
+unreadable/foreign install manifest, or incompatible Harmony assembly is reported through
+`BootstrapApi.Status` without preventing vanilla startup. The installer supplies the x64
+UnityDoorstop `winhttp.dll` proxy and a `doorstop_config.ini` targeting the currently installed
+`TajsBootstrap.dll` from the TajsCore mod directory. Doorstop 4 resolves the configured value as a
+path but does not expand `%APPDATA%`, so the installer writes the absolute path discovered from the
+loaded mod assembly. The root `TajsCOI/Bootstrap` copies remain installer-owned
+compatibility/repair payloads; they are not the normal update target. An existing `version.dll` is
+never used or modified.
 
-The loader deliberately does not guess a Steam installation path. `InitializeFromGameRoot` only
-checks the bounded root candidates (`0Harmony.dll`, `Captain of Industry_Data/Managed/0Harmony.dll`,
-`Mods/TajsCore/0Harmony.dll`, and `TajsCOI/Bootstrap/0Harmony.dll`) for an explicit feasibility
-probe. `BootstrapInstaller` is the
+The loader deliberately does not guess a Steam installation path. `InitializeFromGameRoot` checks
+the target assembly's sibling first, then the bounded root candidates
+(`0Harmony.dll`, `Captain of Industry_Data/Managed/0Harmony.dll`, `Mods/TajsCore/0Harmony.dll`,
+and `TajsCOI/Bootstrap/0Harmony.dll`) for an explicit feasibility probe. `BootstrapInstaller` is the
 explicit installer/repair boundary: it discovers a root from the running executable (or accepts a
 caller-supplied root), copies the Tajs bootstrap payload, the bundled x64 Doorstop proxy, and its
 configuration, and records owned files and SHA-256 hashes in

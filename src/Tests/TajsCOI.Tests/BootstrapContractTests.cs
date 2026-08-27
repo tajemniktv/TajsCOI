@@ -78,8 +78,9 @@ namespace TajsCOI.Tests
                 Assert.Equal("doorstop-v1", File.ReadAllText(Path.Combine(root, "winhttp.dll")));
                 Assert.Equal("external-version-proxy", File.ReadAllText(version));
                 Assert.Contains(
-                    "target_assembly=TajsCOI/Bootstrap/TajsBootstrap.dll",
+                    "target_assembly=" + Path.GetFullPath(bootstrapSource),
                     File.ReadAllText(Path.Combine(root, "doorstop_config.ini")));
+                Assert.DoesNotContain("%APPDATA%", File.ReadAllText(Path.Combine(root, "doorstop_config.ini")), StringComparison.OrdinalIgnoreCase);
                 Assert.Equal(BootstrapInstallState.Verified, BootstrapInstaller.Verify(root).State);
 
                 File.WriteAllText(bootstrapSource, "bootstrap-v2");
@@ -123,6 +124,33 @@ namespace TajsCOI.Tests
                 BootstrapStatus status = BootstrapApi.InitializeFromGameRoot(root);
                 Assert.Equal(BootstrapState.Disabled, status.State);
                 Assert.Contains("install manifest", status.Message, StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                BootstrapApi.Disable();
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void EarlyBootstrapPrefersHarmonyBesideConfiguredTargetAssembly()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-bootstrap-target-" + Guid.NewGuid().ToString("N"));
+            string targetDirectory = Path.Combine(root, "AppDataMods", "TajsCore");
+            Directory.CreateDirectory(targetDirectory);
+            string bootstrapSource = Path.Combine(targetDirectory, "TajsBootstrap.dll");
+            string harmonySibling = Path.Combine(targetDirectory, "0Harmony.dll");
+            File.WriteAllText(bootstrapSource, "bootstrap");
+            File.WriteAllText(harmonySibling, "sibling-harmony");
+
+            try
+            {
+                BootstrapStatus status = BootstrapApi.InitializeFromGameRoot(root, bootstrapSource);
+                Assert.Equal(BootstrapState.Failed, status.State);
+                Assert.Equal(Path.GetFullPath(harmonySibling), status.CanonicalPath);
             }
             finally
             {

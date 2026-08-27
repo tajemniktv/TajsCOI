@@ -103,13 +103,6 @@ namespace TajsCOI.Bootstrap
         private const string HarmonyRelativePath = PayloadDirectory + "\\0Harmony.dll";
         private const string DoorstopProxyRelativePath = "winhttp.dll";
         private const string DoorstopConfigRelativePath = "doorstop_config.ini";
-        private const string DoorstopConfigText =
-            "# TajsCOI-managed UnityDoorstop configuration\r\n" +
-            "[General]\r\n" +
-            "enabled=true\r\n" +
-            "target_assembly=TajsCOI/Bootstrap/TajsBootstrap.dll\r\n" +
-            "redirect_output_log=false\r\n";
-
         public static string? DiscoverGameRoot(string? runtimeExecutablePath = null)
         {
             string? executable = runtimeExecutablePath;
@@ -164,7 +157,8 @@ namespace TajsCOI.Bootstrap
                     root,
                     bootstrapSource,
                     harmonySource,
-                    doorstopProxySource);
+                    doorstopProxySource,
+                    BuildDoorstopConfig(bootstrapSource));
                 if (existing is not null && !string.Equals(existing.GameRoot, root, StringComparison.OrdinalIgnoreCase))
                 {
                     return Refused(manifestPath, "Existing bootstrap manifest belongs to another game root.");
@@ -189,7 +183,9 @@ namespace TajsCOI.Bootstrap
                 CopyFileAtomically(bootstrapSource, SafeCombine(root, BootstrapRelativePath));
                 CopyFileAtomically(harmonySource, SafeCombine(root, HarmonyRelativePath));
                 CopyFileAtomically(doorstopProxySource, SafeCombine(root, DoorstopProxyRelativePath));
-                WriteTextAtomically(SafeCombine(root, DoorstopConfigRelativePath), DoorstopConfigText);
+                WriteTextAtomically(
+                    SafeCombine(root, DoorstopConfigRelativePath),
+                    BuildDoorstopConfig(bootstrapSource));
                 WriteManifestAtomic(manifestPath, new InstallManifest
                 {
                     Schema = ManifestSchema,
@@ -271,7 +267,8 @@ namespace TajsCOI.Bootstrap
                 root,
                 bootstrapSource,
                 harmonySource,
-                doorstopProxySource);
+                doorstopProxySource,
+                BuildDoorstopConfig(bootstrapSource));
             if (!OwnsExpectedFiles(manifest, expected))
             {
                 return Refused(manifestPath, "Install manifest does not own the expected bootstrap payload.");
@@ -282,7 +279,9 @@ namespace TajsCOI.Bootstrap
                 CopyFileAtomically(bootstrapSource, SafeCombine(root, BootstrapRelativePath));
                 CopyFileAtomically(harmonySource, SafeCombine(root, HarmonyRelativePath));
                 CopyFileAtomically(doorstopProxySource, SafeCombine(root, DoorstopProxyRelativePath));
-                WriteTextAtomically(SafeCombine(root, DoorstopConfigRelativePath), DoorstopConfigText);
+                WriteTextAtomically(
+                    SafeCombine(root, DoorstopConfigRelativePath),
+                    BuildDoorstopConfig(bootstrapSource));
                 manifest.Files = expected;
                 WriteManifestAtomic(manifestPath, manifest);
                 return new BootstrapInstallResult(BootstrapInstallState.Installed,
@@ -488,14 +487,27 @@ namespace TajsCOI.Bootstrap
             string root,
             string bootstrapSource,
             string harmonySource,
-            string doorstopProxySource) =>
+            string doorstopProxySource,
+            string doorstopConfigText) =>
             new[]
             {
                 new BootstrapFileRecord { RelativePath = BootstrapRelativePath, Sha256 = ComputeSha256(bootstrapSource), Length = new FileInfo(bootstrapSource).Length },
                 new BootstrapFileRecord { RelativePath = HarmonyRelativePath, Sha256 = ComputeSha256(harmonySource), Length = new FileInfo(harmonySource).Length },
                 new BootstrapFileRecord { RelativePath = DoorstopProxyRelativePath, Sha256 = ComputeSha256(doorstopProxySource), Length = new FileInfo(doorstopProxySource).Length },
-                new BootstrapFileRecord { RelativePath = DoorstopConfigRelativePath, Sha256 = ComputeSha256(Encoding.UTF8.GetBytes(DoorstopConfigText)), Length = Encoding.UTF8.GetByteCount(DoorstopConfigText) },
+                new BootstrapFileRecord { RelativePath = DoorstopConfigRelativePath, Sha256 = ComputeSha256(Encoding.UTF8.GetBytes(doorstopConfigText)), Length = Encoding.UTF8.GetByteCount(doorstopConfigText) },
             };
+
+        private static string BuildDoorstopConfig(string bootstrapAssemblyPath)
+        {
+            string targetAssembly = Path.GetFullPath(bootstrapAssemblyPath.Trim());
+            return
+                "# TajsCOI-managed UnityDoorstop configuration\r\n" +
+                "# Doorstop does not expand environment variables; TajsCOI writes this absolute target path.\r\n" +
+                "[General]\r\n" +
+                "enabled=true\r\n" +
+                "target_assembly=" + targetAssembly + "\r\n" +
+                "redirect_output_log=false\r\n";
+        }
 
         private static bool OwnsExpectedFiles(InstallManifest manifest, IReadOnlyList<BootstrapFileRecord> expected) =>
             expected.All(item => manifest.Files?.Any(existing =>
