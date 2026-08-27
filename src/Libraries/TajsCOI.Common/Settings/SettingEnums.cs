@@ -16,9 +16,9 @@ namespace TajsCOI.Common.Settings
     }
 
     /// <summary>
-    /// Describes how a typed setting value should be presented by a reusable
-    /// editor. This is presentation metadata only; the descriptor's numeric
-    /// bounds and validator remain authoritative.
+    ///     Describes how a typed setting value should be presented by a reusable
+    ///     editor. This is presentation metadata only; the descriptor's numeric
+    ///     bounds and validator remain authoritative.
     /// </summary>
     public enum SettingValueFormat
     {

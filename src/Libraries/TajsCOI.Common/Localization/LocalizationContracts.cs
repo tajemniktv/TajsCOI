@@ -5,7 +5,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Runtime.Serialization.Json;
 using System.Text;
 
@@ -116,19 +115,19 @@ namespace TajsCOI.Common.Localization
 
     public interface ILocalizationService
     {
-        string ActiveLocale { get; }
-        bool DebugKeys { get; set; }
+        public string ActiveLocale { get; }
+        public bool DebugKeys { get; set; }
 
-        LocalizationRegistrationResult Register(LocalizationCatalog catalog);
+        public LocalizationRegistrationResult Register(LocalizationCatalog catalog);
 
-        bool SetLocale(string locale);
+        public bool SetLocale(string locale);
 
-        string Get(string source, string key, string? fallback = null, string? fallbackSource = null);
+        public string Get(string source, string key, string? fallback = null, string? fallbackSource = null);
 
-        bool TryGet(string source, string key, out string value, string? fallbackSource = null);
+        public bool TryGet(string source, string key, out string value, string? fallbackSource = null);
 
-        IReadOnlyList<LocalizationCatalog> GetCatalogSnapshot();
+        public IReadOnlyList<LocalizationCatalog> GetCatalogSnapshot();
 
-        IReadOnlyList<string> GetMissingKeysSnapshot();
+        public IReadOnlyList<string> GetMissingKeysSnapshot();
     }
 }

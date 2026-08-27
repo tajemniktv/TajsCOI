@@ -3,12 +3,12 @@
 // All Rights Reserved.
 
 using System;
-using System.Linq;
 using System.IO;
-using TajsCOI.Tweaks.Features.Overclocking;
+using System.Linq;
 using Mafi.Core;
 using Mafi.Core.Input;
 using Mafi.Serialization;
+using TajsCOI.Tweaks.Features.Overclocking;
 using Xunit;
 
 namespace TajsCOI.Tests
@@ -115,7 +115,7 @@ namespace TajsCOI.Tests
         public void PolicyCommandsPreserveManualAutoResetInputOrder()
         {
             EntityId entityId = new(42);
-            var commands = new[]
+            TajsOverclockPolicyCmd[] commands = new[]
             {
                 TajsOverclockPolicyCmd.SetManual(entityId, 180),
                 TajsOverclockPolicyCmd.SetAuto(entityId, true, null, null),
@@ -123,12 +123,7 @@ namespace TajsCOI.Tests
             };
 
             Assert.Equal(
-                new[]
-                {
-                    TajsOverclockPolicyOperation.SetManual,
-                    TajsOverclockPolicyOperation.SetAuto,
-                    TajsOverclockPolicyOperation.Reset,
-                },
+                new[] { TajsOverclockPolicyOperation.SetManual, TajsOverclockPolicyOperation.SetAuto, TajsOverclockPolicyOperation.Reset },
                 commands.Select(command => command.Operation));
             Assert.Equal(180, commands[0].Percent);
             Assert.True(commands[1].Enabled);

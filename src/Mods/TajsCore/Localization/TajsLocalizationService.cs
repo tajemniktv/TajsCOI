@@ -6,14 +6,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using TajsCOI.Common.Localization;
 using Mafi;
+using TajsCOI.Common.Localization;
 
 namespace TajsCOI.Core.Localization
 {
     /// <summary>
-    /// Namespaced, value-only catalog service for suite-owned UI. Native MaFi LocStr remains
-    /// authoritative for native strings; this service is only for Tajs-owned text.
+    ///     Namespaced, value-only catalog service for suite-owned UI. Native MaFi LocStr remains
+    ///     authoritative for native strings; this service is only for Tajs-owned text.
     /// </summary>
     [GlobalDependency(RegistrationMode.AsEverything)]
     public sealed class TajsLocalizationService : ILocalizationService
@@ -185,8 +185,8 @@ namespace TajsCOI.Core.Localization
         }
 
         /// <summary>
-        /// Loads an optional development override. The resolved path is kept below root and
-        /// both source and locale are restricted to filename-safe identifiers.
+        ///     Loads an optional development override. The resolved path is kept below root and
+        ///     both source and locale are restricted to filename-safe identifiers.
         /// </summary>
         public bool TryLoadExternalOverride(
             string rootDirectory,

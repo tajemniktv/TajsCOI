@@ -106,17 +106,28 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 Row row = new Row(4.pt()).AlignItemsCenter();
                 string bounds = group.MinPercent + "-" + group.MaxPercent + "%";
                 row.Add(new UiLabel((group.Id + ": " + group.Name).AsLoc()).Width(new Px(190f)));
-                row.Add(new UiLabel((group.Members.Count + " member(s), " +
-                                   (group.ManualDefault == 0 ? "global" : group.ManualDefault + "%") +
-                                   ", " + (group.Auto ? "Auto" : "Manual") + " " + bounds).AsLoc())
-                    .Width(new Px(250f)));
+                row.Add(
+                    new UiLabel(
+                            (group.Members.Count + " member(s), " +
+                             (group.ManualDefault == 0 ? "global" : group.ManualDefault + "%") +
+                             ", " + (group.Auto ? "Auto" : "Manual") + " " + bounds).AsLoc())
+                        .Width(new Px(250f)));
                 row.Add(MakeButton("Pick", () => m_feature.StartGroupSelection(group.Id)));
-                row.Add(MakeButton("Set default", () =>
-                    m_feature.QueueSetGroupDefault(group.Id, ReadRate(), out _)));
-                row.Add(MakeButton("Apply override", () =>
-                    m_feature.QueueApplyGroupToMembers(group.Id, ReadRate(), out _)));
-                row.Add(MakeButton(group.Auto ? "Manual" : "Auto", () =>
-                    m_feature.QueueSetGroupAuto(group.Id, !group.Auto, null, null, out _)));
+                row.Add(
+                    MakeButton(
+                        "Set default",
+                        () =>
+                            m_feature.QueueSetGroupDefault(group.Id, ReadRate(), out _)));
+                row.Add(
+                    MakeButton(
+                        "Apply override",
+                        () =>
+                            m_feature.QueueApplyGroupToMembers(group.Id, ReadRate(), out _)));
+                row.Add(
+                    MakeButton(
+                        group.Auto ? "Manual" : "Auto",
+                        () =>
+                            m_feature.QueueSetGroupAuto(group.Id, !group.Auto, null, null, out _)));
                 row.Add(MakeButton("Delete", () => m_feature.QueueDeleteGroup(group.Id, out _)));
                 m_groups.Add(row);
             }

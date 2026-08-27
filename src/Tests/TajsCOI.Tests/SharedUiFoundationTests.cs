@@ -3,7 +3,6 @@
 // All Rights Reserved.
 
 using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using TajsCOI.Common.Settings;
@@ -28,7 +27,7 @@ namespace TajsCOI.Tests
                 100,
                 0.1,
                 valueFormat: SettingValueFormat.Percentage);
-            CultureInfo polish = CultureInfo.GetCultureInfo("pl-PL");
+            var polish = CultureInfo.GetCultureInfo("pl-PL");
 
             Assert.True(SettingValueEditorFormatting.TryParse(descriptor, "1,5", polish, out object comma, out _));
             Assert.Equal(1.5, comma);
@@ -117,12 +116,7 @@ namespace TajsCOI.Tests
                 width: DataTableColumnWidth.Fixed(40));
             var table = new DataTableModel<Row>(new[] { name, count }, row => row.Id, DataTableSelectionMode.Multiple);
             table.SetRows(
-                new[]
-                {
-                    new Row("b", "Same", 2),
-                    new Row("a", "Same", 2),
-                    new Row("c", "Other", 1),
-                });
+                new[] { new Row("b", "Same", 2), new Row("a", "Same", 2), new Row("c", "Other", 1) });
 
             Assert.True(table.ToggleSort("count"));
             Assert.Equal(new[] { "c", "a", "b" }, table.GetVisibleRows().Select(row => row.Id));
@@ -158,8 +152,9 @@ namespace TajsCOI.Tests
 
             public bool Equals(Row other) => Id == other.Id && Name == other.Name && Count == other.Count;
             public override bool Equals(object? obj) => obj is Row other && Equals(other);
+
             public override int GetHashCode() =>
-                ((Id?.GetHashCode() ?? 0) * 397) ^ ((Name?.GetHashCode() ?? 0) * 17) ^ Count;
+                (Id?.GetHashCode() ?? 0) * 397 ^ (Name?.GetHashCode() ?? 0) * 17 ^ Count;
         }
     }
 }

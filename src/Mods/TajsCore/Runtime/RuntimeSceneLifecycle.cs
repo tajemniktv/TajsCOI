@@ -9,8 +9,8 @@ using TajsCOI.Common.Runtime;
 namespace TajsCOI.Core.Runtime
 {
     /// <summary>
-    /// Bridges the gameplay-scene lifecycle to Core's process-lifetime registry without making
-    /// the registry retain resolver-scoped objects.
+    ///     Bridges the gameplay-scene lifecycle to Core's process-lifetime registry without making
+    ///     the registry retain resolver-scoped objects.
     /// </summary>
     [GlobalDependency(RegistrationMode.AsSelf)]
     internal sealed class RuntimeSceneLifecycle

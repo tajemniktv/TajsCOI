@@ -16,18 +16,16 @@ using Mafi.Core;
 using Mafi.Core.Buildings.Mine;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Animations;
+using Mafi.Core.Entities.Dynamic;
 using Mafi.Core.Factory.Machines;
 using Mafi.Core.Factory.Transports;
-using Mafi.Core.GameLoop;
 using Mafi.Core.PathFinding;
 using Mafi.Core.Products;
 using Mafi.Core.SaveGame;
 using Mafi.Core.Simulation;
 using Mafi.Core.Terrain.Designation;
-using Mafi.Core.Entities.Dynamic;
 using Mafi.Core.Vehicles.Jobs;
 using Mafi.Core.Vehicles.Trucks;
-using Mafi.Core.Vehicles.Trucks.JobProviders;
 using Mafi.Serialization;
 using Mafi.Unity.InputControl;
 using TajsCOI.Performance.Features.LazyResourceVisualization;
@@ -61,7 +59,7 @@ namespace TajsCOI.Tests.RuntimeContracts
         public void DifficultyFeatureDoesNotDeclareASecondWindowImplementation()
         {
             Assert.Null(
-                typeof(TajsCOI.Tweaks.Features.Difficulty.TajsDifficultyFeature).Assembly.GetType(
+                typeof(Tweaks.Features.Difficulty.TajsDifficultyFeature).Assembly.GetType(
                     "TajsCOI.Tweaks.Features.Difficulty.TajsDifficultyWindow"));
         }
 
@@ -128,7 +126,7 @@ namespace TajsCOI.Tests.RuntimeContracts
                 "TryFindBestReadyToFulfill",
                 typeof(bool),
                 isStatic: false,
-                typeof(System.Collections.Generic.IEnumerable<TerrainDesignation>),
+                typeof(IEnumerable<TerrainDesignation>),
                 typeof(Tile2i),
                 typeof(Vehicle),
                 typeof(TerrainDesignation).MakeByRefType(),

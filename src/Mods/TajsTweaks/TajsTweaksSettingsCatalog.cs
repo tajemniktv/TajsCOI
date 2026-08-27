@@ -61,7 +61,9 @@ namespace TajsCOI.Tweaks
         internal const string ResourceTowerColors = "resource_tower_colors";
         internal const string GroundwaterPolicy = "groundwater_policy";
         internal const string GroundwaterRegenerationPercent = "groundwater_regeneration_percent";
+
         internal const string GroundwaterMinimumPercent = "groundwater_minimum_percent";
+
         // Retained for one-way migration of the former boolean setting.
         internal const string InfiniteGroundwater = "infinite_groundwater";
         internal const string AllowSteam = "allow_steam";

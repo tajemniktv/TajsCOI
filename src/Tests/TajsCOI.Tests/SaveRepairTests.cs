@@ -49,6 +49,7 @@ namespace TajsCOI.Tests
             int detects = 0;
             int repairs = 0;
             int verifies = 0;
+
             SaveRepairFinding Finding()
             {
                 detects++;
@@ -94,14 +95,7 @@ namespace TajsCOI.Tests
             {
                 SaveRepairFinding finding = new("test", SaveRepairStatus.NeedsRepair, 1, "before");
                 SaveRepairFinding verification = new("test", SaveRepairStatus.Clean, 0, "after");
-                string[] corruptSidecars =
-                {
-                    string.Empty,
-                    "not a manifest",
-                    SaveRepairManifest.Header + "\nunknown=field\n",
-                    "\0\uffff",
-                    new string('x', 8192),
-                };
+                string[] corruptSidecars = { string.Empty, "not a manifest", SaveRepairManifest.Header + "\nunknown=field\n", "\0\uffff", new('x', 8192) };
 
                 foreach (string corrupt in corruptSidecars)
                 {

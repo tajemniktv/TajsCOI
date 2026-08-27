@@ -3,7 +3,6 @@
 // All Rights Reserved.
 
 using System;
-using TajsCOI.Profiler;
 using TajsCOI.Profiler.Core;
 using Xunit;
 

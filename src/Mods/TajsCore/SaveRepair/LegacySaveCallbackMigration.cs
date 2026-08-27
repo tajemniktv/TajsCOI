@@ -54,9 +54,10 @@ namespace TajsCOI.Core.SaveRepair
                 // must not leave an earlier entry detached as a side effect.
                 foreach (object callbackOwner in activeCallbackOwners)
                 {
-                    callbacks.Add(Tuple.Create(
-                        callbackOwner,
-                        (Action)Delegate.CreateDelegate(typeof(Action), callbackOwner, callbackMethod)));
+                    callbacks.Add(
+                        Tuple.Create(
+                            callbackOwner,
+                            (Action)Delegate.CreateDelegate(typeof(Action), callbackOwner, callbackMethod)));
                 }
             }
             catch (Exception exception)
@@ -503,7 +504,7 @@ namespace TajsCOI.Core.SaveRepair
                 }
             }
 
-            var values = new object?[fields.Length];
+            object?[] values = new object?[fields.Length];
             for (int index = 0; index < fields.Length; index++)
             {
                 values[index] = fields[index]!.GetValue(resolver);

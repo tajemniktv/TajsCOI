@@ -70,7 +70,8 @@ namespace TajsCOI.Common.Configuration
                 if (!IsPrimitive(item.Value))
                 {
                     throw new ArgumentException(
-                        "Configuration payloads may contain only primitive/versioned values.", nameof(values));
+                        "Configuration payloads may contain only primitive/versioned values.",
+                        nameof(values));
                 }
 
                 copy[item.Key.Trim()] = item.Value;
@@ -190,15 +191,15 @@ namespace TajsCOI.Common.Configuration
 
     public interface IConfigurationRegistry
     {
-        ConfigurationRegistrationResult Register(ConfigurationHandlerDescriptor descriptor);
+        public ConfigurationRegistrationResult Register(ConfigurationHandlerDescriptor descriptor);
 
-        ConfigurationSnapshot Capture(ConfigurationEntityDescriptor entity, object runtimeEntity);
+        public ConfigurationSnapshot Capture(ConfigurationEntityDescriptor entity, object runtimeEntity);
 
-        ConfigurationApplyResult Apply(
+        public ConfigurationApplyResult Apply(
             ConfigurationEntityDescriptor entity,
             object runtimeEntity,
             ConfigurationSnapshot snapshot);
 
-        IReadOnlyList<ConfigurationHandlerDescriptor> GetHandlerSnapshot();
+        public IReadOnlyList<ConfigurationHandlerDescriptor> GetHandlerSnapshot();
     }
 }

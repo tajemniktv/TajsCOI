@@ -81,10 +81,7 @@ namespace TajsCOI.Tests
                     new[] { "TajsCore.Tests" },
                     Array.Empty<string>()),
             };
-            var loadedMods = new[]
-            {
-                new LoadedModSnapshot("TajsCore", "1", "Taj's Core", true, string.Empty),
-            };
+            var loadedMods = new[] { new LoadedModSnapshot("TajsCore", "1", "Taj's Core", true, string.Empty) };
             string path = Path.Combine(Path.GetTempPath(), "tajs-diagnostics-" + Guid.NewGuid().ToString("N") + ".json");
             try
             {

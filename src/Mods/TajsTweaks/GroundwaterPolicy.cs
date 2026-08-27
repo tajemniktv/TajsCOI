@@ -46,7 +46,7 @@ namespace TajsCOI.Tweaks
         };
 
         /// <summary>
-        ///     Computes one bounded refill operation. <paramref name="dailyAmount"/> is the
+        ///     Computes one bounded refill operation. <paramref name="dailyAmount" /> is the
         ///     amount for this game-calendar day, already derived from the native configured
         ///     capacity. No operation can add more than the current native capacity allows.
         /// </summary>

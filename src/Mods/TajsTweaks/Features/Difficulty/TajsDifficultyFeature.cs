@@ -90,10 +90,9 @@ namespace TajsCOI.Tweaks.Features.Difficulty
 
         internal string Status()
         {
-            int supported = m_definitions.Values.Count(
-                definition => m_properties.ContainsKey(definition.MemberName) &&
-                              m_infos.ContainsKey(definition.MemberName) &&
-                              definition.ApplyMode != TajsDifficultyApplyMode.Unsupported);
+            int supported = m_definitions.Values.Count(definition => m_properties.ContainsKey(definition.MemberName) &&
+                                                                     m_infos.ContainsKey(definition.MemberName) &&
+                                                                     definition.ApplyMode != TajsDifficultyApplyMode.Unsupported);
             int unsupported = m_definitions.Count - supported;
             string unsupportedNames = string.Join(
                 ", ",
@@ -236,10 +235,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             }
         }
 
-        private static bool ValuesEqual(object left, object right)
-        {
-            return left.Equals(right);
-        }
+        private static bool ValuesEqual(object left, object right) => left.Equals(right);
 
         private bool TryFind(
             string memberName,

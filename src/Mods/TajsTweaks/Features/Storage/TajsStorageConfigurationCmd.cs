@@ -1,5 +1,5 @@
 // Taj's COI Mods | TajsStorageConfigurationCmd.cs
-// Copyright (C) 2026 - 2026 Grzegorz Nowak (TajemnikTV)
+// Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
 using System;
@@ -7,18 +7,16 @@ using System.Collections.Generic;
 using System.Linq;
 using Mafi;
 using Mafi.Core;
-using Mafi.Core.Buildings.Storages;
 using Mafi.Core.Entities;
 using Mafi.Core.Input;
 using Mafi.Serialization;
 using CoiStorage = Mafi.Core.Buildings.Storages.Storage;
-using TajsCOI.Tweaks.Features.Storage;
 
 namespace TajsCOI.Tweaks.Features.Storage
 {
     /// <summary>
-    /// Replays a storage configuration transfer through the normal input command path. The
-    /// source is resolved at execution time, so a queued command never captures gameplay objects.
+    ///     Replays a storage configuration transfer through the normal input command path. The
+    ///     source is resolved at execution time, so a queued command never captures gameplay objects.
     /// </summary>
     [GenerateSerializer(false, null, 0, null)]
     internal sealed class TajsStorageConfigurationCmd : InputCommand
@@ -83,7 +81,7 @@ namespace TajsCOI.Tweaks.Features.Storage
             reader.SetField(this, "SourceId", reader.ReadInt());
             reader.SetField(this, "Fields", (StorageTransferFields)reader.ReadInt());
             int count = Math.Min(reader.ReadIntNotNegative(), 512);
-            var targetIds = new int[count];
+            int[] targetIds = new int[count];
             for (int i = 0; i < count; i++)
             {
                 targetIds[i] = reader.ReadInt();

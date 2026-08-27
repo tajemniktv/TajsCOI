@@ -154,7 +154,7 @@ namespace TajsCOI.Tests
             {
                 TajsDifficultySaveIdentity identity = TajsDifficultySaveIdentity.FromSaveFile(
                     new SaveFileInfo("slot", "world", DateTime.UtcNow, 100));
-                GameDifficultyConfig current = (GameDifficultyConfig)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(GameDifficultyConfig));
+                var current = (GameDifficultyConfig)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(GameDifficultyConfig));
                 var properties = new Dictionary<string, System.Reflection.PropertyInfo>(StringComparer.Ordinal);
                 var store = new TajsDifficultyStateStore(root);
                 store.LoadOrCapture(identity, "world", current, properties);
@@ -221,7 +221,7 @@ namespace TajsCOI.Tests
                 TajsDifficultySaveIdentity firstIdentity = TajsDifficultySaveIdentity.FromSaveFile(
                     new SaveFileInfo("slot", "world", firstWrite, 3));
                 var store = new TajsDifficultyStateStore(Path.Combine(root, "sidecars"));
-                GameDifficultyConfig current = (GameDifficultyConfig)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(GameDifficultyConfig));
+                var current = (GameDifficultyConfig)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(GameDifficultyConfig));
                 store.LoadOrCapture(
                     firstIdentity,
                     "world",

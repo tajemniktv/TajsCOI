@@ -1,5 +1,5 @@
 // Taj's COI Mods | TajsStorageAdvancedConfiguration.cs
-// Copyright (C) 2026 - 2026 Grzegorz Nowak (TajemnikTV)
+// Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
 using System;
@@ -49,9 +49,9 @@ namespace TajsCOI.Tweaks.Features.Storage
     }
 
     /// <summary>
-    /// Keeps storage transfer policy independent of UI. Native EntityConfigData remains the
-    /// authority for the actual values; this class only validates scope and removes fields that
-    /// the player did not select.
+    ///     Keeps storage transfer policy independent of UI. Native EntityConfigData remains the
+    ///     authority for the actual values; this class only validates scope and removes fields that
+    ///     the player did not select.
     /// </summary>
     internal static class TajsStorageAdvancedConfiguration
     {
@@ -88,7 +88,7 @@ namespace TajsCOI.Tweaks.Features.Storage
             ProductType? sourceType = source.Prototype.ProductType;
             ProductType? targetType = target.Prototype.ProductType;
             if (sourceType.HasValue != targetType.HasValue ||
-                (sourceType.HasValue && !sourceType.Value.Equals(targetType!.Value)))
+                sourceType.HasValue && !sourceType.Value.Equals(targetType!.Value))
             {
                 reason = "supported product types differ";
                 return false;
@@ -100,7 +100,7 @@ namespace TajsCOI.Tweaks.Features.Storage
 
         internal static bool CanTransferProduct(CoiStorage source, CoiStorage target, out string reason)
         {
-            if ((source.StoredProduct.HasValue && target.StoredProduct.HasValue) &&
+            if (source.StoredProduct.HasValue && target.StoredProduct.HasValue &&
                 source.StoredProduct.Value != target.StoredProduct.Value &&
                 target.CurrentQuantity.IsPositive)
             {
@@ -317,9 +317,9 @@ namespace TajsCOI.Tweaks.Features.Storage
         }
 
         /// <summary>
-        /// Native Storage.ApplyConfigInternal treats several missing booleans as false
-        /// (notably alerts and custom-truck enforcement). Overlaying the destination's
-        /// current config for unselected fields keeps field-level transfer semantics exact.
+        ///     Native Storage.ApplyConfigInternal treats several missing booleans as false
+        ///     (notably alerts and custom-truck enforcement). Overlaying the destination's
+        ///     current config for unselected fields keeps field-level transfer semantics exact.
         /// </summary>
         internal static void PreserveUnselectedFields(
             EntityConfigData data,
@@ -403,13 +403,34 @@ namespace TajsCOI.Tweaks.Features.Storage
         internal static string DescribeFields(StorageTransferFields fields)
         {
             var names = new List<string>();
-            if ((fields & StorageTransferFields.ProductAssignment) != 0) names.Add("product assignment");
-            if ((fields & StorageTransferFields.LogisticsThresholds) != 0) names.Add("logistics thresholds/priorities");
-            if ((fields & StorageTransferFields.ImportExportEnablement) != 0) names.Add("import/export enablement");
-            if ((fields & StorageTransferFields.TruckPolicy) != 0) names.Add("truck policy");
-            if ((fields & StorageTransferFields.Alerts) != 0) names.Add("alerts");
-            if ((fields & StorageTransferFields.KeepFullEmpty) != 0) names.Add("keep-full/keep-empty");
-            if ((fields & StorageTransferFields.CapacityOverride) != 0) names.Add("capacity override");
+            if ((fields & StorageTransferFields.ProductAssignment) != 0)
+            {
+                names.Add("product assignment");
+            }
+            if ((fields & StorageTransferFields.LogisticsThresholds) != 0)
+            {
+                names.Add("logistics thresholds/priorities");
+            }
+            if ((fields & StorageTransferFields.ImportExportEnablement) != 0)
+            {
+                names.Add("import/export enablement");
+            }
+            if ((fields & StorageTransferFields.TruckPolicy) != 0)
+            {
+                names.Add("truck policy");
+            }
+            if ((fields & StorageTransferFields.Alerts) != 0)
+            {
+                names.Add("alerts");
+            }
+            if ((fields & StorageTransferFields.KeepFullEmpty) != 0)
+            {
+                names.Add("keep-full/keep-empty");
+            }
+            if ((fields & StorageTransferFields.CapacityOverride) != 0)
+            {
+                names.Add("capacity override");
+            }
             return names.Count == 0 ? "nothing" : string.Join(", ", names);
         }
 

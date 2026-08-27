@@ -16,14 +16,13 @@ using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Localization;
 using TajsCOI.Common.Runtime;
+using TajsCOI.Common.Settings;
 using TajsCOI.Common.Shortcuts;
 using TajsCOI.Common.Ui;
-using TajsCOI.Common.Settings;
 using UnityEngine.UIElements;
 using Button = Mafi.Unity.UiToolkit.Library.Button;
 using Column = Mafi.Unity.UiToolkit.Library.Column;
 using Label = Mafi.Unity.UiToolkit.Library.Label;
-using TextField = Mafi.Unity.UiToolkit.Library.TextField;
 
 namespace TajsCOI.Core.Settings
 {
@@ -905,11 +904,12 @@ namespace TajsCOI.Core.Settings
             IReadOnlyList<ShortcutBindingSnapshot> shortcuts = m_shortcuts.GetSnapshot();
             CurrentPage.Add(
                 TajsDashboardUi.SectionHeader(m_localization.Get("TajsCore", "dashboard.shortcuts.title", "Shortcuts")),
-                new Label(m_localization.Get(
-                        "TajsCore",
-                        "dashboard.shortcuts.description",
-                        "Central bindings are persisted by Core and dispatched only when text fields, modals, tools, and UI do not capture input.")
-                    .AsLoc()).FontSize(12));
+                new Label(
+                    m_localization.Get(
+                            "TajsCore",
+                            "dashboard.shortcuts.description",
+                            "Central bindings are persisted by Core and dispatched only when text fields, modals, tools, and UI do not capture input.")
+                        .AsLoc()).FontSize(12));
             if (shortcuts.Count == 0)
             {
                 CurrentPage.Add(new Label("No suite shortcuts are registered yet.".AsLoc()).FontSize(12));
@@ -921,7 +921,7 @@ namespace TajsCOI.Core.Settings
                 string primary = shortcut.Primary.IsEmpty ? "Unbound" : shortcut.Primary.Serialized;
                 string secondary = shortcut.Secondary.IsEmpty ? string.Empty : " / " + shortcut.Secondary.Serialized;
                 CurrentPage.Add(
-                    new Panel()
+                    new Panel
                     {
                         new Row(4.pt())
                         {

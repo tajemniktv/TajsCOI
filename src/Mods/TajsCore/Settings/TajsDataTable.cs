@@ -16,10 +16,10 @@ using UiButton = Mafi.Unity.UiToolkit.Library.Button;
 namespace TajsCOI.Core.Settings
 {
     /// <summary>
-    /// Generic table shell backed by <see cref="DataTableModel{TRow}"/>.
-    /// Rows are keyed by stable IDs, and refreshes rebind existing row/cell
-    /// controls where possible. The table stores snapshots and callbacks only;
-    /// owners remain responsible for resolving current gameplay objects.
+    ///     Generic table shell backed by <see cref="DataTableModel{TRow}" />.
+    ///     Rows are keyed by stable IDs, and refreshes rebind existing row/cell
+    ///     controls where possible. The table stores snapshots and callbacks only;
+    ///     owners remain responsible for resolving current gameplay objects.
     /// </summary>
     public sealed class TajsDataTable<TRow> : Column
     {
@@ -32,7 +32,7 @@ namespace TajsCOI.Core.Settings
                 IReadOnlyList<DataTableColumn<TRow>> columns,
                 string id,
                 Action<string> onClick)
-                : base(UiButton.Area, () => onClick(id))
+                : base(Area, () => onClick(id))
             {
                 m_columns = columns;
                 var cells = new List<Label>(columns.Count);
@@ -41,11 +41,12 @@ namespace TajsCOI.Core.Settings
                 {
                     Label cell = new Label().MinWidth(0.px());
                     ApplyWidth(cell, column.Width);
-                    cell.AlignSelf(column.Alignment == DataTableColumnAlignment.Center
-                        ? Align.Center
-                        : column.Alignment == DataTableColumnAlignment.End
-                            ? Align.End
-                            : Align.Start);
+                    cell.AlignSelf(
+                        column.Alignment == DataTableColumnAlignment.Center
+                            ? Align.Center
+                            : column.Alignment == DataTableColumnAlignment.End
+                                ? Align.End
+                                : Align.Start);
                     content.Add(cell);
                     cells.Add(cell);
                 }
@@ -90,7 +91,7 @@ namespace TajsCOI.Core.Settings
             m_header = new Row(2.pt()).Width(100.Percent()).AlignItemsCenter();
             foreach (DataTableColumn<TRow> column in model.Columns)
             {
-                ButtonText header = new ButtonText(
+                var header = new ButtonText(
                     column.Sortable ? UiButton.Area : UiButton.None,
                     HeaderText(column),
                     column.Sortable ? () => ToggleSort(column.Id) : null);
@@ -161,9 +162,9 @@ namespace TajsCOI.Core.Settings
         }
 
         /// <summary>
-        /// Invokes an optional column action for a stable row ID. Action delegates are supplied
-        /// by the consumer and receive the immutable row snapshot; the table never resolves or
-        /// mutates gameplay objects itself.
+        ///     Invokes an optional column action for a stable row ID. Action delegates are supplied
+        ///     by the consumer and receive the immutable row snapshot; the table never resolves or
+        ///     mutates gameplay objects itself.
         /// </summary>
         public bool InvokeRowAction(string columnId, string rowId)
         {
@@ -245,10 +246,7 @@ namespace TajsCOI.Core.Settings
             UpdateSelectionVisuals();
         }
 
-        private void OnRowClicked(string id)
-        {
-            SelectRow(id);
-        }
+        private void OnRowClicked(string id) => SelectRow(id);
 
         private void UpdateSelectionVisuals()
         {

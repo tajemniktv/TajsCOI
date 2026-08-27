@@ -276,8 +276,9 @@ namespace TajsCOI.Tweaks
 
                 if (reason != "new day")
                 {
-                    m_log.Info("Groundwater policy " + GroundwaterPolicyRules.ToSettingValue(policy) +
-                               " refilled " + refilled + " deposit(s) at " + reason + ".");
+                    m_log.Info(
+                        "Groundwater policy " + GroundwaterPolicyRules.ToSettingValue(policy) +
+                        " refilled " + refilled + " deposit(s) at " + reason + ".");
                 }
                 m_reportedFailure = false;
                 return true;

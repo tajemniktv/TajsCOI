@@ -1286,8 +1286,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
             try
             {
-                return Harmony.GetPatchInfo(target)?.Prefixes?.Any(
-                    patch => string.Equals(patch.owner, LazyResourceVisualizationHarmonyId, StringComparison.Ordinal)) == true;
+                return Harmony.GetPatchInfo(target)?.Prefixes?.Any(patch => string.Equals(
+                    patch.owner,
+                    LazyResourceVisualizationHarmonyId,
+                    StringComparison.Ordinal)) == true;
             }
             catch (Exception exception)
             {

@@ -62,7 +62,9 @@ namespace TajsCOI.Tweaks
         internal static string ResourceTowerColors = string.Empty;
         internal static GroundwaterPolicy GroundwaterPolicyMode = GroundwaterPolicy.Vanilla;
         internal static double GroundwaterRegenerationPercent = 18.5;
+
         internal static int GroundwaterMinimumPercent = 25;
+
         // Kept as a compatibility value while old settings are migrated to GroundwaterPolicyMode.
         internal static bool InfiniteGroundwater;
         internal static bool AllowSteam;

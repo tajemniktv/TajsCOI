@@ -11,9 +11,9 @@ using System.Text;
 namespace TajsCOI.Common.Configuration
 {
     /// <summary>
-    /// Encodes extension payloads into a deterministic, primitive-only text record suitable for
-    /// carrying in the native EntityConfigData string bag. This is deliberately independent of
-    /// MaFi so Common remains a normal library.
+    ///     Encodes extension payloads into a deterministic, primitive-only text record suitable for
+    ///     carrying in the native EntityConfigData string bag. This is deliberately independent of
+    ///     MaFi so Common remains a normal library.
     /// </summary>
     public static class ConfigurationPayloadCodec
     {
@@ -27,7 +27,7 @@ namespace TajsCOI.Common.Configuration
             }
 
             error = string.Empty;
-            var builder = new StringBuilder(Header).AppendLine();
+            StringBuilder builder = new StringBuilder(Header).AppendLine();
             try
             {
                 foreach (ConfigurationPayload payload in snapshot.Payloads.OrderBy(item => item.HandlerId, StringComparer.Ordinal))
@@ -102,8 +102,9 @@ namespace TajsCOI.Common.Configuration
                     builder.Values[key] = value!;
                 }
 
-                snapshot = new ConfigurationSnapshot(payloads.Values.Select(builder =>
-                    new ConfigurationPayload(builder.HandlerId, builder.Owner, builder.SchemaVersion, builder.Values)));
+                snapshot = new ConfigurationSnapshot(
+                    payloads.Values.Select(builder =>
+                        new ConfigurationPayload(builder.HandlerId, builder.Owner, builder.SchemaVersion, builder.Values)));
                 return true;
             }
             catch (Exception exception) when (exception is ArgumentException || exception is FormatException || exception is OverflowException)
@@ -133,21 +134,66 @@ namespace TajsCOI.Common.Configuration
         {
             switch (value)
             {
-                case null: type = 'n'; text = string.Empty; return true;
-                case string stringValue: type = 's'; text = stringValue; return true;
-                case bool boolValue: type = 'b'; text = boolValue ? "true" : "false"; return true;
-                case byte byteValue: type = 'y'; text = byteValue.ToString(CultureInfo.InvariantCulture); return true;
-                case sbyte sbyteValue: type = 'Y'; text = sbyteValue.ToString(CultureInfo.InvariantCulture); return true;
-                case short shortValue: type = 'h'; text = shortValue.ToString(CultureInfo.InvariantCulture); return true;
-                case ushort ushortValue: type = 'H'; text = ushortValue.ToString(CultureInfo.InvariantCulture); return true;
-                case int intValue: type = 'i'; text = intValue.ToString(CultureInfo.InvariantCulture); return true;
-                case uint uintValue: type = 'I'; text = uintValue.ToString(CultureInfo.InvariantCulture); return true;
-                case long longValue: type = 'l'; text = longValue.ToString(CultureInfo.InvariantCulture); return true;
-                case ulong ulongValue: type = 'L'; text = ulongValue.ToString(CultureInfo.InvariantCulture); return true;
-                case float floatValue: type = 'f'; text = floatValue.ToString("R", CultureInfo.InvariantCulture); return true;
-                case double doubleValue: type = 'd'; text = doubleValue.ToString("R", CultureInfo.InvariantCulture); return true;
-                case decimal decimalValue: type = 'm'; text = decimalValue.ToString(CultureInfo.InvariantCulture); return true;
-                default: type = default; text = string.Empty; return false;
+                case null:
+                    type = 'n';
+                    text = string.Empty;
+                    return true;
+                case string stringValue:
+                    type = 's';
+                    text = stringValue;
+                    return true;
+                case bool boolValue:
+                    type = 'b';
+                    text = boolValue ? "true" : "false";
+                    return true;
+                case byte byteValue:
+                    type = 'y';
+                    text = byteValue.ToString(CultureInfo.InvariantCulture);
+                    return true;
+                case sbyte sbyteValue:
+                    type = 'Y';
+                    text = sbyteValue.ToString(CultureInfo.InvariantCulture);
+                    return true;
+                case short shortValue:
+                    type = 'h';
+                    text = shortValue.ToString(CultureInfo.InvariantCulture);
+                    return true;
+                case ushort ushortValue:
+                    type = 'H';
+                    text = ushortValue.ToString(CultureInfo.InvariantCulture);
+                    return true;
+                case int intValue:
+                    type = 'i';
+                    text = intValue.ToString(CultureInfo.InvariantCulture);
+                    return true;
+                case uint uintValue:
+                    type = 'I';
+                    text = uintValue.ToString(CultureInfo.InvariantCulture);
+                    return true;
+                case long longValue:
+                    type = 'l';
+                    text = longValue.ToString(CultureInfo.InvariantCulture);
+                    return true;
+                case ulong ulongValue:
+                    type = 'L';
+                    text = ulongValue.ToString(CultureInfo.InvariantCulture);
+                    return true;
+                case float floatValue:
+                    type = 'f';
+                    text = floatValue.ToString("R", CultureInfo.InvariantCulture);
+                    return true;
+                case double doubleValue:
+                    type = 'd';
+                    text = doubleValue.ToString("R", CultureInfo.InvariantCulture);
+                    return true;
+                case decimal decimalValue:
+                    type = 'm';
+                    text = decimalValue.ToString(CultureInfo.InvariantCulture);
+                    return true;
+                default:
+                    type = default;
+                    text = string.Empty;
+                    return false;
             }
         }
 
@@ -160,20 +206,96 @@ namespace TajsCOI.Common.Configuration
             }
             switch (typeText[0])
             {
-                case 'n': value = null; return text.Length == 0;
-                case 's': value = text; return true;
-                case 'b': if (bool.TryParse(text, out bool boolValue)) { value = boolValue; return true; } return false;
-                case 'y': if (byte.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out byte byteValue)) { value = byteValue; return true; } return false;
-                case 'Y': if (sbyte.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out sbyte sbyteValue)) { value = sbyteValue; return true; } return false;
-                case 'h': if (short.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out short shortValue)) { value = shortValue; return true; } return false;
-                case 'H': if (ushort.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort ushortValue)) { value = ushortValue; return true; } return false;
-                case 'i': if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue)) { value = intValue; return true; } return false;
-                case 'I': if (uint.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint uintValue)) { value = uintValue; return true; } return false;
-                case 'l': if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long longValue)) { value = longValue; return true; } return false;
-                case 'L': if (ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong ulongValue)) { value = ulongValue; return true; } return false;
-                case 'f': if (float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float floatValue)) { value = floatValue; return true; } return false;
-                case 'd': if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double doubleValue)) { value = doubleValue; return true; } return false;
-                case 'm': if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal decimalValue)) { value = decimalValue; return true; } return false;
+                case 'n':
+                    value = null;
+                    return text.Length == 0;
+                case 's':
+                    value = text;
+                    return true;
+                case 'b':
+                    if (bool.TryParse(text, out bool boolValue))
+                    {
+                        value = boolValue;
+                        return true;
+                    }
+                    return false;
+                case 'y':
+                    if (byte.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out byte byteValue))
+                    {
+                        value = byteValue;
+                        return true;
+                    }
+                    return false;
+                case 'Y':
+                    if (sbyte.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out sbyte sbyteValue))
+                    {
+                        value = sbyteValue;
+                        return true;
+                    }
+                    return false;
+                case 'h':
+                    if (short.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out short shortValue))
+                    {
+                        value = shortValue;
+                        return true;
+                    }
+                    return false;
+                case 'H':
+                    if (ushort.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort ushortValue))
+                    {
+                        value = ushortValue;
+                        return true;
+                    }
+                    return false;
+                case 'i':
+                    if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
+                    {
+                        value = intValue;
+                        return true;
+                    }
+                    return false;
+                case 'I':
+                    if (uint.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint uintValue))
+                    {
+                        value = uintValue;
+                        return true;
+                    }
+                    return false;
+                case 'l':
+                    if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long longValue))
+                    {
+                        value = longValue;
+                        return true;
+                    }
+                    return false;
+                case 'L':
+                    if (ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong ulongValue))
+                    {
+                        value = ulongValue;
+                        return true;
+                    }
+                    return false;
+                case 'f':
+                    if (float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float floatValue))
+                    {
+                        value = floatValue;
+                        return true;
+                    }
+                    return false;
+                case 'd':
+                    if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double doubleValue))
+                    {
+                        value = doubleValue;
+                        return true;
+                    }
+                    return false;
+                case 'm':
+                    if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal decimalValue))
+                    {
+                        value = decimalValue;
+                        return true;
+                    }
+                    return false;
                 default: return false;
             }
         }

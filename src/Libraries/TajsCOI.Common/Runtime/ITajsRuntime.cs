@@ -32,8 +32,8 @@ namespace TajsCOI.Common.Runtime
         public HarmonyInspectionSnapshot GetHarmonyInspectionSnapshot();
 
         /// <summary>
-        /// Drops registrations marked as gameplay-scene lifetime at the scene boundary.
-        /// Process-lifetime metadata remains intact.
+        ///     Drops registrations marked as gameplay-scene lifetime at the scene boundary.
+        ///     Process-lifetime metadata remains intact.
         /// </summary>
         public void ClearGameplaySceneRegistrations();
     }

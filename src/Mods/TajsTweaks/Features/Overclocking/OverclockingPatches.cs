@@ -18,7 +18,6 @@ using Mafi.Core.Factory.Machines;
 using Mafi.Core.Factory.Transports;
 using Mafi.Core.Maintenance;
 using Mafi.Core.Population;
-using TajsCOI.Common.Configuration;
 using TajsCOI.Tweaks.Configuration;
 
 namespace TajsCOI.Tweaks.Features.Overclocking

@@ -9,12 +9,13 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using Mafi;
+using Mafi.Collections;
 using Mafi.Core;
 using Mafi.Core.Console;
+using Mafi.Core.Mods;
 using Mafi.Core.Prototypes;
 using Mafi.Core.SaveGame;
 using Mafi.Core.Simulation;
-using Mafi.Core.Mods;
 using Mafi.Core.World.Entities;
 using Mafi.Core.World.QuickTrade;
 using TajsCOI.Common.Logging;
@@ -62,71 +63,78 @@ namespace TajsCOI.Core.SaveRepair
             m_handlers = BuildHandlerRegistry();
         }
 
-        private SaveRepairHandlerRegistry BuildHandlerRegistry() => new(new[]
-        {
-            new SaveRepairHandler(
-                InfiniteGroundwaterTarget,
-                "TajsCore.SaveRepair.LegacySaveCallbackMigration",
-                "registered legacy saveable callback",
-                "0.8.7b: IEvent + callback save data + DependencyResolver collections",
-                () => CreateLegacyFinding(new LegacyTarget(
+        private SaveRepairHandlerRegistry BuildHandlerRegistry() => new(
+            new[]
+            {
+                new SaveRepairHandler(
                     InfiniteGroundwaterTarget,
-                    "InfiniteGroundwater",
-                    InfiniteGroundwaterTypeName,
-                    "onNewDay",
-                    LegacyEventKind.CalendarNewDay)),
-                () => ExecuteLegacyRepair(new LegacyTarget(
-                    InfiniteGroundwaterTarget,
-                    "InfiniteGroundwater",
-                    InfiniteGroundwaterTypeName,
-                    "onNewDay",
-                    LegacyEventKind.CalendarNewDay)),
-                () => CreateLegacyFinding(new LegacyTarget(
-                    InfiniteGroundwaterTarget,
-                    "InfiniteGroundwater",
-                    InfiniteGroundwaterTypeName,
-                    "onNewDay",
-                    LegacyEventKind.CalendarNewDay))),
-            new SaveRepairHandler(
-                ShipAutoExploreTarget,
-                "TajsCore.SaveRepair.LegacySaveCallbackMigration",
-                "registered legacy saveable callback",
-                "0.8.7b: IEvent + callback save data + DependencyResolver collections",
-                () => CreateLegacyFinding(new LegacyTarget(
+                    "TajsCore.SaveRepair.LegacySaveCallbackMigration",
+                    "registered legacy saveable callback",
+                    "0.8.7b: IEvent + callback save data + DependencyResolver collections",
+                    () => CreateLegacyFinding(
+                        new LegacyTarget(
+                            InfiniteGroundwaterTarget,
+                            "InfiniteGroundwater",
+                            InfiniteGroundwaterTypeName,
+                            "onNewDay",
+                            LegacyEventKind.CalendarNewDay)),
+                    () => ExecuteLegacyRepair(
+                        new LegacyTarget(
+                            InfiniteGroundwaterTarget,
+                            "InfiniteGroundwater",
+                            InfiniteGroundwaterTypeName,
+                            "onNewDay",
+                            LegacyEventKind.CalendarNewDay)),
+                    () => CreateLegacyFinding(
+                        new LegacyTarget(
+                            InfiniteGroundwaterTarget,
+                            "InfiniteGroundwater",
+                            InfiniteGroundwaterTypeName,
+                            "onNewDay",
+                            LegacyEventKind.CalendarNewDay))),
+                new SaveRepairHandler(
                     ShipAutoExploreTarget,
-                    "ShipAutoExplore",
-                    ShipAutoExploreTypeName,
-                    "onSimUpdate",
-                    LegacyEventKind.SimUpdate)),
-                () => ExecuteLegacyRepair(new LegacyTarget(
-                    ShipAutoExploreTarget,
-                    "ShipAutoExplore",
-                    ShipAutoExploreTypeName,
-                    "onSimUpdate",
-                    LegacyEventKind.SimUpdate)),
-                () => CreateLegacyFinding(new LegacyTarget(
-                    ShipAutoExploreTarget,
-                    "ShipAutoExplore",
-                    ShipAutoExploreTypeName,
-                    "onSimUpdate",
-                    LegacyEventKind.SimUpdate))),
-            new SaveRepairHandler(
-                WorldMapQuickTradesTarget,
-                "TajsCore.SaveRepair.WorldMapQuickTrade",
-                "impossible village quick-trade reputation",
-                "0.8.7b: WorldMapVillageProto.QuickTrades + QuickTradePairProto.MinReputationRequired",
-                InspectWorldMapQuickTrades,
-                RepairWorldMapQuickTradesMutation,
-                InspectWorldMapQuickTrades),
-            new SaveRepairHandler(
-                StaleTajsConfigTarget,
-                "TajsCore.SaveRepair.StaleTajsConfig",
-                "known stale Tajs ModJsonConfig",
-                "0.8.7b: ModJsonConfig.ModId + Parameters",
-                InspectStaleTajsConfig,
-                RepairStaleTajsConfig,
-                InspectStaleTajsConfig),
-        });
+                    "TajsCore.SaveRepair.LegacySaveCallbackMigration",
+                    "registered legacy saveable callback",
+                    "0.8.7b: IEvent + callback save data + DependencyResolver collections",
+                    () => CreateLegacyFinding(
+                        new LegacyTarget(
+                            ShipAutoExploreTarget,
+                            "ShipAutoExplore",
+                            ShipAutoExploreTypeName,
+                            "onSimUpdate",
+                            LegacyEventKind.SimUpdate)),
+                    () => ExecuteLegacyRepair(
+                        new LegacyTarget(
+                            ShipAutoExploreTarget,
+                            "ShipAutoExplore",
+                            ShipAutoExploreTypeName,
+                            "onSimUpdate",
+                            LegacyEventKind.SimUpdate)),
+                    () => CreateLegacyFinding(
+                        new LegacyTarget(
+                            ShipAutoExploreTarget,
+                            "ShipAutoExplore",
+                            ShipAutoExploreTypeName,
+                            "onSimUpdate",
+                            LegacyEventKind.SimUpdate))),
+                new SaveRepairHandler(
+                    WorldMapQuickTradesTarget,
+                    "TajsCore.SaveRepair.WorldMapQuickTrade",
+                    "impossible village quick-trade reputation",
+                    "0.8.7b: WorldMapVillageProto.QuickTrades + QuickTradePairProto.MinReputationRequired",
+                    InspectWorldMapQuickTrades,
+                    RepairWorldMapQuickTradesMutation,
+                    InspectWorldMapQuickTrades),
+                new SaveRepairHandler(
+                    StaleTajsConfigTarget,
+                    "TajsCore.SaveRepair.StaleTajsConfig",
+                    "known stale Tajs ModJsonConfig",
+                    "0.8.7b: ModJsonConfig.ModId + Parameters",
+                    InspectStaleTajsConfig,
+                    RepairStaleTajsConfig,
+                    InspectStaleTajsConfig),
+            });
 
         [ConsoleCommand(
             documentation: "Reports supported save-repair findings without mutating the loaded game.",
@@ -667,7 +675,7 @@ namespace TajsCOI.Core.SaveRepair
             // without a current config.json, 0.8.7b keeps those values in GetSavedValues() while
             // Parameters is empty. Inspect the saved values, not only the schema definitions.
             // Remove only this exact legacy shape; unknown/future values fail closed.
-            var values = config.GetSavedValues();
+            Dict<string, object> values = config.GetSavedValues();
             if (values.Count != 1)
             {
                 return false;

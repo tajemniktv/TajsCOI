@@ -1,5 +1,5 @@
 // Taj's COI Mods | TajsStorageAdvancedFeature.cs
-// Copyright (C) 2026 - 2026 Grzegorz Nowak (TajemnikTV)
+// Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
 using System;
@@ -33,8 +33,8 @@ using CoiStorage = Mafi.Core.Buildings.Storages.Storage;
 namespace TajsCOI.Tweaks.Features.Storage
 {
     /// <summary>
-    /// Adds the issue #70 controls at the native storage inspector boundary. Every reflection
-    /// seam is optional; a missing inspector member leaves the vanilla inspector untouched.
+    ///     Adds the issue #70 controls at the native storage inspector boundary. Every reflection
+    ///     seam is optional; a missing inspector member leaves the vanilla inspector untouched.
     /// </summary>
     internal static class TajsStorageAdvancedFeature
     {
@@ -104,7 +104,7 @@ namespace TajsCOI.Tweaks.Features.Storage
 
             internal StorageTransferFields SelectedFields()
             {
-                StorageTransferFields selected = StorageTransferFields.None;
+                var selected = StorageTransferFields.None;
                 foreach ((UiToggle toggle, StorageTransferFields field) in Fields)
                 {
                     if (toggle.GetValue())
@@ -127,17 +127,16 @@ namespace TajsCOI.Tweaks.Features.Storage
         private static ProtosDb? s_protosDb;
         private static int s_clipboardSourceId = -1;
         private static bool s_patchRegistered;
-        [ThreadStatic] private static bool s_allowAllProtoCheck;
+
+        [ThreadStatic]
+        private static bool s_allowAllProtoCheck;
 
         private static readonly Percent[] s_lowAlertOptions =
         {
-            Percent.Zero, 5.Percent(), 10.Percent(), 15.Percent(), 25.Percent(), 50.Percent(), 75.Percent()
+            Percent.Zero, 5.Percent(), 10.Percent(), 15.Percent(), 25.Percent(), 50.Percent(), 75.Percent(),
         };
 
-        private static readonly Percent[] s_highAlertOptions =
-        {
-            75.Percent(), 80.Percent(), 90.Percent(), Percent.Hundred
-        };
+        private static readonly Percent[] s_highAlertOptions = { 75.Percent(), 80.Percent(), 90.Percent(), Percent.Hundred };
 
         internal static void Install(Harmony harmony, DependencyResolver resolver)
         {
@@ -163,7 +162,6 @@ namespace TajsCOI.Tweaks.Features.Storage
                 PatchStorageInspector(harmony);
                 s_patchRegistered = true;
             }
-
         }
 
         internal static void Reset()
@@ -308,9 +306,9 @@ namespace TajsCOI.Tweaks.Features.Storage
         private static void ReplacePrefix(CoiStorage __instance)
         {
             s_allowAllProtoCheck = TajsTweaksRuntimeState.StorageInspectorControls &&
-                                    __instance is not null &&
-                                    TajsStorageAdvancedState.IsAllowAll(__instance.Id.Value) &&
-                                    !TajsStorageAdvancedConfiguration.IsRestricted(__instance);
+                                   __instance is not null &&
+                                   TajsStorageAdvancedState.IsAllowAll(__instance.Id.Value) &&
+                                   !TajsStorageAdvancedConfiguration.IsRestricted(__instance);
         }
 
         private static void ReplaceFinalizer() => s_allowAllProtoCheck = false;
@@ -518,7 +516,7 @@ namespace TajsCOI.Tweaks.Features.Storage
             allowAll.Tooltip(Loc("Shows every real product of this storage's supported type. Nuclear-waste storage remains restricted."));
 
             var fieldChoices = new List<(UiToggle Toggle, StorageTransferFields Field)>();
-            UiColumn fieldColumn = new UiColumn(2.pt());
+            var fieldColumn = new UiColumn(2.pt());
             AddFieldChoice(fieldColumn, fieldChoices, StorageTransferFields.ProductAssignment, "Product assignment");
             AddFieldChoice(fieldColumn, fieldChoices, StorageTransferFields.LogisticsThresholds, "Logistics thresholds and priorities");
             AddFieldChoice(fieldColumn, fieldChoices, StorageTransferFields.ImportExportEnablement, "Import/export enablement");
@@ -560,7 +558,7 @@ namespace TajsCOI.Tweaks.Features.Storage
             body.Add(new Row(2.pt()) { copy, paste, preview, applyAll });
             body.Add(previewStatus);
 
-            PanelWithHeader panel = (PanelWithHeader)s_addPanelMethod.Invoke(inspector, new object[] { new UiComponent[] { body } })!;
+            var panel = (PanelWithHeader)s_addPanelMethod.Invoke(inspector, new object[] { new UiComponent[] { body } })!;
             panel.Title(Loc("Advanced storage controls"));
             panel.RootElement.style.flexShrink = 1f;
             panel.RootElement.style.minHeight = 0f;
@@ -589,8 +587,14 @@ namespace TajsCOI.Tweaks.Features.Storage
             {
                 if (TryGetStorage(inspector, out CoiStorage storage) && !TajsStorageAdvancedConfiguration.IsRestricted(storage))
                 {
-                    if (on) TajsStorageAdvancedState.SetAllowAll(storage.Id.Value);
-                    else TajsStorageAdvancedState.ClearAllowAll(storage.Id.Value);
+                    if (on)
+                    {
+                        TajsStorageAdvancedState.SetAllowAll(storage.Id.Value);
+                    }
+                    else
+                    {
+                        TajsStorageAdvancedState.ClearAllowAll(storage.Id.Value);
+                    }
                 }
             });
 
@@ -721,12 +725,13 @@ namespace TajsCOI.Tweaks.Features.Storage
                 return;
             }
 
-            s_inputScheduler.ScheduleInputCmd(new StorageSetSliderStepCmd(
-                storage.Id,
-                importUntil: importUntil,
-                exportFrom: exportFrom,
-                transportFrom: transportFrom,
-                transportUntil: transportUntil));
+            s_inputScheduler.ScheduleInputCmd(
+                new StorageSetSliderStepCmd(
+                    storage.Id,
+                    importUntil: importUntil,
+                    exportFrom: exportFrom,
+                    transportFrom: transportFrom,
+                    transportUntil: transportUntil));
             state.DirtyThresholds = false;
             SetStatus(state, "Numeric thresholds queued through the native storage command.", important: false);
         }
@@ -819,10 +824,11 @@ namespace TajsCOI.Tweaks.Features.Storage
                 return;
             }
 
-            s_inputScheduler.ScheduleInputCmd(new TajsStorageConfigurationCmd(
-                sourceId,
-                new[] { target.Id.Value },
-                state.SelectedFields()));
+            s_inputScheduler.ScheduleInputCmd(
+                new TajsStorageConfigurationCmd(
+                    sourceId,
+                    new[] { target.Id.Value },
+                    state.SelectedFields()));
             SetStatus(state, "Storage configuration paste queued.", important: false);
         }
 
@@ -845,7 +851,10 @@ namespace TajsCOI.Tweaks.Features.Storage
             int skipped = candidates.Count - compatible;
             state.PreviewSourceId = source.Id.Value;
             state.PreviewFingerprint = Fingerprint(source, fields, candidates);
-            state.PreviewStatus.Value(Loc("Preview: " + compatible + " compatible storage(s), " + skipped + " skipped. Fields: " + TajsStorageAdvancedConfiguration.DescribeFields(fields) + "."));
+            state.PreviewStatus.Value(
+                Loc(
+                    "Preview: " + compatible + " compatible storage(s), " + skipped + " skipped. Fields: " +
+                    TajsStorageAdvancedConfiguration.DescribeFields(fields) + "."));
             SetStatus(state, skipped == 0 ? "Preview ready." : "Preview ready; skipped entities will be reported.", important: skipped != 0);
         }
 
@@ -954,10 +963,7 @@ namespace TajsCOI.Tweaks.Features.Storage
                    string.Join(",", candidates.Select(x => x.EntityId + ":" + x.Compatible));
         }
 
-        private static void SetStatus(InspectorState state, string text, bool important)
-        {
-            state.Status.Value(Loc(text));
-        }
+        private static void SetStatus(InspectorState state, string text, bool important) => state.Status.Value(Loc(text));
 
         private static bool TryGetStorage(object inspector, out CoiStorage storage)
         {
@@ -986,21 +992,25 @@ namespace TajsCOI.Tweaks.Features.Storage
                     UiComponent component = queue.Dequeue();
                     if (component is SingleProductPickerUi picker)
                     {
-                        s_optionsProviderField ??= picker.ProtoPickerPopup.GetType().GetField("m_optionsProvider", BindingFlags.Instance | BindingFlags.NonPublic);
+                        s_optionsProviderField ??= picker.ProtoPickerPopup.GetType().GetField(
+                            "m_optionsProvider",
+                            BindingFlags.Instance | BindingFlags.NonPublic);
                         if (s_optionsProviderField?.GetValue(picker.ProtoPickerPopup) is Func<IEnumerable<ProductProto>> original)
                         {
-                            s_optionsProviderField.SetValue(picker.ProtoPickerPopup, new Func<IEnumerable<ProductProto>>(() =>
-                            {
-                                if (TajsTweaksRuntimeState.StorageInspectorControls &&
-                                    TryGetStorage(inspector, out CoiStorage storage) &&
-                                    TajsStorageAdvancedState.IsAllowAll(storage.Id.Value) &&
-                                    s_protosDb is not null)
+                            s_optionsProviderField.SetValue(
+                                picker.ProtoPickerPopup,
+                                new Func<IEnumerable<ProductProto>>(() =>
                                 {
-                                    return TajsStorageAdvancedConfiguration.CompatibleProducts(storage, s_protosDb);
-                                }
+                                    if (TajsTweaksRuntimeState.StorageInspectorControls &&
+                                        TryGetStorage(inspector, out CoiStorage storage) &&
+                                        TajsStorageAdvancedState.IsAllowAll(storage.Id.Value) &&
+                                        s_protosDb is not null)
+                                    {
+                                        return TajsStorageAdvancedConfiguration.CompatibleProducts(storage, s_protosDb);
+                                    }
 
-                                return original();
-                            }));
+                                    return original();
+                                }));
                         }
 
                         return;

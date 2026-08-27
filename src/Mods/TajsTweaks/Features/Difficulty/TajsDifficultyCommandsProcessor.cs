@@ -4,7 +4,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using Mafi;
 using Mafi.Core.Game;
@@ -159,8 +158,8 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             info = null!;
             string requested = memberName?.Trim() ?? string.Empty;
             TajsDifficultyDefinition? catalogDefinition = TajsDifficultyOptionCatalog.Find(requested);
-            IDiffSettingInfo? nativeInfo = GameDifficultyConfig.AllOptions.FirstOrDefault(
-                value => value is not null && string.Equals(value.ValueMemberName, requested, StringComparison.Ordinal));
+            IDiffSettingInfo? nativeInfo = GameDifficultyConfig.AllOptions.FirstOrDefault(value =>
+                value is not null && string.Equals(value.ValueMemberName, requested, StringComparison.Ordinal));
             if (catalogDefinition is null || nativeInfo is null)
             {
                 return false;

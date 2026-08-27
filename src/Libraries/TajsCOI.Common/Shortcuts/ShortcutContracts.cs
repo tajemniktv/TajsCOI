@@ -35,8 +35,8 @@ namespace TajsCOI.Common.Shortcuts
     }
 
     /// <summary>
-    /// A culture-independent, serializable keyboard/mouse combination. The value is
-    /// normalized once so conflict checks never depend on the casing used by a caller.
+    ///     A culture-independent, serializable keyboard/mouse combination. The value is
+    ///     normalized once so conflict checks never depend on the casing used by a caller.
     /// </summary>
     public readonly struct ShortcutCombination : IEquatable<ShortcutCombination>
     {
@@ -223,36 +223,36 @@ namespace TajsCOI.Common.Shortcuts
 
     public interface IShortcutRegistry
     {
-        ShortcutRegistrationResult Register(ShortcutDescriptor descriptor);
+        public ShortcutRegistrationResult Register(ShortcutDescriptor descriptor);
 
-        ShortcutSetResult TrySetBinding(string actionId, ShortcutCombination primary, ShortcutCombination secondary);
+        public ShortcutSetResult TrySetBinding(string actionId, ShortcutCombination primary, ShortcutCombination secondary);
 
-        bool TryGet(string actionId, out ShortcutBindingSnapshot snapshot);
+        public bool TryGet(string actionId, out ShortcutBindingSnapshot snapshot);
 
         /// <summary>
-        /// Resolves one already-normalized combination without enumerating all bindings. Input
-        /// dispatch uses this indexed path so key events do not allocate a full snapshot.
+        ///     Resolves one already-normalized combination without enumerating all bindings. Input
+        ///     dispatch uses this indexed path so key events do not allocate a full snapshot.
         /// </summary>
-        bool TryResolveBinding(ShortcutCombination combination, out ShortcutBindingSnapshot snapshot);
+        public bool TryResolveBinding(ShortcutCombination combination, out ShortcutBindingSnapshot snapshot);
 
-        IReadOnlyList<ShortcutBindingSnapshot> GetSnapshot();
+        public IReadOnlyList<ShortcutBindingSnapshot> GetSnapshot();
 
-        void CacheVanillaBindings(IEnumerable<KeyValuePair<string, ShortcutCombination>> bindings);
+        public void CacheVanillaBindings(IEnumerable<KeyValuePair<string, ShortcutCombination>> bindings);
 
-        IReadOnlyDictionary<string, ShortcutCombination> GetVanillaBindingsSnapshot();
+        public IReadOnlyDictionary<string, ShortcutCombination> GetVanillaBindingsSnapshot();
 
-        bool TryLoad(string path, out string error);
+        public bool TryLoad(string path, out string error);
 
-        bool TrySave(string path, out string error);
+        public bool TrySave(string path, out string error);
     }
 
     public interface IShortcutDispatchGate
     {
-        bool HasTextFieldFocus { get; }
-        bool ModalCapturesInput { get; }
-        bool ToolOwnsInput { get; }
-        bool UiCapturesInput { get; }
-        bool IsContextActive(ShortcutActivationContext context);
+        public bool HasTextFieldFocus { get; }
+        public bool ModalCapturesInput { get; }
+        public bool ToolOwnsInput { get; }
+        public bool UiCapturesInput { get; }
+        public bool IsContextActive(ShortcutActivationContext context);
     }
 
     public sealed class ShortcutDispatchResult
@@ -271,10 +271,10 @@ namespace TajsCOI.Common.Shortcuts
 
     public interface IShortcutInputService
     {
-        IDisposable RegisterHandler(string actionId, Action handler);
+        public IDisposable RegisterHandler(string actionId, Action handler);
 
-        ShortcutDispatchResult TryDispatch(ShortcutCombination combination, IShortcutDispatchGate gate);
+        public ShortcutDispatchResult TryDispatch(ShortcutCombination combination, IShortcutDispatchGate gate);
 
-        ShortcutSetResult CaptureBinding(string actionId, ShortcutCombination combination, bool secondary);
+        public ShortcutSetResult CaptureBinding(string actionId, ShortcutCombination combination, bool secondary);
     }
 }

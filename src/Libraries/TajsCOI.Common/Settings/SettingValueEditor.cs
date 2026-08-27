@@ -8,8 +8,8 @@ using System.Globalization;
 namespace TajsCOI.Common.Settings
 {
     /// <summary>
-    /// The presentation state of a setting value editor. The state is kept in
-    /// the presentation layer; it does not change the typed settings service.
+    ///     The presentation state of a setting value editor. The state is kept in
+    ///     the presentation layer; it does not change the typed settings service.
     /// </summary>
     public enum SettingValueEditorState
     {
@@ -22,10 +22,10 @@ namespace TajsCOI.Common.Settings
     }
 
     /// <summary>
-    /// Culture-aware input parsing and canonical display formatting for
-    /// setting editors. Numeric range and step checks are delegated to the
-    /// supplied descriptor so UI code cannot accidentally create a second
-    /// validation authority.
+    ///     Culture-aware input parsing and canonical display formatting for
+    ///     setting editors. Numeric range and step checks are delegated to the
+    ///     supplied descriptor so UI code cannot accidentally create a second
+    ///     validation authority.
     /// </summary>
     public static class SettingValueEditorFormatting
     {
@@ -132,7 +132,7 @@ namespace TajsCOI.Common.Settings
             }
 
             string cultureSeparator = culture.NumberFormat.NumberDecimalSeparator;
-            if (cultureSeparator.Length != 1 || (cultureSeparator[0] != '.' && cultureSeparator[0] != ','))
+            if (cultureSeparator.Length != 1 || cultureSeparator[0] != '.' && cultureSeparator[0] != ',')
             {
                 cultureSeparator = ".";
             }
@@ -197,9 +197,9 @@ namespace TajsCOI.Common.Settings
     }
 
     /// <summary>
-    /// State machine shared by UI controls. A control supplies an authoritative
-    /// value writer through its apply delegate and can then use the same
-    /// commit/revert behavior in dashboard and feature-specific inspectors.
+    ///     State machine shared by UI controls. A control supplies an authoritative
+    ///     value writer through its apply delegate and can then use the same
+    ///     commit/revert behavior in dashboard and feature-specific inspectors.
     /// </summary>
     public sealed class SettingValueEditorModel
     {
@@ -238,6 +238,7 @@ namespace TajsCOI.Common.Settings
         public string UnavailableReason => m_unavailableReason;
         public bool IsDirty => m_dirty;
         public bool IsAvailable => m_isAvailable;
+
         public SettingValueEditorState State =>
             !m_isAvailable ? SettingValueEditorState.Unavailable :
             !string.IsNullOrEmpty(m_error) ? SettingValueEditorState.Invalid :
@@ -338,7 +339,7 @@ namespace TajsCOI.Common.Settings
         public void SetAvailable(bool available, string? reason = null)
         {
             m_isAvailable = available;
-            m_unavailableReason = available ? string.Empty : (reason ?? "This setting is unavailable.");
+            m_unavailableReason = available ? string.Empty : reason ?? "This setting is unavailable.";
             if (available)
             {
                 m_error = string.Empty;

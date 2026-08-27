@@ -33,14 +33,8 @@ namespace TajsCOI.Tests
             Assert.Equal(ShortcutSetStatus.Conflict, conflict.Status);
             Assert.Equal("TajsTests.First", conflict.ConflictingActionId);
 
-            registry.CacheVanillaBindings(new[]
-            {
-                new KeyValuePair<string, ShortcutCombination>("Vanilla.Action", new ShortcutCombination("ALT+V")),
-            });
-            registry.CacheVanillaBindings(new[]
-            {
-                new KeyValuePair<string, ShortcutCombination>("Vanilla.Other", new ShortcutCombination("ALT+O")),
-            });
+            registry.CacheVanillaBindings(new[] { new KeyValuePair<string, ShortcutCombination>("Vanilla.Action", new ShortcutCombination("ALT+V")) });
+            registry.CacheVanillaBindings(new[] { new KeyValuePair<string, ShortcutCombination>("Vanilla.Other", new ShortcutCombination("ALT+O")) });
             Assert.Single(registry.GetVanillaBindingsSnapshot());
             Assert.Equal(
                 "CTRL+K",
@@ -98,18 +92,21 @@ namespace TajsCOI.Tests
         public void LocalizationUsesExactLanguageAndDefaultFallbackAndDeduplicatesMissingKeys()
         {
             var service = new TajsLocalizationService();
-            service.Register(new LocalizationCatalog(
-                "Core",
-                "default",
-                new Dictionary<string, string> { ["hello"] = "Hello", ["fallback"] = "Default" }));
-            service.Register(new LocalizationCatalog(
-                "Core",
-                "pl",
-                new Dictionary<string, string> { ["hello"] = "Cześć" }));
-            service.Register(new LocalizationCatalog(
-                "Fallback",
-                "pl-PL",
-                new Dictionary<string, string> { ["only_there"] = "Tylko" }));
+            service.Register(
+                new LocalizationCatalog(
+                    "Core",
+                    "default",
+                    new Dictionary<string, string> { ["hello"] = "Hello", ["fallback"] = "Default" }));
+            service.Register(
+                new LocalizationCatalog(
+                    "Core",
+                    "pl",
+                    new Dictionary<string, string> { ["hello"] = "Cześć" }));
+            service.Register(
+                new LocalizationCatalog(
+                    "Fallback",
+                    "pl-PL",
+                    new Dictionary<string, string> { ["only_there"] = "Tylko" }));
 
             service.SetLocale("pl-PL");
             Assert.Equal("Cześć", service.Get("Core", "hello"));
@@ -126,35 +123,38 @@ namespace TajsCOI.Tests
             var registry = new ConfigurationBlueprintRegistry();
             var state = new Dictionary<string, object> { ["value"] = 12 };
             var entity = new ConfigurationEntityDescriptor("42", "Test.Storage", "proto");
-            registry.Register(new ConfigurationHandlerDescriptor(
-                "Tests.Value",
-                "Tests",
-                2,
-                _ => true,
-                _ => state,
-                (_, values) =>
-                {
-                    state["value"] = values["value"];
-                    return true;
-                },
-                (version, values) => version == 1
-                    ? new Dictionary<string, object> { ["value"] = Convert.ToInt32(values["value"]) + 1 }
-                    : null));
-            registry.Register(new ConfigurationHandlerDescriptor(
-                "Tests.Failing",
-                "Tests",
-                1,
-                _ => true,
-                _ => throw new InvalidOperationException("read"),
-                (_, _) => throw new InvalidOperationException("apply")));
+            registry.Register(
+                new ConfigurationHandlerDescriptor(
+                    "Tests.Value",
+                    "Tests",
+                    2,
+                    _ => true,
+                    _ => state,
+                    (_, values) =>
+                    {
+                        state["value"] = values["value"];
+                        return true;
+                    },
+                    (version, values) => version == 1
+                        ? new Dictionary<string, object> { ["value"] = Convert.ToInt32(values["value"]) + 1 }
+                        : null));
+            registry.Register(
+                new ConfigurationHandlerDescriptor(
+                    "Tests.Failing",
+                    "Tests",
+                    1,
+                    _ => true,
+                    _ => throw new InvalidOperationException("read"),
+                    (_, _) => throw new InvalidOperationException("apply")));
 
             ConfigurationSnapshot snapshot = registry.Capture(entity, new object());
             Assert.Single(snapshot.Payloads);
-            ConfigurationSnapshot oldSnapshot = new(new[]
-            {
-                new ConfigurationPayload("Tests.Value", "Tests", 1, new Dictionary<string, object> { ["value"] = 7 }),
-                new ConfigurationPayload("Tests.Failing", "Tests", 1, new Dictionary<string, object> { ["value"] = 9 }),
-            });
+            ConfigurationSnapshot oldSnapshot = new(
+                new[]
+                {
+                    new ConfigurationPayload("Tests.Value", "Tests", 1, new Dictionary<string, object> { ["value"] = 7 }),
+                    new ConfigurationPayload("Tests.Failing", "Tests", 1, new Dictionary<string, object> { ["value"] = 9 }),
+                });
             ConfigurationApplyResult result = registry.Apply(entity, new object(), oldSnapshot);
             Assert.Equal(1, result.Applied);
             Assert.Equal(1, result.Skipped);
@@ -165,19 +165,15 @@ namespace TajsCOI.Tests
         [Fact]
         public void ConfigurationPayloadCodecRoundTripsPrimitiveVersionedRecords()
         {
-            ConfigurationSnapshot source = new(new[]
-            {
-                new ConfigurationPayload(
-                    "Tests.Storage",
-                    "Tests",
-                    2,
-                    new Dictionary<string, object>
-                    {
-                        ["enabled"] = true,
-                        ["capacity"] = 123,
-                        ["label"] = "A\tB",
-                    }),
-            });
+            ConfigurationSnapshot source = new(
+                new[]
+                {
+                    new ConfigurationPayload(
+                        "Tests.Storage",
+                        "Tests",
+                        2,
+                        new Dictionary<string, object> { ["enabled"] = true, ["capacity"] = 123, ["label"] = "A\tB" }),
+                });
 
             Assert.True(ConfigurationPayloadCodec.TrySerialize(source, out string encoded, out string encodeError), encodeError);
             Assert.True(ConfigurationPayloadCodec.TryDeserialize(encoded, out ConfigurationSnapshot restored, out string decodeError), decodeError);

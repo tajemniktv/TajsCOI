@@ -74,7 +74,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
 
         private static string Hash(string value)
         {
-            using (SHA256 sha256 = SHA256.Create())
+            using (var sha256 = SHA256.Create())
             {
                 byte[] bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(value));
                 var builder = new StringBuilder(bytes.Length * 2);
@@ -246,12 +246,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 temporary = m_filePath + ".tmp." + Guid.NewGuid().ToString("N");
                 File.WriteAllLines(
                     temporary,
-                    new[]
-                    {
-                        Header,
-                        "schema=" + SchemaVersion.ToString(CultureInfo.InvariantCulture),
-                        "identity=" + m_identityFingerprint,
-                    }.Concat(
+                    new[] { Header, "schema=" + SchemaVersion.ToString(CultureInfo.InvariantCulture), "identity=" + m_identityFingerprint }.Concat(
                         m_originalValues
                             .OrderBy(pair => pair.Key, StringComparer.Ordinal)
                             .Select(pair => pair.Key + "=" + pair.Value)),
@@ -417,14 +412,13 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                         {
                             return false;
                         }
-
                     }
                 }
 
                 bool valid = metadata.TryGetValue("schema", out string? schema) &&
-                       string.Equals(schema, SchemaVersion.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal) &&
-                       metadata.TryGetValue("identity", out string? identity) &&
-                       string.Equals(identity, expectedIdentity, StringComparison.Ordinal);
+                             string.Equals(schema, SchemaVersion.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal) &&
+                             metadata.TryGetValue("identity", out string? identity) &&
+                             string.Equals(identity, expectedIdentity, StringComparison.Ordinal);
                 if (!valid)
                 {
                     m_originalValues.Clear();

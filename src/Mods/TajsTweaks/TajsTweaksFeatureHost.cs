@@ -3,6 +3,7 @@
 // All Rights Reserved.
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using HarmonyLib;
@@ -30,10 +31,10 @@ using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
 using TajsCOI.Common.Shortcuts;
+using TajsCOI.Tweaks.Configuration;
 using TajsCOI.Tweaks.Features.Difficulty;
 using TajsCOI.Tweaks.Features.Overclocking;
 using TajsCOI.Tweaks.Features.Storage;
-using TajsCOI.Tweaks.Configuration;
 
 namespace TajsCOI.Tweaks
 {
@@ -432,7 +433,7 @@ namespace TajsCOI.Tweaks
                 saveName,
                 m_runtime.GetLogger(TajsTweaksSettingsCatalog.ModId, TajsDifficultyFeature.ComponentId));
 
-            var unsupportedPercent = TajsDifficultyOptionCatalog.UnsupportedPercentMembers;
+            IReadOnlyList<string> unsupportedPercent = TajsDifficultyOptionCatalog.UnsupportedPercentMembers;
             m_runtime.ReportCompatibility(
                 new CompatibilityReport(
                     TajsTweaksSettingsCatalog.ModId,

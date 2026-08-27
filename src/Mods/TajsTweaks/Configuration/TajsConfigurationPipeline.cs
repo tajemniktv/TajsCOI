@@ -2,17 +2,15 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
-using System;
-using Mafi;
 using Mafi.Core.Entities;
 using TajsCOI.Common.Configuration;
 
 namespace TajsCOI.Tweaks.Configuration
 {
     /// <summary>
-    /// Bridges Core's value-only configuration registry to MaFi's native config bag. The native
-    /// method runs first; this bridge appends one namespaced extension record afterwards. It
-    /// stores no entity, resolver, or scene callback in process lifetime state.
+    ///     Bridges Core's value-only configuration registry to MaFi's native config bag. The native
+    ///     method runs first; this bridge appends one namespaced extension record afterwards. It
+    ///     stores no entity, resolver, or scene callback in process lifetime state.
     /// </summary>
     internal static class TajsConfigurationPipeline
     {

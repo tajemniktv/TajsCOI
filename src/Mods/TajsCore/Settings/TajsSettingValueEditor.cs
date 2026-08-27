@@ -14,9 +14,9 @@ using TextField = Mafi.Unity.UiToolkit.Library.TextField;
 namespace TajsCOI.Core.Settings
 {
     /// <summary>
-    /// Reusable UI shell for <see cref="SettingValueEditorModel"/>. Owners
-    /// supply a current typed value and an apply delegate; this control keeps
-    /// parsing, dirty/error state, and canonical value display consistent.
+    ///     Reusable UI shell for <see cref="SettingValueEditorModel" />. Owners
+    ///     supply a current typed value and an apply delegate; this control keeps
+    ///     parsing, dirty/error state, and canonical value display consistent.
     /// </summary>
     public sealed class TajsSettingValueEditor : Column
     {

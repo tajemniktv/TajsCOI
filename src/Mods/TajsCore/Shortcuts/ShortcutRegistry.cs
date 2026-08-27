@@ -12,16 +12,18 @@ using TajsCOI.Common.Shortcuts;
 namespace TajsCOI.Core.Shortcuts
 {
     /// <summary>
-    /// Process-lifetime shortcut metadata and effective binding resolver. The registry only
-    /// retains value contracts; scene-owned callbacks belong to <see cref="ShortcutInputService"/>.
+    ///     Process-lifetime shortcut metadata and effective binding resolver. The registry only
+    ///     retains value contracts; scene-owned callbacks belong to <see cref="ShortcutInputService" />.
     /// </summary>
     [GlobalDependency(RegistrationMode.AsEverything)]
     public sealed class ShortcutRegistry : IShortcutRegistry
     {
         private readonly object m_gate = new();
         private readonly Dictionary<string, ShortcutDescriptor> m_descriptors = new(StringComparer.Ordinal);
+
         private readonly Dictionary<string, (ShortcutCombination Primary, ShortcutCombination Secondary)> m_bindings =
             new(StringComparer.Ordinal);
+
         private readonly Dictionary<string, string> m_bindingIndex = new(StringComparer.Ordinal);
         private readonly Dictionary<string, ShortcutCombination> m_vanillaBindings = new(StringComparer.Ordinal);
         private bool m_vanillaCached;
@@ -169,8 +171,8 @@ namespace TajsCOI.Core.Shortcuts
         }
 
         /// <summary>
-        /// Caches vanilla bindings once. Later calls are intentionally ignored so a transient
-        /// menu/scene snapshot cannot rewrite conflict diagnostics.
+        ///     Caches vanilla bindings once. Later calls are intentionally ignored so a transient
+        ///     menu/scene snapshot cannot rewrite conflict diagnostics.
         /// </summary>
         public void CacheVanillaBindings(IEnumerable<KeyValuePair<string, ShortcutCombination>> bindings)
         {
@@ -314,7 +316,13 @@ namespace TajsCOI.Core.Shortcuts
             {
                 if (!string.IsNullOrEmpty(tempPath) && File.Exists(tempPath))
                 {
-                    try { File.Delete(tempPath); } catch { }
+                    try
+                    {
+                        File.Delete(tempPath);
+                    }
+                    catch
+                    {
+                    }
                 }
             }
         }
@@ -439,8 +447,8 @@ namespace TajsCOI.Core.Shortcuts
         }
 
         /// <summary>
-        /// Applies a combination captured by a modal keybind dialog. The existing binding is
-        /// retained for the other slot, and normal conflict checks still apply.
+        ///     Applies a combination captured by a modal keybind dialog. The existing binding is
+        ///     retained for the other slot, and normal conflict checks still apply.
         /// </summary>
         public ShortcutSetResult CaptureBinding(string actionId, ShortcutCombination combination, bool secondary)
         {

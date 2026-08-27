@@ -255,9 +255,9 @@ namespace TajsCOI.Common.Ui
     }
 
     /// <summary>
-    /// A source-independent table view model. It stores only row snapshots
-    /// supplied by the owning view and stable row IDs, so sorting/filtering and
-    /// selection never mutate an authoritative gameplay collection.
+    ///     A source-independent table view model. It stores only row snapshots
+    ///     supplied by the owning view and stable row IDs, so sorting/filtering and
+    ///     selection never mutate an authoritative gameplay collection.
     /// </summary>
     public sealed class DataTableModel<TRow>
     {
@@ -310,9 +310,9 @@ namespace TajsCOI.Common.Ui
         public IReadOnlyCollection<string> SelectedRowIds => m_selected.OrderBy(id => id, StringComparer.Ordinal).ToArray();
 
         /// <summary>
-        /// Chooses the highest-priority columns that fit the available width. The original
-        /// declaration order is retained for rendering, so narrow views collapse lower
-        /// priority columns instead of forcing a horizontal escape.
+        ///     Chooses the highest-priority columns that fit the available width. The original
+        ///     declaration order is retained for rendering, so narrow views collapse lower
+        ///     priority columns instead of forcing a horizontal escape.
         /// </summary>
         public IReadOnlyList<DataTableColumn<TRow>> GetVisibleColumns(float availableWidth)
         {
@@ -363,12 +363,12 @@ namespace TajsCOI.Common.Ui
                 incomingOrder.Add(id);
             }
 
-            var added = incoming.Keys.Where(id => !m_rows.ContainsKey(id)).OrderBy(id => id, StringComparer.Ordinal).ToArray();
-            var updated = incoming.Keys
+            string[] added = incoming.Keys.Where(id => !m_rows.ContainsKey(id)).OrderBy(id => id, StringComparer.Ordinal).ToArray();
+            string[] updated = incoming.Keys
                 .Where(id => m_rows.ContainsKey(id) && !EqualityComparer<TRow>.Default.Equals(m_rows[id], incoming[id]))
                 .OrderBy(id => id, StringComparer.Ordinal)
                 .ToArray();
-            var removed = m_rows.Keys.Where(id => !incoming.ContainsKey(id)).OrderBy(id => id, StringComparer.Ordinal).ToArray();
+            string[] removed = m_rows.Keys.Where(id => !incoming.ContainsKey(id)).OrderBy(id => id, StringComparer.Ordinal).ToArray();
             bool orderChanged = !m_order.SequenceEqual(incomingOrder, StringComparer.Ordinal);
 
             m_rows.Clear();

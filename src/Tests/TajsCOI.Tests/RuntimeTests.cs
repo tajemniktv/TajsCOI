@@ -173,16 +173,44 @@ namespace TajsCOI.Tests
         public void RuntimeRegistryClearsGameplaySceneMetadataButRetainsProcessMetadata()
         {
             var runtime = new TajsRuntime();
-            runtime.RegisterCapability(new RuntimeCapabilityDescriptor(
-                "Tests.Process", "TajsCore", "Tests", RuntimeCapabilityState.Available,
-                "1", "process", string.Empty, RuntimeComponentLifetime.Process));
-            runtime.RegisterCapability(new RuntimeCapabilityDescriptor(
-                "Tests.Scene", "TajsTweaks", "Tests", RuntimeCapabilityState.Available,
-                "1", "scene", string.Empty, RuntimeComponentLifetime.GameplayScene));
-            runtime.RegisterComponent(new RuntimeComponentDescriptor(
-                "TajsCore", "Process", RuntimeComponentLifetime.Process, "", null, null, null));
-            runtime.RegisterComponent(new RuntimeComponentDescriptor(
-                "TajsTweaks", "Scene", RuntimeComponentLifetime.GameplayScene, "", null, null, null));
+            runtime.RegisterCapability(
+                new RuntimeCapabilityDescriptor(
+                    "Tests.Process",
+                    "TajsCore",
+                    "Tests",
+                    RuntimeCapabilityState.Available,
+                    "1",
+                    "process",
+                    string.Empty,
+                    RuntimeComponentLifetime.Process));
+            runtime.RegisterCapability(
+                new RuntimeCapabilityDescriptor(
+                    "Tests.Scene",
+                    "TajsTweaks",
+                    "Tests",
+                    RuntimeCapabilityState.Available,
+                    "1",
+                    "scene",
+                    string.Empty,
+                    RuntimeComponentLifetime.GameplayScene));
+            runtime.RegisterComponent(
+                new RuntimeComponentDescriptor(
+                    "TajsCore",
+                    "Process",
+                    RuntimeComponentLifetime.Process,
+                    "",
+                    null,
+                    null,
+                    null));
+            runtime.RegisterComponent(
+                new RuntimeComponentDescriptor(
+                    "TajsTweaks",
+                    "Scene",
+                    RuntimeComponentLifetime.GameplayScene,
+                    "",
+                    null,
+                    null,
+                    null));
 
             runtime.ClearGameplaySceneRegistrations();
 

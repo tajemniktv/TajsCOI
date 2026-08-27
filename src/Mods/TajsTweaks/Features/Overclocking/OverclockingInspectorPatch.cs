@@ -48,22 +48,11 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             internal bool Auto;
             internal bool CommandApplied;
 
-            internal static PendingPolicy Manual(int percent) => new()
-            {
-                Operation = OverclockPendingOperation.Manual,
-                Percent = percent,
-            };
+            internal static PendingPolicy Manual(int percent) => new() { Operation = OverclockPendingOperation.Manual, Percent = percent };
 
-            internal static PendingPolicy AutoMode(bool enabled) => new()
-            {
-                Operation = OverclockPendingOperation.Auto,
-                Auto = enabled,
-            };
+            internal static PendingPolicy AutoMode(bool enabled) => new() { Operation = OverclockPendingOperation.Auto, Auto = enabled };
 
-            internal static PendingPolicy Reset() => new()
-            {
-                Operation = OverclockPendingOperation.Reset,
-            };
+            internal static PendingPolicy Reset() => new() { Operation = OverclockPendingOperation.Reset };
 
             internal bool Matches(TajsOverclockingFeature feature, EntityId entityId)
             {

@@ -11,14 +11,15 @@ using TajsCOI.Common.Configuration;
 namespace TajsCOI.Core.Configuration
 {
     /// <summary>
-    /// Core-owned registry for extension payloads attached to the game's native copy/apply
-    /// pipeline. It stores descriptors only. Runtime entities are supplied for each operation
-    /// and are never retained by this process-lifetime service.
+    ///     Core-owned registry for extension payloads attached to the game's native copy/apply
+    ///     pipeline. It stores descriptors only. Runtime entities are supplied for each operation
+    ///     and are never retained by this process-lifetime service.
     /// </summary>
     [GlobalDependency(RegistrationMode.AsEverything)]
     public sealed class ConfigurationBlueprintRegistry : IConfigurationRegistry
     {
         private readonly object m_gate = new();
+
         private readonly Dictionary<string, ConfigurationHandlerDescriptor> m_handlers =
             new(StringComparer.Ordinal);
 
@@ -81,11 +82,12 @@ namespace TajsCOI.Core.Configuration
                         continue;
                     }
 
-                    payloads.Add(new ConfigurationPayload(
-                        handler.HandlerId,
-                        handler.Owner,
-                        handler.SchemaVersion,
-                        values));
+                    payloads.Add(
+                        new ConfigurationPayload(
+                            handler.HandlerId,
+                            handler.Owner,
+                            handler.SchemaVersion,
+                            values));
                 }
                 catch
                 {

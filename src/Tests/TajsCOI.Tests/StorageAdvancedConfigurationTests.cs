@@ -1,5 +1,5 @@
 // Taj's COI Mods | StorageAdvancedConfigurationTests.cs
-// Copyright (C) 2026 - 2026 Grzegorz Nowak (TajemnikTV)
+// Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
 using TajsCOI.Tweaks.Features.Storage;
@@ -12,7 +12,9 @@ namespace TajsCOI.Tests
         [Fact]
         public void AllTransferFieldsIncludeCapacityAndEveryExplicitPolicy()
         {
-            Assert.Equal(StorageTransferFields.All, StorageTransferFields.ProductAssignment |
+            Assert.Equal(
+                StorageTransferFields.All,
+                StorageTransferFields.ProductAssignment |
                 StorageTransferFields.LogisticsThresholds |
                 StorageTransferFields.ImportExportEnablement |
                 StorageTransferFields.TruckPolicy |
@@ -26,10 +28,9 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
-        public void EmptyTransferSelectionIsExplicitlyReported()
-        {
-            Assert.Equal("nothing", TajsStorageAdvancedConfiguration.DescribeFields(StorageTransferFields.None));
-        }
+        public void EmptyTransferSelectionIsExplicitlyReported() => Assert.Equal(
+            "nothing",
+            TajsStorageAdvancedConfiguration.DescribeFields(StorageTransferFields.None));
 
         [Fact]
         public void CapacityOverrideStateCanBeSetAndClearedWithoutInventoryData()
