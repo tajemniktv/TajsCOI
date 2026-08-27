@@ -9,6 +9,7 @@ using Mafi;
 using Mafi.Core;
 using Mafi.Core.Buildings.Shipyard;
 using Mafi.Core.Economy;
+using Mafi.Core.Entities;
 using Mafi.Core.Input;
 using Mafi.Core.Products;
 using Mafi.Core.World;
@@ -18,6 +19,7 @@ using Mafi.Unity.Ui.Library;
 using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
+using TajsCOI.Common.Metadata;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Column = Mafi.Unity.UiToolkit.Library.Column;
@@ -36,6 +38,7 @@ namespace TajsCOI.Tweaks
         private readonly WorldMapManager m_worldMap;
         private readonly IInputScheduler m_inputScheduler;
         private readonly IProductsManager m_productsManager;
+        private readonly IEntityMetadataLookup m_metadata;
         private readonly ScrollColumn m_repairsScroll;
         private readonly ScrollColumn m_minesScroll;
         private readonly ScrollColumn m_settlementsScroll;
@@ -64,12 +67,14 @@ namespace TajsCOI.Tweaks
             WorldMapManager worldMap,
             IInputScheduler inputScheduler,
             IProductsManager productsManager,
+            IEntityMetadataLookup metadata,
             UiRoot uiRoot)
             : base("World operations".AsLoc())
         {
             m_worldMap = worldMap;
             m_inputScheduler = inputScheduler;
             m_productsManager = productsManager;
+            m_metadata = metadata ?? throw new System.ArgumentNullException(nameof(metadata));
 
             WindowSize(new Px(900f), new Px(620f));
             Panel panel = new Panel().BodyGap(new Px(4f));
@@ -213,7 +218,7 @@ namespace TajsCOI.Tweaks
         private Row BuildRepairRow(WorldMapRepairableEntity entity, int index)
         {
             Row row = MakeRow(index);
-            row.Add(new Label(entity.DefaultTitle).Width(new Px(260f)));
+            row.Add(BuildEntityTitle(entity, entity.DefaultTitle));
             row.Add(new Label(entity.IsUnderConstruction ? "Repairing...".AsLoc() : "Not repaired".AsLoc()).Width(new Px(150f)));
             row.Add(new Label(FormatCost(entity.CostToRepair).AsLoc()).Width(new Px(250f)));
             var action = new ButtonText(
@@ -239,7 +244,7 @@ namespace TajsCOI.Tweaks
         private Row BuildMineRow(WorldMapMine mine, int index)
         {
             Row row = MakeRow(index);
-            row.Add(new Label(mine.DefaultTitle).Width(new Px(260f)));
+            row.Add(BuildEntityTitle(mine, mine.DefaultTitle));
             row.Add(
                 new Label(
                     mine.IsUnderConstruction ? "Upgrading...".AsLoc() :
@@ -269,7 +274,7 @@ namespace TajsCOI.Tweaks
         private Row BuildSettlementRow(WorldMapVillage village, int index)
         {
             Row row = MakeRow(index);
-            row.Add(new Label(village.DefaultTitle).Width(new Px(260f)));
+            row.Add(BuildEntityTitle(village, village.DefaultTitle));
             row.Add(
                 new Label(
                     !village.IsRepaired ? "Not repaired".AsLoc() :
@@ -299,6 +304,33 @@ namespace TajsCOI.Tweaks
             action.Width(new Px(105f));
             row.Add(action);
             return row;
+        }
+
+        private Column BuildEntityTitle(IEntity entity, LocStrFormatted title)
+        {
+            Column column = new Column(1.pt()).Width(new Px(260f)).MinWidth(0.px()).FlexShrink(1f);
+            column.Add(new Label(title));
+            try
+            {
+                var identity = new EntityMetadataIdentity(entity.Id.Value, "proto:" + entity.Prototype.Id.Value);
+                if (!m_metadata.TryGetEntityMetadata(identity, out EntityMetadataRecord? metadata) || metadata is null)
+                {
+                    return column;
+                }
+                if (metadata.Alias.Length != 0)
+                {
+                    column.Add(new Label(("Alias: " + metadata.Alias).AsLoc()).FontSize(10));
+                }
+                if (metadata.Note.Length != 0)
+                {
+                    column.Add(new Label(("Note: " + metadata.Note).AsLoc()).FontSize(10));
+                }
+            }
+            catch
+            {
+                // Optional metadata display must never make world-map controls unavailable.
+            }
+            return column;
         }
 
         private static Row MakeRow(int index)

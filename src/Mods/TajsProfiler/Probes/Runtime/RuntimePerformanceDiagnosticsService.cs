@@ -20,6 +20,7 @@ using Mafi.Core.Console;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Logging;
+using TajsCOI.Common.Metadata;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Profiler.Core;
 
@@ -208,6 +209,43 @@ namespace TajsCOI.Profiler.Probes.Runtime
             documentation: "Audits current TajsCOI Harmony owners, shared non-Tajs owners, ordering metadata, and collision risk.",
             customCommandName: "tajs_runtime_harmony_audit")]
         public string HarmonyAudit() => BuildHarmonyAudit();
+
+        [ConsoleCommand(
+            documentation: "Displays save-scoped entity aliases, notes, and group links from Core without mutating gameplay state.",
+            customCommandName: "tajs_runtime_metadata")]
+        public string Metadata()
+        {
+            if (!m_resolver.TryResolve(out IEntityMetadataLookup? lookup) || lookup is null)
+            {
+                return "Entity metadata is unavailable in this scene.";
+            }
+
+            try
+            {
+                IReadOnlyList<EntityMetadataRecord> records = lookup.GetEntityMetadataSnapshot();
+                IReadOnlyList<EntityMetadataGroup> groups = lookup.GetGroupSnapshot();
+                StringBuilder builder = new StringBuilder(1024)
+                    .Append("Entity metadata: groups=").Append(groups.Count)
+                    .Append(", records=").Append(records.Count).Append('.');
+                foreach (EntityMetadataRecord record in records.Take(24))
+                {
+                    builder.Append("\n  ")
+                        .Append(record.Identity)
+                        .Append(" alias=\"").Append(record.Alias)
+                        .Append("\" note=\"").Append(record.Note)
+                        .Append("\" group=").Append(record.GroupId ?? "none");
+                }
+                if (records.Count > 24)
+                {
+                    builder.Append("\n  ... ").Append(records.Count - 24).Append(" more record(s)");
+                }
+                return builder.ToString();
+            }
+            catch (Exception exception)
+            {
+                return "Entity metadata could not be read (" + exception.GetType().Name + ").";
+            }
+        }
 
         [ConsoleCommand(
             documentation: "Shows bounded top-N timing for supported dependency and renderer initialization targets.",
