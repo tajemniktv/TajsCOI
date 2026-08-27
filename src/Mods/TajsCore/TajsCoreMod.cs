@@ -6,6 +6,7 @@
 
 using Mafi.Core.Mods;
 using TajsCOI.Core.Infrastructure;
+using TajsCOI.Core.Settings;
 
 #endregion
 
@@ -19,6 +20,7 @@ namespace TajsCOI.Core
         public TajsCoreMod(ModManifest manifest) : base(manifest)
         {
             BuildMetadata.Initialize(manifest);
+            TajsMainMenuBridge.TryInstall();
         }
 
         public override void RegisterPrototypes(ProtoRegistrator registrator)
