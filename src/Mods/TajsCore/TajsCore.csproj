@@ -18,6 +18,7 @@
   <ItemGroup>
     <PrimaryModDll Include="0Harmony.dll"/>
     <PrimaryModDll Include="TajsCOI.Common.dll"/>
+    <PrimaryModDll Include="TajsBootstrap.dll"/>
     <PrimaryModDll Include="$(TargetFileName)"/>
 
     <ProjectReference Include="..\..\Libraries\TajsCOI.Common\TajsCOI.Common.csproj"/>
