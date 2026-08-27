@@ -30,6 +30,7 @@ using Mafi.Serialization;
 using Mafi.Unity.InputControl;
 using TajsCOI.Performance.Features.LazyResourceVisualization;
 using TajsCOI.Profiler.Probes.Dumping;
+using TajsCOI.Profiler.Probes.Runtime;
 using TajsCOI.Tweaks.Features.EntityMetadata;
 using Xunit;
 using Assert = Xunit.Assert;
@@ -349,6 +350,20 @@ namespace TajsCOI.Tests.RuntimeContracts
             Assert.Equal(
                 before?.Finalizers?.Count() ?? 0,
                 after?.Finalizers?.Count() ?? 0);
+        }
+
+        [Fact]
+        public void SceneGarbageCollectionTargetMatchesThePrivate087bTeardownMethod()
+        {
+            MethodInfo expected = RuntimeContractAssertions.RequireMethod(
+                typeof(Mafi.Unity.Main),
+                "collectGarbageDrainingFinalizers",
+                typeof(void),
+                isStatic: true);
+
+            Assert.True(expected.IsPrivate);
+            Assert.NotNull(expected.GetMethodBody());
+            Assert.Same(expected, RuntimePerformanceDiagnosticsService.FindSceneGarbageCollectionTarget());
         }
     }
 }

@@ -141,9 +141,25 @@ namespace TajsCOI.Profiler.Core
     internal readonly struct GcPassMetric
     {
         internal GcPassMetric(long sequence, long elapsedTicks, long beforeBytes, long afterBytes, int gen0, int gen1, int gen2)
+            : this(sequence, 0, elapsedTicks, 0, beforeBytes, afterBytes, gen0, gen1, gen2)
+        {
+        }
+
+        internal GcPassMetric(
+            long sequence,
+            int passNumber,
+            long elapsedTicks,
+            long finalizerDrainElapsedTicks,
+            long beforeBytes,
+            long afterBytes,
+            int gen0,
+            int gen1,
+            int gen2)
         {
             Sequence = sequence;
+            PassNumber = passNumber;
             ElapsedTicks = elapsedTicks;
+            FinalizerDrainElapsedTicks = finalizerDrainElapsedTicks;
             BeforeBytes = beforeBytes;
             AfterBytes = afterBytes;
             Gen0Collections = gen0;
@@ -152,7 +168,9 @@ namespace TajsCOI.Profiler.Core
         }
 
         internal long Sequence { get; }
+        internal int PassNumber { get; }
         internal long ElapsedTicks { get; }
+        internal long FinalizerDrainElapsedTicks { get; }
         internal long BeforeBytes { get; }
         internal long AfterBytes { get; }
         internal long ReclaimedBytes => BeforeBytes - AfterBytes;
@@ -160,5 +178,7 @@ namespace TajsCOI.Profiler.Core
         internal int Gen1Collections { get; }
         internal int Gen2Collections { get; }
         internal double ElapsedMilliseconds => ElapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        internal double FinalizerDrainElapsedMilliseconds =>
+            FinalizerDrainElapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }
 }

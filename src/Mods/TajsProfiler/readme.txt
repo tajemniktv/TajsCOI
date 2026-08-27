@@ -6,7 +6,9 @@ Requires Taj's Core 0.1.0 or newer.
 
 Current probes:
 - Dumping destination search and pathfinding-stage diagnostics.
-- Save/load stage timing, memory, GC, and product-renderer buffer diagnostics.
+- Save/load stage timing, memory, and product-renderer buffer diagnostics, including
+  behavior-neutral per-pass scene-teardown GC telemetry (ordinal, elapsed time,
+  finalizer-drain time, managed before/after, reclaimed bytes, and GC counts).
 - Low-overhead runtime flight recorder backed by Captain of Industry's 0.8.7b
   GameLoopTimings ring and broad GameRunner timings.
 - Configurable absolute/relative spike triggers with bounded pre/post captures.

@@ -296,6 +296,30 @@ namespace TajsCOI.Tests
             Assert.Equal(new long[] { 5, 6 }, interval.Select(x => x.Sequence));
         }
 
+        [Fact]
+        public void GcPassMetricRetainsTeardownOrdinalAndFinalizerDrainDuration()
+        {
+            var pass = new GcPassMetric(
+                sequence: 12,
+                passNumber: 3,
+                elapsedTicks: 1_000,
+                finalizerDrainElapsedTicks: 250,
+                beforeBytes: 10_000,
+                afterBytes: 7_500,
+                gen0: 2,
+                gen1: 1,
+                gen2: 1);
+
+            Assert.Equal(3, pass.PassNumber);
+            Assert.Equal(1_000, pass.ElapsedTicks);
+            Assert.Equal(250, pass.FinalizerDrainElapsedTicks);
+            Assert.Equal(2_500, pass.ReclaimedBytes);
+            Assert.Equal(250 * 1000.0 / Stopwatch.Frequency, pass.FinalizerDrainElapsedMilliseconds);
+            Assert.Equal(2, pass.Gen0Collections);
+            Assert.Equal(1, pass.Gen1Collections);
+            Assert.Equal(1, pass.Gen2Collections);
+        }
+
         // ReSharper disable once UnusedParameter.Local
         private static void HarmonyAuditOverload(int value)
         {

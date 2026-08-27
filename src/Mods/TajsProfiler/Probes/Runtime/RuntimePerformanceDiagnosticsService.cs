@@ -122,6 +122,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
         [ThreadStatic]
         private static GcPassState? s_gcPassState;
 
+        [ThreadStatic]
+        private static int s_gcPassNumber;
+
         public RuntimePerformanceDiagnosticsService(DependencyResolver resolver, ITajsRuntime runtime)
         {
             m_resolver = resolver;
@@ -814,9 +817,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         {
             try
             {
-                MethodInfo? target = FindType("Mafi.Unity.Main", "Mafi.Unity")?.GetMethod(
-                    "collectGarbageDrainingFinalizers",
-                    BindingFlags.Static | BindingFlags.NonPublic);
+                MethodInfo? target = FindSceneGarbageCollectionTarget();
                 if (target is null)
                 {
                     return false;
@@ -833,6 +834,11 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 return false;
             }
         }
+
+        internal static MethodInfo? FindSceneGarbageCollectionTarget() =>
+            FindType("Mafi.Unity.Main", "Mafi.Unity")?.GetMethod(
+                "collectGarbageDrainingFinalizers",
+                BindingFlags.Static | BindingFlags.NonPublic);
 
         private static bool PatchInitializationHotspots(Harmony harmony)
         {
@@ -1047,7 +1053,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
             try
             {
                 RecordLifecycleCheckpoint("scene.cleanup-full-gc-before");
+                int passNumber = ++s_gcPassNumber;
                 s_gcPassState = new GcPassState(
+                    passNumber,
                     Stopwatch.GetTimestamp(),
                     GC.GetTotalMemory(false),
                     GC.CollectionCount(0),
@@ -1077,12 +1085,19 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         private static void WaitForPendingFinalizersMeasured()
         {
+            GcPassState? state = s_gcPassState;
+            long finalizerStartTicks = Stopwatch.GetTimestamp();
+
             try
             {
                 GC.WaitForPendingFinalizers();
             }
             finally
             {
+                if (state is not null)
+                {
+                    state.FinalizerDrainElapsedTicks = Math.Max(0, Stopwatch.GetTimestamp() - finalizerStartTicks);
+                }
                 RecordGcPass();
             }
         }
@@ -1100,7 +1115,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
             {
                 var metric = new GcPassMetric(
                     Interlocked.Increment(ref s_gcPassSequence),
+                    state.PassNumber,
                     Stopwatch.GetTimestamp() - state.StartTicks,
+                    state.FinalizerDrainElapsedTicks,
                     state.BeforeBytes,
                     GC.GetTotalMemory(false),
                     GC.CollectionCount(0) - state.Gen0,
@@ -1230,10 +1247,19 @@ namespace TajsCOI.Profiler.Probes.Runtime
             __state = null;
             try
             {
-                if (TimedTargets.TryGetValue(__originalMethod, out string stage) &&
-                    (stage == LoadHeaders || stage == SceneGarbageCollection))
+                if (TimedTargets.TryGetValue(__originalMethod, out string stage))
                 {
-                    RecordLifecycleCheckpoint(stage + "-start");
+                    if (stage == SceneGarbageCollection)
+                    {
+                        // The vanilla method contains one collect/finalizer pair inside its
+                        // bounded loop. Keep this ordinal scoped to the current teardown rather
+                        // than exposing the process-global metric sequence as the pass number.
+                        s_gcPassNumber = 0;
+                    }
+                    if (stage == LoadHeaders || stage == SceneGarbageCollection)
+                    {
+                        RecordLifecycleCheckpoint(stage + "-start");
+                    }
                 }
                 __state = new TimingState(Stopwatch.GetTimestamp(), GC.GetTotalMemory(false), __originalMethod);
             }
@@ -1436,6 +1462,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     {
                         RecordLifecycleCheckpoint(stage + "-complete");
                     }
+                    if (stage == SceneGarbageCollection)
+                    {
+                        s_gcPassNumber = 0;
+                    }
                 }
             }
             catch (Exception exception)
@@ -1497,8 +1527,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 builder.Append("\nRecent scene-cleanup GC passes:");
                 foreach (GcPassMetric pass in snapshot.GcPasses)
                 {
-                    builder.Append("\n  #").Append(pass.Sequence)
+                    builder.Append("\n  #").Append(pass.PassNumber > 0 ? pass.PassNumber : pass.Sequence)
+                        .Append(" [sequence=").Append(pass.Sequence).Append(']')
                         .Append(": ").Append(pass.ElapsedMilliseconds.ToString("F2", CultureInfo.InvariantCulture)).Append(" ms")
+                        .Append(", finalizer-drain=").Append(pass.FinalizerDrainElapsedMilliseconds.ToString("F2", CultureInfo.InvariantCulture)).Append(" ms")
                         .Append(", reclaimed=").Append(FormatBytes(pass.ReclaimedBytes))
                         .Append(", before/after=").Append(FormatBytes(pass.BeforeBytes)).Append('/')
                         .Append(FormatBytes(pass.AfterBytes))
@@ -1549,6 +1581,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
             }
             builder.Append(", total=")
                 .Append((totalTicks * 1000.0 / Stopwatch.Frequency).ToString("F2", CultureInfo.InvariantCulture)).Append(" ms")
+                .Append(", finalizer-drain=")
+                .Append((passes.Sum(x => x.FinalizerDrainElapsedTicks) * 1000.0 / Stopwatch.Frequency)
+                    .ToString("F2", CultureInfo.InvariantCulture)).Append(" ms")
                 .Append(", max=")
                 .Append((maxTicks * 1000.0 / Stopwatch.Frequency).ToString("F2", CultureInfo.InvariantCulture)).Append(" ms")
                 .Append(", reclaimed=").Append(FormatBytes(reclaimed))
@@ -2060,8 +2095,9 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
         private sealed class GcPassState
         {
-            internal GcPassState(long startTicks, long beforeBytes, int gen0, int gen1, int gen2)
+            internal GcPassState(int passNumber, long startTicks, long beforeBytes, int gen0, int gen1, int gen2)
             {
+                PassNumber = passNumber;
                 StartTicks = startTicks;
                 BeforeBytes = beforeBytes;
                 Gen0 = gen0;
@@ -2069,11 +2105,13 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 Gen2 = gen2;
             }
 
+            internal int PassNumber { get; }
             internal long StartTicks { get; }
             internal long BeforeBytes { get; }
             internal int Gen0 { get; }
             internal int Gen1 { get; }
             internal int Gen2 { get; }
+            internal long FinalizerDrainElapsedTicks { get; set; }
         }
 
         private readonly struct PatchSummary
