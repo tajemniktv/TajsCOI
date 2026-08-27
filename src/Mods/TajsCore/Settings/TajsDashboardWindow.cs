@@ -1218,6 +1218,7 @@ namespace TajsCOI.Core.Settings
 
             CurrentPage.Add(
                 TajsDashboardUi.SectionHeader("Settings"),
+                TajsDashboardBootstrapPanel.Build(QueueRefresh),
                 BuildMetadataGroupsPanel(),
                 BuildProfilesPanel(),
                 TajsDashboardUi.Card(

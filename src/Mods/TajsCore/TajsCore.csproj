@@ -21,6 +21,7 @@
     <PrimaryModDll Include="$(TargetFileName)"/>
 
     <ProjectReference Include="..\..\Libraries\TajsCOI.Common\TajsCOI.Common.csproj"/>
+    <ProjectReference Include="..\..\Bootstrap\TajsBootstrap\TajsBootstrap.csproj"/>
     <PackageReference Include="Lib.Harmony" Version="2.4.2"/>
     <Reference Include="Mafi.Unity">
       <HintPath>$(COIManagedDir)\Mafi.Unity.dll</HintPath>

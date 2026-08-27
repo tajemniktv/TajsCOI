@@ -16,4 +16,8 @@ Console commands:
 Global suite settings are stored outside savegames in:
 %APPDATA%\Captain of Industry\TajsCOI\settings.json
 
-The dashboard is available in a running game. Main-menu dashboard registration is not currently supported.
+The dashboard is available in a running game, and the main menu exposes a global/profile-safe
+Control Center entry when the supported 0.8.7b menu seam is available. Gameplay-scoped services
+remain unavailable from that main-menu surface. The running-game dashboard also contains the
+explicit optional bootstrap installer; it manages only Tajs-owned payload files and never touches
+external UnityDoorstop files.
