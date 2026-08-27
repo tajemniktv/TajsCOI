@@ -76,6 +76,7 @@ namespace TajsCOI.Tweaks
 
         internal const string WorldOperations = "world_operations";
         internal const string AutoWorldDelivery = "auto_world_delivery";
+        internal const string WorldVisibilityHiddenCategories = "world_visibility_hidden_categories";
         internal const string ShipPreload = "ship_preload";
         internal const string ShipPreloadData = "ship_preload_data";
 
@@ -1084,6 +1085,16 @@ namespace TajsCOI.Tweaks
                 "Keeps the normal HUD visible over world-map, research and space fullscreen views.",
                 false,
                 "HUD",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.String(
+                ModId,
+                DisplayName,
+                WorldVisibilityHiddenCategories,
+                "Persisted world visibility categories",
+                "Optional comma-separated category IDs to hide when a save opens. Empty is the safe-visible default; runtime toggles are not persisted automatically.",
+                string.Empty,
+                "Presentation",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced),
             SettingDescriptor.String(

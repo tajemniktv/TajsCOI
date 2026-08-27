@@ -76,6 +76,7 @@ namespace TajsCOI.Tweaks
         internal static bool AllowExhaust;
         internal static bool WorldOperations;
         internal static bool AutoWorldDelivery;
+        internal static string WorldVisibilityHiddenCategories = string.Empty;
         internal static bool ShipPreload;
         internal static string ShipPreloadData = string.Empty;
         internal static bool RecoverTrucks;
@@ -239,6 +240,7 @@ namespace TajsCOI.Tweaks
             AllowExhaust = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AllowExhaust);
             WorldOperations = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.WorldOperations);
             AutoWorldDelivery = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AutoWorldDelivery);
+            WorldVisibilityHiddenCategories = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.WorldVisibilityHiddenCategories);
             ShipPreload = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShipPreload);
             ShipPreloadData = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShipPreloadData);
             RecoverTrucks = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.RecoverTrucks);
@@ -632,6 +634,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.HudHidden: HudHidden = value; break;
                 case TajsTweaksSettingsCatalog.HudPositions: HudPositions = value; break;
                 case TajsTweaksSettingsCatalog.HudActionPolicy: HudActionPolicy = value; break;
+                case TajsTweaksSettingsCatalog.WorldVisibilityHiddenCategories: WorldVisibilityHiddenCategories = value; break;
                 case TajsTweaksSettingsCatalog.InspectorSectionCollapsed: InspectorSectionCollapsed = value; break;
                 case TajsTweaksSettingsCatalog.InspectorVehicleFilters: InspectorVehicleFilters = value; break;
                 case TajsTweaksSettingsCatalog.StorageOverrideData:

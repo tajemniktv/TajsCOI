@@ -80,5 +80,27 @@ namespace TajsCOI.Tests
 
             Assert.Equal(new[] { 3 }, index.QueryVisible("transport").Select(record => record.EntityId));
         }
+
+        [Fact]
+        public void ExternalPresentationPoliciesComposeWithHeightCutoff()
+        {
+            var index = new HeightLayerSceneIndex();
+            index.Register(11, 0, 0, "building");
+            object categoryOwner = new();
+            object otherOwner = new();
+
+            index.SetExternalVisibility(categoryOwner, 11, false);
+            Assert.False(index.IsVisible(11));
+            index.SetExternalVisibility(otherOwner, 11, true);
+            Assert.False(index.IsVisible(11));
+
+            index.ClearExternalVisibility(categoryOwner, 11);
+            Assert.True(index.IsVisible(11));
+            index.SetCutoff(1);
+            Assert.False(index.IsVisible(11));
+            index.ClearExternalVisibility(otherOwner, 11);
+            index.ShowAll();
+            Assert.True(index.IsVisible(11));
+        }
     }
 }

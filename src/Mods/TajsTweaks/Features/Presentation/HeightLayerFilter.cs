@@ -171,6 +171,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
         private readonly SortedDictionary<int, HashSet<int>> m_idsByMinHeight = new();
         private readonly SortedDictionary<int, HashSet<int>> m_idsByMaxHeight = new();
         private readonly HeightLayerPresentationAdapter m_presentation;
+        private readonly Dictionary<int, Dictionary<object, bool>> m_externalVisibility = new();
         private int? m_cutoff;
         private bool m_disposed;
 
@@ -191,7 +192,9 @@ namespace TajsCOI.Tweaks.Features.Presentation
             HeightLayerRenderBinding? rendererBinding = null)
         {
             ThrowIfDisposed();
-            Remove(entityId);
+            // Renderer refreshes replace the binding but retain external presentation policies
+            // (for example category visibility) for this entity ID.
+            RemoveInternal(entityId, clearExternalVisibility: false);
             var record = new HeightLayerEntityRecord(entityId, minHeight, maxHeight, category, rendererBinding);
             m_records.Add(entityId, record);
             AddToIndex(m_idsByMinHeight, record.MinHeight, entityId);
@@ -220,8 +223,17 @@ namespace TajsCOI.Tweaks.Features.Presentation
 
         internal bool Remove(int entityId)
         {
+            return RemoveInternal(entityId, clearExternalVisibility: true);
+        }
+
+        private bool RemoveInternal(int entityId, bool clearExternalVisibility)
+        {
             if (!m_records.TryGetValue(entityId, out HeightLayerEntityRecord? record))
             {
+                if (clearExternalVisibility)
+                {
+                    m_externalVisibility.Remove(entityId);
+                }
                 return false;
             }
 
@@ -229,7 +241,56 @@ namespace TajsCOI.Tweaks.Features.Presentation
             RemoveFromIndex(m_idsByMinHeight, record.MinHeight, entityId);
             RemoveFromIndex(m_idsByMaxHeight, record.MaxHeight, entityId);
             m_presentation.Unbind(entityId);
+            if (clearExternalVisibility)
+            {
+                m_externalVisibility.Remove(entityId);
+            }
             return true;
+        }
+
+        /// <summary>
+        /// Adds or replaces a presentation-only visibility policy owned by another scene feature.
+        /// Policies compose with the height cutoff and are retained across renderer refreshes.
+        /// </summary>
+        internal bool SetExternalVisibility(object owner, int entityId, bool visible)
+        {
+            if (owner is null) throw new ArgumentNullException(nameof(owner));
+            ThrowIfDisposed();
+            if (!m_externalVisibility.TryGetValue(entityId, out Dictionary<object, bool>? policies))
+            {
+                policies = new Dictionary<object, bool>();
+                m_externalVisibility.Add(entityId, policies);
+            }
+
+            bool oldVisible = IsVisible(entityId);
+            policies[owner] = visible;
+            bool newVisible = IsVisible(entityId);
+            if (oldVisible != newVisible && m_records.ContainsKey(entityId))
+            {
+                m_presentation.Apply(entityId, newVisible);
+            }
+            return m_records.ContainsKey(entityId);
+        }
+
+        internal void ClearExternalVisibility(object owner, int entityId)
+        {
+            if (owner is null) throw new ArgumentNullException(nameof(owner));
+            if (!m_externalVisibility.TryGetValue(entityId, out Dictionary<object, bool>? policies))
+            {
+                return;
+            }
+
+            bool oldVisible = IsVisible(entityId);
+            policies.Remove(owner);
+            if (policies.Count == 0)
+            {
+                m_externalVisibility.Remove(entityId);
+            }
+            bool newVisible = IsVisible(entityId);
+            if (oldVisible != newVisible && m_records.ContainsKey(entityId))
+            {
+                m_presentation.Apply(entityId, newVisible);
+            }
         }
 
         internal void Rebuild(
@@ -283,8 +344,8 @@ namespace TajsCOI.Tweaks.Features.Presentation
                     continue;
                 }
 
-                bool oldVisible = !previousCutoff.HasValue || record.Intersects(previousCutoff.Value);
-                bool newVisible = !cutoff.HasValue || record.Intersects(cutoff.Value);
+                bool oldVisible = IsVisible(record, previousCutoff);
+                bool newVisible = IsVisible(record, cutoff);
                 if (oldVisible == newVisible)
                 {
                     continue;
@@ -336,8 +397,14 @@ namespace TajsCOI.Tweaks.Features.Presentation
             m_disposed = true;
         }
 
-        private bool IsVisible(HeightLayerEntityRecord record) =>
-            !m_cutoff.HasValue || record.Intersects(m_cutoff.Value);
+        private bool IsVisible(HeightLayerEntityRecord record) => IsVisible(record, m_cutoff);
+
+        private bool IsVisible(HeightLayerEntityRecord record, int? cutoff) =>
+            (!cutoff.HasValue || record.Intersects(cutoff.Value)) && IsExternallyVisible(record.EntityId);
+
+        private bool IsExternallyVisible(int entityId) =>
+            !m_externalVisibility.TryGetValue(entityId, out Dictionary<object, bool>? policies) ||
+            policies.Values.All(visible => visible);
 
         private HashSet<int> CollectVisibleCandidates(int cutoff)
         {

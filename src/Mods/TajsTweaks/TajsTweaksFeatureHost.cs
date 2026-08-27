@@ -25,6 +25,7 @@ using Mafi.Core.World;
 using Mafi.Core.Products;
 using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Library;
+using Mafi.Unity.Ui.Hud;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Configuration;
 using TajsCOI.Common.Diagnostics;
@@ -68,6 +69,10 @@ namespace TajsCOI.Tweaks
         private EntityMetadataSelectionTool? m_metadataSelection;
         private bool m_safeAreaCleanupInitializationAttempted;
         private SafeAreaCleanupFeature? m_safeAreaCleanup;
+        private bool m_bulkDeconstructionInitializationAttempted;
+        private BulkDeconstructionCancellationFeature? m_bulkDeconstructionCancellation;
+        private bool m_worldVisibilityInitializationAttempted;
+        private WorldVisibilityFilterFeature? m_worldVisibilityFilters;
         private TransportNetworkVisualizerController? m_transportNetworkVisualizer;
         private Option<TajsWorldOperationsWindow> m_worldOperationsWindow;
         private Option<TajsFleetManagementWindow> m_fleetManagementWindow;
@@ -481,6 +486,11 @@ namespace TajsCOI.Tweaks
             {
                 m_overclocking?.RefreshSettings();
             }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.WorldVisibilityHiddenCategories)
+            {
+                m_worldVisibilityFilters?.ApplyPersistedPolicy(TajsTweaksRuntimeState.WorldVisibilityHiddenCategories);
+                ApplyWorldVisibilityHudIndicator();
+            }
         }
 
         private void OnRenderUpdateEnd(GameTime _)
@@ -488,9 +498,12 @@ namespace TajsCOI.Tweaks
             EnsureOverclockingFeature();
             EnsureEntityMetadataSelection();
             EnsureSafeAreaCleanup();
+            EnsureBulkDeconstructionCancellation();
+            EnsureWorldVisibilityFilters();
             m_overclocking?.UpdateSelectionInput();
             m_metadataSelection?.UpdateInput();
             m_safeAreaCleanup?.UpdateInput();
+            m_bulkDeconstructionCancellation?.UpdateInput();
             if (++m_renderTick % 15 == 0)
             {
                 TweaksPinnedProductsFeature.Tick();
@@ -502,6 +515,7 @@ namespace TajsCOI.Tweaks
                 TweaksHudLayoutFeature.Apply(m_resolver, m_settings);
                 TweaksSimulationSpeedDisplayFeature.Apply(m_resolver);
                 m_overclocking?.Tick();
+                ApplyWorldVisibilityHudIndicator();
             }
         }
 
@@ -677,6 +691,118 @@ namespace TajsCOI.Tweaks
             }
         }
 
+        private void EnsureBulkDeconstructionCancellation()
+        {
+            if (m_bulkDeconstructionInitializationAttempted)
+            {
+                return;
+            }
+
+            m_bulkDeconstructionInitializationAttempted = true;
+            try
+            {
+                if (!m_resolver.TryResolve(out IEntitiesManager? entities) || entities is null ||
+                    !m_resolver.TryResolve(out IInputScheduler? scheduler) || scheduler is null)
+                {
+                    throw new InvalidOperationException("The current scene has no entity manager or input scheduler.");
+                }
+
+                m_resolver.TryResolve(out Mafi.Unity.Entities.EntitiesRenderingManager? rendering);
+                m_bulkDeconstructionCancellation = new BulkDeconstructionCancellationFeature(entities, scheduler, rendering);
+                m_runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsTweaksSettingsCatalog.ModId,
+                        BulkDeconstructionCancellationFeature.ComponentId,
+                        CompatibilityState.Compatible,
+                        "Native construction state, toggle command, and shared rectangle selection",
+                        "ConstructionState.PendingDeconstruction/InDeconstruction; ToggleStaticEntityConstructionCmd",
+                        "Candidates are snapshotted at drag start, preview retains IDs only, and commands are chunked."));
+            }
+            catch (Exception exception)
+            {
+                m_log.Exception(exception, "Bulk cancel-deconstruction is unavailable in this scene.");
+                m_runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsTweaksSettingsCatalog.ModId,
+                        BulkDeconstructionCancellationFeature.ComponentId,
+                        CompatibilityState.Disabled,
+                        "Gameplay-scene entity manager and input scheduler",
+                        exception.GetType().Name,
+                        "No deconstruction state is changed; the native removal tools remain active."));
+            }
+        }
+
+        private void EnsureWorldVisibilityFilters()
+        {
+            if (m_worldVisibilityInitializationAttempted)
+            {
+                return;
+            }
+
+            try
+            {
+                if (!m_resolver.TryResolve(out IEntitiesManager? entities) || entities is null)
+                {
+                    throw new InvalidOperationException("The current scene has no entity manager.");
+                }
+
+                m_resolver.TryResolve(out HeightLayerFilterHost? heightLayerHost);
+                // HeightLayerFilterHost owns the shared #134 renderer index. Its init callback can
+                // run later in the same scene transition, so wait once rather than constructing a
+                // competing native binding set that would miss instanced entities.
+                if (heightLayerHost is not null && heightLayerHost.Scene is null)
+                {
+                    return;
+                }
+
+                m_worldVisibilityInitializationAttempted = true;
+                m_resolver.TryResolve(out Mafi.Unity.Entities.MbBasedEntitiesRenderer? renderer);
+                m_resolver.TryResolve(out Mafi.Unity.Ports.Io.IoPortsRenderer? portsRenderer);
+                m_resolver.TryResolve(out Mafi.Unity.Terrain.TreesRenderer? treesRenderer);
+                m_worldVisibilityFilters = new WorldVisibilityFilterFeature(
+                    entities,
+                    renderer,
+                    portsRenderer,
+                    treesRenderer,
+                    TajsTweaksRuntimeState.WorldVisibilityHiddenCategories,
+                    sharedHeightLayerIndex: heightLayerHost?.Scene?.Index);
+                m_runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsTweaksSettingsCatalog.ModId,
+                        WorldVisibilityFilterFeature.ComponentId,
+                        CompatibilityState.Compatible,
+                        "Scene-owned category registry over the shared height-layer renderer index",
+                        "MbBasedEntitiesRenderer; IoPortsRenderer; TreesRenderer",
+                        "Filter state is presentation-only, event-indexed, and defaults to safe-visible."));
+            }
+            catch (Exception exception)
+            {
+                m_worldVisibilityInitializationAttempted = true;
+                m_log.Exception(exception, "World visibility filters are unavailable in this scene.");
+                m_runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsTweaksSettingsCatalog.ModId,
+                        WorldVisibilityFilterFeature.ComponentId,
+                        CompatibilityState.Disabled,
+                        "Gameplay-scene entity manager and renderer adapters",
+                        exception.GetType().Name,
+                        "World rendering and simulation remain unchanged."));
+            }
+        }
+
+        private void ApplyWorldVisibilityHudIndicator()
+        {
+            if (m_worldVisibilityFilters is null ||
+                !m_resolver.TryResolve(out HudController? hud) || hud is null)
+            {
+                return;
+            }
+            TweaksHudActionFeature.ApplyWorldVisibilityIndicator(
+                hud,
+                m_worldVisibilityFilters.Indicator.Text,
+                m_worldVisibilityFilters.Indicator.IsVisible);
+        }
+
         private void InitializeTransportNetworkVisualizer()
         {
             if (m_transportNetworkVisualizer is not null)
@@ -705,6 +831,10 @@ namespace TajsCOI.Tweaks
             m_overclocking?.Dispose();
             m_metadataSelection?.Deactivate();
             m_safeAreaCleanup?.Deactivate();
+            m_bulkDeconstructionCancellation?.Dispose();
+            m_bulkDeconstructionCancellation = null;
+            m_worldVisibilityFilters?.Dispose();
+            m_worldVisibilityFilters = null;
             m_transportNetworkVisualizer?.Dispose();
             m_transportNetworkVisualizer = null;
             m_difficulty?.Dispose();
@@ -1128,6 +1258,107 @@ namespace TajsCOI.Tweaks
 
             bool parsedQuick = quick is not null && bool.Parse(quick);
             return m_safeAreaCleanup.Commit(parsedQuick, confirmation, policy);
+        }
+
+        [ConsoleCommand(
+            documentation: "Starts a scene-only rectangle picker for cancelling pending/in-progress deconstruction.",
+            customCommandName: "tajs_cancel_deconstruction_pick")]
+        public string CancelDeconstructionPick()
+        {
+            if (m_bulkDeconstructionCancellation is null)
+            {
+                return "Bulk cancel-deconstruction is unavailable in this scene.";
+            }
+
+            m_metadataSelection?.Deactivate();
+            m_safeAreaCleanup?.Deactivate();
+            m_overclocking?.CancelSelection();
+            return m_bulkDeconstructionCancellation.Activate();
+        }
+
+        [ConsoleCommand(
+            documentation: "Builds a bounded tile preview for cancelling deconstruction without changing the world.",
+            customCommandName: "tajs_cancel_deconstruction_preview")]
+        public string CancelDeconstructionPreview(string minX, string minY, string maxX, string maxY)
+        {
+            if (m_bulkDeconstructionCancellation is null || !int.TryParse(minX, out int parsedMinX) ||
+                !int.TryParse(minY, out int parsedMinY) || !int.TryParse(maxX, out int parsedMaxX) ||
+                !int.TryParse(maxY, out int parsedMaxY))
+            {
+                return "Usage: tajs_cancel_deconstruction_preview <min-x> <min-y> <max-x> <max-y>";
+            }
+
+            string pickResult = CancelDeconstructionPick();
+            if (pickResult.StartsWith("Usage:", StringComparison.Ordinal) ||
+                pickResult.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return pickResult;
+            }
+
+            return m_bulkDeconstructionCancellation.BuildAreaPreview(
+                new SceneAreaBounds(parsedMinX, parsedMinY, parsedMaxX, parsedMaxY));
+        }
+
+        [ConsoleCommand(
+            documentation: "Shows the current cancel-deconstruction preview and queued command count.",
+            customCommandName: "tajs_cancel_deconstruction_status")]
+        public string CancelDeconstructionStatus() =>
+            m_bulkDeconstructionCancellation?.Status() ?? "Bulk cancel-deconstruction is unavailable in this scene.";
+
+        [ConsoleCommand(
+            documentation: "Cancels the deconstruction rectangle preview without changing simulation state.",
+            customCommandName: "tajs_cancel_deconstruction_cancel")]
+        public string CancelDeconstructionCancel()
+        {
+            if (m_bulkDeconstructionCancellation is null)
+            {
+                return "Bulk cancel-deconstruction is unavailable in this scene.";
+            }
+
+            m_bulkDeconstructionCancellation.Deactivate();
+            return "Bulk cancel-deconstruction cancelled.";
+        }
+
+        [ConsoleCommand(
+            documentation: "Commits the reviewed deconstruction cancellation through native toggle commands.",
+            customCommandName: "tajs_cancel_deconstruction_commit")]
+        public string CancelDeconstructionCommit() =>
+            m_bulkDeconstructionCancellation?.Commit() ?? "Bulk cancel-deconstruction is unavailable in this scene.";
+
+        [ConsoleCommand(
+            documentation: "Shows the active world visibility filter categories.",
+            customCommandName: "tajs_visibility_filters_status")]
+        public string VisibilityFiltersStatus() =>
+            m_worldVisibilityFilters?.Status() ?? "World visibility filters are unavailable in this scene.";
+
+        [ConsoleCommand(
+            documentation: "Hides or shows one world visibility category.",
+            customCommandName: "tajs_visibility_filter_set")]
+        public string VisibilityFilterSet(string category, string hidden)
+        {
+            if (m_worldVisibilityFilters is null || !bool.TryParse(hidden, out bool parsedHidden))
+            {
+                return "Usage: tajs_visibility_filter_set <category> <true|false>";
+            }
+
+            string result = m_worldVisibilityFilters.SetCategoryHidden(category, parsedHidden);
+            ApplyWorldVisibilityHudIndicator();
+            return result;
+        }
+
+        [ConsoleCommand(
+            documentation: "Restores every world visibility category immediately.",
+            customCommandName: "tajs_visibility_filters_show_all")]
+        public string VisibilityFiltersShowAll()
+        {
+            if (m_worldVisibilityFilters is null)
+            {
+                return "World visibility filters are unavailable in this scene.";
+            }
+
+            string result = m_worldVisibilityFilters.ShowAll();
+            ApplyWorldVisibilityHudIndicator();
+            return result;
         }
 
         [ConsoleCommand(

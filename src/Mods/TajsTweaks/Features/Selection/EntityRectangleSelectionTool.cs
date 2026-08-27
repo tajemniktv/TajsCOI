@@ -20,6 +20,10 @@ namespace TajsCOI.Tweaks.Features.Selection
         private readonly Func<IEnumerable<IStaticEntity>> m_candidates;
         private readonly Func<IStaticEntity, bool> m_canSelect;
         private readonly Action<IReadOnlyList<IStaticEntity>> m_onCompleted;
+        private readonly Action<IReadOnlyList<IStaticEntity>>? m_onMatchesChanged;
+        private readonly Func<IStaticEntity, Camera, float, float, float, float, bool>? m_geometry;
+        private readonly int m_maxCandidates;
+        private readonly List<IStaticEntity> m_candidateSnapshot = new();
         private readonly List<IStaticEntity> m_matches = new();
         private Vector2 m_start;
         private Vector2 m_current;
@@ -28,20 +32,32 @@ namespace TajsCOI.Tweaks.Features.Selection
         internal EntityRectangleSelectionTool(
             Func<IEnumerable<IStaticEntity>> candidates,
             Func<IStaticEntity, bool> canSelect,
-            Action<IReadOnlyList<IStaticEntity>> onCompleted)
+            Action<IReadOnlyList<IStaticEntity>> onCompleted,
+            Action<IReadOnlyList<IStaticEntity>>? onMatchesChanged = null,
+            Func<IStaticEntity, Camera, float, float, float, float, bool>? geometry = null,
+            int maxCandidates = 0)
         {
             m_candidates = candidates ?? throw new ArgumentNullException(nameof(candidates));
             m_canSelect = canSelect ?? throw new ArgumentNullException(nameof(canSelect));
             m_onCompleted = onCompleted ?? throw new ArgumentNullException(nameof(onCompleted));
+            m_onMatchesChanged = onMatchesChanged;
+            m_geometry = geometry;
+            m_maxCandidates = Math.Max(0, maxCandidates);
         }
 
         internal bool IsActive { get; private set; }
+        internal bool CandidateSnapshotTruncated { get; private set; }
+        internal bool LastCandidateSnapshotTruncated { get; private set; }
 
         internal string Activate(string instruction)
         {
             IsActive = true;
             m_dragging = false;
+            m_candidateSnapshot.Clear();
+            CandidateSnapshotTruncated = false;
+            LastCandidateSnapshotTruncated = false;
             m_matches.Clear();
+            NotifyMatchesChanged();
             return instruction ?? string.Empty;
         }
 
@@ -64,6 +80,7 @@ namespace TajsCOI.Tweaks.Features.Selection
                 m_start = screen;
                 m_current = screen;
                 m_dragging = true;
+                CaptureCandidates();
                 ComputeMatches();
             }
 
@@ -92,7 +109,11 @@ namespace TajsCOI.Tweaks.Features.Selection
         {
             IsActive = false;
             m_dragging = false;
+            m_candidateSnapshot.Clear();
+            LastCandidateSnapshotTruncated = CandidateSnapshotTruncated;
+            CandidateSnapshotTruncated = false;
             m_matches.Clear();
+            NotifyMatchesChanged();
         }
 
         private void ComputeMatches()
@@ -101,6 +122,7 @@ namespace TajsCOI.Tweaks.Features.Selection
             Camera? camera = Camera.main;
             if (camera is null)
             {
+                NotifyMatchesChanged();
                 return;
             }
 
@@ -111,10 +133,11 @@ namespace TajsCOI.Tweaks.Features.Selection
             var seen = new HashSet<int>();
             try
             {
-                foreach (IStaticEntity entity in m_candidates())
+                foreach (IStaticEntity entity in m_candidateSnapshot)
                 {
                     if (entity is null || !seen.Add(entity.Id.Value) || !m_canSelect(entity) ||
-                        !IsInRect(entity, camera, minX, maxX, minY, maxY))
+                        !(m_geometry?.Invoke(entity, camera, minX, maxX, minY, maxY) ??
+                          IsInRect(entity, camera, minX, maxX, minY, maxY)))
                     {
                         continue;
                     }
@@ -126,6 +149,49 @@ namespace TajsCOI.Tweaks.Features.Selection
                 // Entity enumeration is scene-scoped and can race teardown; retain an empty,
                 // conservative selection for this frame.
                 m_matches.Clear();
+            }
+            NotifyMatchesChanged();
+        }
+
+        private void CaptureCandidates()
+        {
+            m_candidateSnapshot.Clear();
+            try
+            {
+                foreach (IStaticEntity entity in m_candidates())
+                {
+                    if (m_maxCandidates > 0 && m_candidateSnapshot.Count >= m_maxCandidates)
+                    {
+                        CandidateSnapshotTruncated = true;
+                        break;
+                    }
+                    if (entity is not null)
+                    {
+                        m_candidateSnapshot.Add(entity);
+                    }
+                }
+            }
+            catch
+            {
+                // Scene enumeration can race a reload; an empty snapshot is the safe result.
+                m_candidateSnapshot.Clear();
+            }
+        }
+
+        private void NotifyMatchesChanged()
+        {
+            if (m_onMatchesChanged is null)
+            {
+                return;
+            }
+
+            try
+            {
+                m_onMatchesChanged(m_matches.ToArray());
+            }
+            catch
+            {
+                // Preview/highlight consumers are optional and must never break input handling.
             }
         }
 

@@ -94,6 +94,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
             internal bool Hovered;
             internal UiLabel? Clock;
             internal IVisualElementScheduledItem? ClockSchedule;
+            internal UiLabel? VisibilityIndicator;
             internal string StructureFingerprint = string.Empty;
             internal string PolicyFingerprint = string.Empty;
             internal bool Enabled;
@@ -154,6 +155,11 @@ namespace TajsCOI.Tweaks.Features.Presentation
                     state.Clock = null;
                     state.ClockSchedule = null;
                 }
+                if (state.VisibilityIndicator is not null)
+                {
+                    state.VisibilityIndicator.RemoveFromHierarchy();
+                    state.VisibilityIndicator = null;
+                }
 
                 state.Enabled = false;
                 state.StructureFingerprint = string.Empty;
@@ -173,10 +179,44 @@ namespace TajsCOI.Tweaks.Features.Presentation
                     state.Clock?.RemoveFromHierarchy();
                     state.Clock = null;
                     state.ClockSchedule = null;
+                    state.VisibilityIndicator?.RemoveFromHierarchy();
+                    state.VisibilityIndicator = null;
                 }
             }
 
             s_roots.Clear();
+        }
+
+        /// <summary>
+        ///     Adds a small, non-interactive status label to the status HUD. The label is owned by
+        ///     this existing HUD lifecycle so scene reloads remove it with the rest of the HUD;
+        ///     visibility filtering itself remains renderer-owned and presentation-only.
+        /// </summary>
+        internal static void ApplyWorldVisibilityIndicator(HudController hud, string text, bool visible)
+        {
+            UiComponent? statusRoot = GetRoots(hud).FirstOrDefault(root => root is StatusBarHud);
+            if (statusRoot is null)
+            {
+                return;
+            }
+
+            RootState state = EnsureState(statusRoot);
+            if (state.VisibilityIndicator is null)
+            {
+                state.VisibilityIndicator = new UiLabel(string.Empty.AsLoc()).FontSize(11);
+                state.VisibilityIndicator.RootElement.pickingMode = PickingMode.Ignore;
+                statusRoot.Add(state.VisibilityIndicator);
+            }
+
+            state.VisibilityIndicator.Value((text ?? string.Empty).AsLoc());
+            if (visible)
+            {
+                state.VisibilityIndicator.Show();
+            }
+            else
+            {
+                state.VisibilityIndicator.Hide();
+            }
         }
 
         private static UiComponent[] GetRoots(HudController hud)
