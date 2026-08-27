@@ -72,6 +72,7 @@ namespace TajsCOI.Tests
                 Assert.False(store.Rebind("second"));
                 Assert.Empty(store.Entities);
                 Assert.Empty(store.Groups);
+                store.SetEntity(new EntityMetadataRecord(staleIdentity, "new", string.Empty, null));
                 Assert.False(store.Save());
             }
             finally

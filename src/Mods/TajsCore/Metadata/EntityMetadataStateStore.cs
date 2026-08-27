@@ -100,7 +100,9 @@ namespace TajsCOI.Core.Metadata
             if (File.Exists(nextPath))
             {
                 ClearLoadedState();
-                m_filePath = null;
+                // Keep the collided path as a blocked binding. This makes subsequent Save calls
+                // fail closed instead of treating the unbound, in-memory state as persistable.
+                m_filePath = nextPath;
                 m_allowWrite = false;
                 return false;
             }
