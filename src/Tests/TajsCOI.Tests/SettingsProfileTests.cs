@@ -117,6 +117,40 @@ namespace TajsCOI.Tests
                 new Dictionary<string, object> { [string.Empty] = true }));
         }
 
+        [Fact]
+        public void RenameDeleteImportAndExportRoundTripThroughAtomicFiles()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI.ProfileTests", Guid.NewGuid().ToString("N"));
+            string exportPath = Path.Combine(root, "export.json");
+            try
+            {
+                var settings = new TajsSettings(Path.Combine(root, "settings.json"), new SettingsTestsNullLogger());
+                settings.Register(SettingDescriptor.Boolean(
+                    "ProfileMod", "Profile Mod", "safe", "Safe", "Safe setting", true,
+                    flags: SettingFlags.ProfileSafe));
+                var service = new TajsSettingsProfileService(settings, new TajsRuntime(), Path.Combine(root, "profiles"));
+
+                Assert.Contains("1 profile-safe", service.CaptureProfile("demo"));
+                Assert.True(service.TryExport("demo", exportPath, out string exportError), exportError);
+                Assert.True(File.Exists(exportPath));
+                Assert.True(service.TryRename("demo", "renamed", out _, out string renameError), renameError);
+                Assert.False(service.TryGet("demo", out _));
+                Assert.True(service.TryGet("renamed", out _));
+                Assert.True(service.TryImport(exportPath, "imported", out _, out string importError), importError);
+                Assert.True(service.TryGet("imported", out _));
+                Assert.True(service.TryDelete("imported", out string deleteError), deleteError);
+                Assert.False(service.TryGet("imported", out _));
+                Assert.False(File.Exists(Path.Combine(root, "profiles", "imported.json")));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
         private static SettingsProfilePreviewState State(SettingsProfilePreview preview, string stableId) =>
             preview.Entries.Single(entry => entry.StableId == stableId).State;
 
