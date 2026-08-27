@@ -6,14 +6,21 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $resolvedRoot = (Resolve-Path -LiteralPath $ModsRoot).Path
-$expectedDlls = [ordered]@{
-    TajsCore = @('0Harmony.dll', 'TajsCOI.Common.dll', 'TajsCore.dll')
+$expectedPrimaryDlls = [ordered]@{
+    TajsCore = @('0Harmony.dll', 'TajsCOI.Common.dll', 'TajsBootstrap.dll', 'TajsCore.dll')
     TajsTweaks = @('TajsTweaks.dll')
     TajsProfiler = @('TajsProfiler.dll')
     TajsPerformance = @('TajsPerformance.dll')
 }
 
-foreach ($entry in $expectedDlls.GetEnumerator()) {
+$expectedPackageDlls = [ordered]@{
+    TajsCore = @('0Harmony.dll', 'TajsCOI.Common.dll', 'TajsBootstrap.dll', 'TajsCore.dll', 'winhttp.dll')
+    TajsTweaks = @('TajsTweaks.dll')
+    TajsProfiler = @('TajsProfiler.dll')
+    TajsPerformance = @('TajsPerformance.dll')
+}
+
+foreach ($entry in $expectedPackageDlls.GetEnumerator()) {
     $modId = $entry.Key
     $modRoot = Join-Path $resolvedRoot $modId
     $manifestPath = Join-Path $modRoot 'manifest.json'
@@ -27,10 +34,11 @@ foreach ($entry in $expectedDlls.GetEnumerator()) {
         throw "$modId manifest ID mismatch. Expected '$modId', got '$($manifest.id)'."
     }
     $primaryDlls = @($manifest.primary_dlls)
-    $expected = @($entry.Value)
+    $expectedPrimary = @($expectedPrimaryDlls[$modId])
+    $expectedPackage = @($entry.Value)
 
-    if (($primaryDlls -join '|') -cne ($expected -join '|')) {
-        throw "$modId primary_dlls order mismatch. Expected '$($expected -join ', ')', got '$($primaryDlls -join ', ')'."
+    if (($primaryDlls -join '|') -cne ($expectedPrimary -join '|')) {
+        throw "$modId primary_dlls order mismatch. Expected '$($expectedPrimary -join ', ')', got '$($primaryDlls -join ', ')'."
     }
 
     foreach ($primaryDll in $primaryDlls) {
@@ -43,7 +51,7 @@ foreach ($entry in $expectedDlls.GetEnumerator()) {
     $actualDlls = @(Get-ChildItem -LiteralPath $modRoot -Filter '*.dll' -File -Recurse |
         ForEach-Object { $_.FullName.Substring($modRoot.Length).TrimStart('\', '/').Replace('\', '/') } |
         Sort-Object)
-    $expectedSorted = @($expected | Sort-Object)
+    $expectedSorted = @($expectedPackage | Sort-Object)
     if (($actualDlls -join '|') -cne ($expectedSorted -join '|')) {
         throw "$modId DLL contents mismatch. Expected '$($expectedSorted -join ', ')', got '$($actualDlls -join ', ')'."
     }

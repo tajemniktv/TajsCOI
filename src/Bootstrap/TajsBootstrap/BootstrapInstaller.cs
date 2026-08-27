@@ -27,20 +27,45 @@ namespace TajsCOI.Bootstrap
 
     /// <summary>
     ///     Explicit source files for the optional bootstrap payload. The installer never
-    ///     discovers a Steam path and never supplies an external Doorstop binary.
+    ///     discovers a Steam path and only installs the bundled x64 Doorstop proxy when the
+    ///     caller supplies it. The existing version.dll is never a Tajs-owned file.
     /// </summary>
     public sealed class BootstrapInstallRequest
     {
         public BootstrapInstallRequest(string gameRoot, string bootstrapAssemblyPath, string canonicalHarmonyPath)
+            : this(gameRoot, bootstrapAssemblyPath, canonicalHarmonyPath, GetBundledProxyPath(bootstrapAssemblyPath))
+        {
+        }
+
+        public BootstrapInstallRequest(
+            string gameRoot,
+            string bootstrapAssemblyPath,
+            string canonicalHarmonyPath,
+            string doorstopProxyPath)
         {
             GameRoot = gameRoot ?? string.Empty;
             BootstrapAssemblyPath = bootstrapAssemblyPath ?? string.Empty;
             CanonicalHarmonyPath = canonicalHarmonyPath ?? string.Empty;
+            DoorstopProxyPath = doorstopProxyPath ?? string.Empty;
         }
 
         public string GameRoot { get; }
         public string BootstrapAssemblyPath { get; }
         public string CanonicalHarmonyPath { get; }
+        public string DoorstopProxyPath { get; }
+
+        private static string GetBundledProxyPath(string bootstrapAssemblyPath)
+        {
+            try
+            {
+                string? directory = Path.GetDirectoryName(Path.GetFullPath(bootstrapAssemblyPath.Trim()));
+                return directory is null ? string.Empty : Path.Combine(directory, "winhttp.dll");
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
     }
 
     public sealed class BootstrapInstallResult
@@ -66,7 +91,8 @@ namespace TajsCOI.Bootstrap
     /// <summary>
     ///     Conservative file custody for the optional early bootstrap payload. Ownership is
     ///     manifest-based: repair and uninstall refuse to overwrite or remove drifted files.
-    ///     External UnityDoorstop files, including root winhttp.dll, are never managed here.
+    ///     The installer owns only the files recorded in its manifest. The existing root
+    ///     version.dll and any unknown winhttp.dll or doorstop_config.ini are never overwritten.
     /// </summary>
     public static class BootstrapInstaller
     {
@@ -75,6 +101,14 @@ namespace TajsCOI.Bootstrap
         private const string PayloadDirectory = "TajsCOI\\Bootstrap";
         private const string BootstrapRelativePath = PayloadDirectory + "\\TajsBootstrap.dll";
         private const string HarmonyRelativePath = PayloadDirectory + "\\0Harmony.dll";
+        private const string DoorstopProxyRelativePath = "winhttp.dll";
+        private const string DoorstopConfigRelativePath = "doorstop_config.ini";
+        private const string DoorstopConfigText =
+            "# TajsCOI-managed UnityDoorstop configuration\r\n" +
+            "[General]\r\n" +
+            "enabled=true\r\n" +
+            "target_assembly=TajsCOI/Bootstrap/TajsBootstrap.dll\r\n" +
+            "redirect_output_log=false\r\n";
 
         public static string? DiscoverGameRoot(string? runtimeExecutablePath = null)
         {
@@ -112,6 +146,7 @@ namespace TajsCOI.Bootstrap
         public static BootstrapInstallResult Install(BootstrapInstallRequest request)
         {
             if (!TryPrepare(request, out string root, out string bootstrapSource, out string harmonySource,
+                    out string doorstopProxySource,
                     out string manifestPath, out BootstrapInstallResult? failure))
             {
                 return failure!;
@@ -125,7 +160,11 @@ namespace TajsCOI.Bootstrap
                     return Refused(manifestPath, "Existing bootstrap manifest is unreadable: " + readError);
                 }
 
-                BootstrapFileRecord[] expected = BuildExpectedRecords(root, bootstrapSource, harmonySource);
+                BootstrapFileRecord[] expected = BuildExpectedRecords(
+                    root,
+                    bootstrapSource,
+                    harmonySource,
+                    doorstopProxySource);
                 if (existing is not null && !string.Equals(existing.GameRoot, root, StringComparison.OrdinalIgnoreCase))
                 {
                     return Refused(manifestPath, "Existing bootstrap manifest belongs to another game root.");
@@ -149,6 +188,8 @@ namespace TajsCOI.Bootstrap
 
                 CopyFileAtomically(bootstrapSource, SafeCombine(root, BootstrapRelativePath));
                 CopyFileAtomically(harmonySource, SafeCombine(root, HarmonyRelativePath));
+                CopyFileAtomically(doorstopProxySource, SafeCombine(root, DoorstopProxyRelativePath));
+                WriteTextAtomically(SafeCombine(root, DoorstopConfigRelativePath), DoorstopConfigText);
                 WriteManifestAtomic(manifestPath, new InstallManifest
                 {
                     Schema = ManifestSchema,
@@ -157,7 +198,7 @@ namespace TajsCOI.Bootstrap
                     Files = expected,
                 });
                 return new BootstrapInstallResult(BootstrapInstallState.Installed,
-                    "Bootstrap payload installed. Existing UnityDoorstop files were left untouched.", manifestPath);
+                    "Bootstrap payload, Doorstop proxy, and configuration installed. Existing version.dll was left untouched.", manifestPath);
             }
             catch (UnauthorizedAccessException exception)
             {
@@ -211,6 +252,7 @@ namespace TajsCOI.Bootstrap
         public static BootstrapInstallResult Repair(BootstrapInstallRequest request)
         {
             if (!TryPrepare(request, out string root, out string bootstrapSource, out string harmonySource,
+                    out string doorstopProxySource,
                     out string manifestPath, out BootstrapInstallResult? failure))
             {
                 return failure!;
@@ -225,7 +267,11 @@ namespace TajsCOI.Bootstrap
             {
                 return Refused(manifestPath, "Install manifest belongs to another game root.");
             }
-            BootstrapFileRecord[] expected = BuildExpectedRecords(root, bootstrapSource, harmonySource);
+            BootstrapFileRecord[] expected = BuildExpectedRecords(
+                root,
+                bootstrapSource,
+                harmonySource,
+                doorstopProxySource);
             if (!OwnsExpectedFiles(manifest, expected))
             {
                 return Refused(manifestPath, "Install manifest does not own the expected bootstrap payload.");
@@ -235,10 +281,12 @@ namespace TajsCOI.Bootstrap
             {
                 CopyFileAtomically(bootstrapSource, SafeCombine(root, BootstrapRelativePath));
                 CopyFileAtomically(harmonySource, SafeCombine(root, HarmonyRelativePath));
+                CopyFileAtomically(doorstopProxySource, SafeCombine(root, DoorstopProxyRelativePath));
+                WriteTextAtomically(SafeCombine(root, DoorstopConfigRelativePath), DoorstopConfigText);
                 manifest.Files = expected;
                 WriteManifestAtomic(manifestPath, manifest);
                 return new BootstrapInstallResult(BootstrapInstallState.Installed,
-                    "Owned bootstrap payload repaired; external Doorstop files were not changed.", manifestPath);
+                    "Owned bootstrap payload, Doorstop proxy, and configuration repaired; existing version.dll was left untouched.", manifestPath);
             }
             catch (UnauthorizedAccessException exception)
             {
@@ -350,7 +398,7 @@ namespace TajsCOI.Bootstrap
                     File.Delete(manifestPath);
                 }
                 return new BootstrapInstallResult(BootstrapInstallState.Uninstalled,
-                    "Owned bootstrap files and manifest removed; external Doorstop files were left untouched.", manifestPath);
+                    "Owned bootstrap files, Doorstop proxy, configuration, and manifest removed; existing version.dll was left untouched.", manifestPath);
             }
             catch (UnauthorizedAccessException exception)
             {
@@ -396,12 +444,14 @@ namespace TajsCOI.Bootstrap
             out string root,
             out string bootstrapSource,
             out string harmonySource,
+            out string doorstopProxySource,
             out string manifestPath,
             out BootstrapInstallResult? failure)
         {
             root = string.Empty;
             bootstrapSource = string.Empty;
             harmonySource = string.Empty;
+            doorstopProxySource = string.Empty;
             manifestPath = string.Empty;
             failure = null;
             if (request is null)
@@ -419,25 +469,32 @@ namespace TajsCOI.Bootstrap
             {
                 bootstrapSource = Path.GetFullPath(request.BootstrapAssemblyPath.Trim());
                 harmonySource = Path.GetFullPath(request.CanonicalHarmonyPath.Trim());
+                doorstopProxySource = Path.GetFullPath(request.DoorstopProxyPath.Trim());
             }
             catch (Exception exception)
             {
                 failure = Failed(manifestPath, "Source path is invalid: " + exception.Message);
                 return false;
             }
-            if (!File.Exists(bootstrapSource) || !File.Exists(harmonySource))
+            if (!File.Exists(bootstrapSource) || !File.Exists(harmonySource) || !File.Exists(doorstopProxySource))
             {
-                failure = Failed(manifestPath, "Bootstrap and canonical Harmony source files must both exist.");
+                failure = Failed(manifestPath, "Bootstrap, canonical Harmony, and bundled Doorstop proxy source files must all exist.");
                 return false;
             }
             return true;
         }
 
-        private static BootstrapFileRecord[] BuildExpectedRecords(string root, string bootstrapSource, string harmonySource) =>
+        private static BootstrapFileRecord[] BuildExpectedRecords(
+            string root,
+            string bootstrapSource,
+            string harmonySource,
+            string doorstopProxySource) =>
             new[]
             {
                 new BootstrapFileRecord { RelativePath = BootstrapRelativePath, Sha256 = ComputeSha256(bootstrapSource), Length = new FileInfo(bootstrapSource).Length },
                 new BootstrapFileRecord { RelativePath = HarmonyRelativePath, Sha256 = ComputeSha256(harmonySource), Length = new FileInfo(harmonySource).Length },
+                new BootstrapFileRecord { RelativePath = DoorstopProxyRelativePath, Sha256 = ComputeSha256(doorstopProxySource), Length = new FileInfo(doorstopProxySource).Length },
+                new BootstrapFileRecord { RelativePath = DoorstopConfigRelativePath, Sha256 = ComputeSha256(Encoding.UTF8.GetBytes(DoorstopConfigText)), Length = Encoding.UTF8.GetByteCount(DoorstopConfigText) },
             };
 
         private static bool OwnsExpectedFiles(InstallManifest manifest, IReadOnlyList<BootstrapFileRecord> expected) =>
@@ -495,6 +552,44 @@ namespace TajsCOI.Bootstrap
             try
             {
                 File.Copy(source, temp, false);
+                if (File.Exists(destination))
+                {
+                    try
+                    {
+                        File.Replace(temp, destination, null);
+                    }
+                    catch (PlatformNotSupportedException)
+                    {
+                        File.Delete(destination);
+                        File.Move(temp, destination);
+                    }
+                }
+                else
+                {
+                    File.Move(temp, destination);
+                }
+            }
+            finally
+            {
+                if (File.Exists(temp))
+                {
+                    File.Delete(temp);
+                }
+            }
+        }
+
+        private static void WriteTextAtomically(string destination, string contents)
+        {
+            string? directory = Path.GetDirectoryName(destination);
+            if (directory is null)
+            {
+                throw new InvalidDataException("Bootstrap configuration destination has no directory.");
+            }
+            Directory.CreateDirectory(directory);
+            string temp = destination + ".tmp-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                File.WriteAllText(temp, contents, new UTF8Encoding(false));
                 if (File.Exists(destination))
                 {
                     try
@@ -602,14 +697,26 @@ namespace TajsCOI.Bootstrap
             using (var stream = File.OpenRead(path))
             using (var sha256 = SHA256.Create())
             {
-                byte[] bytes = sha256.ComputeHash(stream);
-                var builder = new StringBuilder(bytes.Length * 2);
-                foreach (byte item in bytes)
-                {
-                    builder.Append(item.ToString("x2", System.Globalization.CultureInfo.InvariantCulture));
-                }
-                return builder.ToString();
+                return FormatSha256(sha256.ComputeHash(stream));
             }
+        }
+
+        private static string ComputeSha256(byte[] contents)
+        {
+            using (var sha256 = SHA256.Create())
+            {
+                return FormatSha256(sha256.ComputeHash(contents));
+            }
+        }
+
+        private static string FormatSha256(byte[] bytes)
+        {
+            var builder = new StringBuilder(bytes.Length * 2);
+            foreach (byte item in bytes)
+            {
+                builder.Append(item.ToString("x2", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            return builder.ToString();
         }
 
         [DataContract]

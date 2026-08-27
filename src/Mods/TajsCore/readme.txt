@@ -18,6 +18,7 @@ Global suite settings are stored outside savegames in:
 
 The dashboard is available in a running game, and the main menu exposes a global/profile-safe
 Control Center entry when the supported 0.8.7b menu seam is available. Gameplay-scoped services
-remain unavailable from that main-menu surface. The running-game dashboard also contains the
-explicit optional bootstrap installer; it manages only Tajs-owned payload files and never touches
-external UnityDoorstop files.
+remain unavailable from that main-menu surface. The running-game dashboard has a dedicated
+Bootstrap page. Its Install action copies the Tajs-managed payload, the bundled x64 UnityDoorstop
+`winhttp.dll`, and `doorstop_config.ini` into the game root for the next launch. It never replaces
+the existing `version.dll`; unknown root Doorstop files are refused rather than overwritten.

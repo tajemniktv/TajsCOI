@@ -139,6 +139,16 @@
            Text="Primary mod DLL '%(PrimaryModDll.Identity)' was declared for $(ModId) but was not found in '$(TargetDir)'."/>
   </Target>
 
+  <!-- Allow a mod to ship non-managed package assets without treating them as primary DLLs. -->
+  <Target Name="PrepareCoiPackageAssets"
+          BeforeTargets="DeployCoiMod;CopyCoiDllToUnity;CreateCoiReleasePackage"
+          Condition="'$(IsCoiMod)' == 'true' and '@(CoiPackageAsset)' != ''">
+    <Copy SourceFiles="@(CoiPackageAsset)"
+          DestinationFiles="@(CoiPackageAsset->'$(TargetDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true"/>
+  </Target>
+
   <!-- Keep Unity's Assets/DLLs supplied with the latest normal-mod assembly -->
   <Target Name="CopyCoiDllToUnity"
           AfterTargets="Build"
@@ -262,9 +272,24 @@
           Condition="'@(_AssetBundleFiles)' != ''"/>
   </Target>
 
+  <!-- Deploy optional package assets declared by the owning mod. -->
+  <Target Name="DeployCoiAdditionalFiles"
+          AfterTargets="DeployCoiMod"
+          Condition="'$(IsCoiMod)' == 'true' and '@(CoiAdditionalFile)' != '' and '$(DeployToModsFolder)' == 'true'">
+
+    <PropertyGroup>
+      <_ModDeployDir>$(COIModsDir)\$(ModId)</_ModDeployDir>
+    </PropertyGroup>
+
+    <Copy SourceFiles="@(CoiAdditionalFile)"
+          DestinationFolder="$(_ModDeployDir)"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true"/>
+  </Target>
+
   <!-- Convenient distributable ZIP -->
   <Target Name="CreateCoiReleasePackage"
-          AfterTargets="DeployCoiMod"
+          AfterTargets="DeployCoiAdditionalFiles"
           Condition="'$(IsCoiMod)' == 'true'
                   and '$(DeployToModsFolder)' == 'true'
                   and '$(CreateReleaseZip)' == 'true'

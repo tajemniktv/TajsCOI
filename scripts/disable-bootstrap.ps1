@@ -64,15 +64,34 @@ if (-not [string]::Equals($manifestRoot, $root, [StringComparison]::OrdinalIgnor
 
 $expectedFiles = @(
     "TajsCOI\Bootstrap\TajsBootstrap.dll",
+    "TajsCOI\Bootstrap\0Harmony.dll",
+    "winhttp.dll",
+    "doorstop_config.ini"
+)
+$legacyExpectedFiles = @(
+    "TajsCOI\Bootstrap\TajsBootstrap.dll",
     "TajsCOI\Bootstrap\0Harmony.dll"
 )
 $records = @($manifest.Files)
-if ($records.Count -ne $expectedFiles.Count) {
-    Fail "install manifest does not describe exactly the Tajs-owned bootstrap payload"
+$recordNames = @($records | ForEach-Object { ([string] $_.RelativePath).Replace('/', '\') } | Sort-Object)
+$acceptedFileSets = @(
+    ,(@($expectedFiles | Sort-Object))
+    ,(@($legacyExpectedFiles | Sort-Object))
+)
+$matchesExpectedSet = $false
+foreach ($acceptedFileSet in $acceptedFileSets) {
+    if (($recordNames -join '|') -ceq ($acceptedFileSet -join '|')) {
+        $matchesExpectedSet = $true
+        break
+    }
+}
+if (-not $matchesExpectedSet) {
+    Fail "install manifest does not describe the Tajs-owned bootstrap payload"
 }
 foreach ($record in $records) {
     $relative = ([string] $record.RelativePath).Replace('/', '\')
-    if ($expectedFiles -notcontains $relative -or [string]::IsNullOrWhiteSpace([string] $record.Sha256)) {
+    if (($expectedFiles -notcontains $relative -and $legacyExpectedFiles -notcontains $relative) -or
+        [string]::IsNullOrWhiteSpace([string] $record.Sha256)) {
         Fail "install manifest contains an unknown or incomplete payload record"
     }
 }
@@ -97,7 +116,7 @@ try {
         [IO.File]::Delete($manifestPath)
         [IO.File]::Move($temporary, $manifestPath)
     }
-    Write-Output "TajsBootstrap disabled in $manifestPath. Owned payload and external Doorstop files were left unchanged."
+    Write-Output "TajsBootstrap disabled in $manifestPath. Owned payload and Doorstop files remain in place; version.dll was not touched."
 }
 catch {
     Fail "manifest could not be updated: $($_.Exception.Message)"

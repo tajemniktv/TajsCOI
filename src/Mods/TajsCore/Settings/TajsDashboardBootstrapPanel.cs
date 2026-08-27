@@ -28,8 +28,8 @@ namespace TajsCOI.Core.Settings
         internal static Panel Build(Action queueRefresh)
         {
             Panel panel = TajsDashboardUi.Card(
-                "Optional bootstrap installer",
-                "Install, verify, repair, disable, or uninstall only the Tajs-owned payload. UnityDoorstop files such as root winhttp.dll are never managed, and no elevation is attempted.");
+                "Bootstrap installer",
+                "Install, verify, repair, disable, or uninstall the Tajs-owned payload and bundled x64 Doorstop proxy. The existing root version.dll is never touched, and no elevation is attempted.");
             Label status = new Label().FontSize(11).Selectable(true);
             Label feedback = new Label().FontSize(11).Hide().Selectable(true);
 
@@ -65,14 +65,19 @@ namespace TajsCOI.Core.Settings
                 return false;
             }
 
-            bool TryGetSources(out string bootstrapPath, out string harmonyPath)
+            bool TryGetSources(out string bootstrapPath, out string harmonyPath, out string doorstopProxyPath)
             {
                 bootstrapPath = string.Empty;
                 harmonyPath = string.Empty;
+                doorstopProxyPath = string.Empty;
                 try
                 {
                     bootstrapPath = typeof(BootstrapInstaller).Assembly.Location;
                     harmonyPath = typeof(Harmony).Assembly.Location;
+                    string? sourceDirectory = Path.GetDirectoryName(bootstrapPath);
+                    doorstopProxyPath = sourceDirectory is null
+                        ? string.Empty
+                        : Path.Combine(sourceDirectory, "winhttp.dll");
                 }
                 catch (Exception exception)
                 {
@@ -80,13 +85,13 @@ namespace TajsCOI.Core.Settings
                     return false;
                 }
 
-                if (File.Exists(bootstrapPath) && File.Exists(harmonyPath))
+                if (File.Exists(bootstrapPath) && File.Exists(harmonyPath) && File.Exists(doorstopProxyPath))
                 {
                     return true;
                 }
 
-                feedback.Value(("Bootstrap source discovery failed: expected payload or canonical 0Harmony.dll was not found.\n" +
-                                "payload=" + bootstrapPath + "\nharmony=" + harmonyPath).AsLoc()).Show();
+                feedback.Value(("Bootstrap source discovery failed: expected payload, canonical 0Harmony.dll, or bundled Doorstop proxy was not found.\n" +
+                                "payload=" + bootstrapPath + "\nharmony=" + harmonyPath + "\nproxy=" + doorstopProxyPath).AsLoc()).Show();
                 return false;
             }
 
@@ -98,9 +103,9 @@ namespace TajsCOI.Core.Settings
                     "Assets/Unity/UserInterface/General/Configure.svg",
                     () =>
                     {
-                        if (TryGetRoot(out string root) && TryGetSources(out string bootstrapPath, out string harmonyPath))
+                        if (TryGetRoot(out string root) && TryGetSources(out string bootstrapPath, out string harmonyPath, out string doorstopProxyPath))
                         {
-                            Report("Install", BootstrapInstaller.Install(new BootstrapInstallRequest(root, bootstrapPath, harmonyPath)));
+                            Report("Install", BootstrapInstaller.Install(new BootstrapInstallRequest(root, bootstrapPath, harmonyPath, doorstopProxyPath)));
                         }
                     }),
                 TajsDashboardUi.ActionButton(
@@ -120,9 +125,9 @@ namespace TajsCOI.Core.Settings
                     "Assets/Unity/UserInterface/General/Repeat.svg",
                     () =>
                     {
-                        if (TryGetRoot(out string root) && TryGetSources(out string bootstrapPath, out string harmonyPath))
+                        if (TryGetRoot(out string root) && TryGetSources(out string bootstrapPath, out string harmonyPath, out string doorstopProxyPath))
                         {
-                            Report("Repair", BootstrapInstaller.Repair(new BootstrapInstallRequest(root, bootstrapPath, harmonyPath)));
+                            Report("Repair", BootstrapInstaller.Repair(new BootstrapInstallRequest(root, bootstrapPath, harmonyPath, doorstopProxyPath)));
                         }
                     }),
                 TajsDashboardUi.ActionButton(
