@@ -14,6 +14,7 @@ using Mafi.Core.Console;
 using Mafi.Core.Prototypes;
 using Mafi.Core.SaveGame;
 using Mafi.Core.Simulation;
+using Mafi.Core.Mods;
 using Mafi.Core.World.Entities;
 using Mafi.Core.World.QuickTrade;
 using TajsCOI.Common.Logging;
@@ -31,6 +32,7 @@ namespace TajsCOI.Core.SaveRepair
         private const string InfiniteGroundwaterTarget = "infinite_groundwater";
         private const string ShipAutoExploreTarget = "ship_auto_explore";
         private const string WorldMapQuickTradesTarget = "world_map_quick_trades";
+        private const string StaleTajsConfigTarget = "stale_tajs_config";
 
         private const string InfiniteGroundwaterTypeName =
             "InfiniteGroundwater.InfiniteGroundwaterReplenisher, InfiniteGroundwater";
@@ -43,6 +45,7 @@ namespace TajsCOI.Core.SaveRepair
         private readonly IFileSystemHelper m_fileSystemHelper;
         private readonly ProtosDb m_protos;
         private readonly ITajsLogger m_log;
+        private readonly SaveRepairHandlerRegistry m_handlers;
 
         public TajsSaveRepairService(
             DependencyResolver resolver,
@@ -56,7 +59,74 @@ namespace TajsCOI.Core.SaveRepair
             m_fileSystemHelper = fileSystemHelper;
             m_protos = protos;
             m_log = runtime.GetLogger("TajsCore", "SaveRepair");
+            m_handlers = BuildHandlerRegistry();
         }
+
+        private SaveRepairHandlerRegistry BuildHandlerRegistry() => new(new[]
+        {
+            new SaveRepairHandler(
+                InfiniteGroundwaterTarget,
+                "TajsCore.SaveRepair.LegacySaveCallbackMigration",
+                "registered legacy saveable callback",
+                "0.8.7b: IEvent + callback save data + DependencyResolver collections",
+                () => CreateLegacyFinding(new LegacyTarget(
+                    InfiniteGroundwaterTarget,
+                    "InfiniteGroundwater",
+                    InfiniteGroundwaterTypeName,
+                    "onNewDay",
+                    LegacyEventKind.CalendarNewDay)),
+                () => ExecuteLegacyRepair(new LegacyTarget(
+                    InfiniteGroundwaterTarget,
+                    "InfiniteGroundwater",
+                    InfiniteGroundwaterTypeName,
+                    "onNewDay",
+                    LegacyEventKind.CalendarNewDay)),
+                () => CreateLegacyFinding(new LegacyTarget(
+                    InfiniteGroundwaterTarget,
+                    "InfiniteGroundwater",
+                    InfiniteGroundwaterTypeName,
+                    "onNewDay",
+                    LegacyEventKind.CalendarNewDay))),
+            new SaveRepairHandler(
+                ShipAutoExploreTarget,
+                "TajsCore.SaveRepair.LegacySaveCallbackMigration",
+                "registered legacy saveable callback",
+                "0.8.7b: IEvent + callback save data + DependencyResolver collections",
+                () => CreateLegacyFinding(new LegacyTarget(
+                    ShipAutoExploreTarget,
+                    "ShipAutoExplore",
+                    ShipAutoExploreTypeName,
+                    "onSimUpdate",
+                    LegacyEventKind.SimUpdate)),
+                () => ExecuteLegacyRepair(new LegacyTarget(
+                    ShipAutoExploreTarget,
+                    "ShipAutoExplore",
+                    ShipAutoExploreTypeName,
+                    "onSimUpdate",
+                    LegacyEventKind.SimUpdate)),
+                () => CreateLegacyFinding(new LegacyTarget(
+                    ShipAutoExploreTarget,
+                    "ShipAutoExplore",
+                    ShipAutoExploreTypeName,
+                    "onSimUpdate",
+                    LegacyEventKind.SimUpdate))),
+            new SaveRepairHandler(
+                WorldMapQuickTradesTarget,
+                "TajsCore.SaveRepair.WorldMapQuickTrade",
+                "impossible village quick-trade reputation",
+                "0.8.7b: WorldMapVillageProto.QuickTrades + QuickTradePairProto.MinReputationRequired",
+                InspectWorldMapQuickTrades,
+                RepairWorldMapQuickTradesMutation,
+                InspectWorldMapQuickTrades),
+            new SaveRepairHandler(
+                StaleTajsConfigTarget,
+                "TajsCore.SaveRepair.StaleTajsConfig",
+                "known stale Tajs ModJsonConfig",
+                "0.8.7b: ModJsonConfig.ModId + Parameters",
+                InspectStaleTajsConfig,
+                RepairStaleTajsConfig,
+                InspectStaleTajsConfig),
+        });
 
         [ConsoleCommand(
             documentation: "Reports supported save-repair findings without mutating the loaded game.",
@@ -65,10 +135,30 @@ namespace TajsCOI.Core.SaveRepair
         {
             var builder = new StringBuilder(2048);
             builder.AppendLine("TajsCore save sanitizer report (dry-run; no changes made)");
-            builder.AppendLine("Supported repairs:");
-            AppendLegacyReport(builder, InfiniteGroundwaterTarget, InfiniteGroundwaterTypeName, "onNewDay", LegacyEventKind.CalendarNewDay);
-            AppendLegacyReport(builder, ShipAutoExploreTarget, ShipAutoExploreTypeName, "onSimUpdate", LegacyEventKind.SimUpdate);
-            AppendWorldMapQuickTradeReport(builder);
+            builder.AppendLine("Audited handlers:");
+            foreach (SaveRepairHandler handler in m_handlers.Handlers)
+            {
+                SaveRepairFinding finding;
+                try
+                {
+                    finding = handler.Detect();
+                }
+                catch (Exception exception)
+                {
+                    finding = new SaveRepairFinding(
+                        handler.Id,
+                        SaveRepairStatus.Unavailable,
+                        0,
+                        "detector failed closed (" + exception.GetType().Name + ")");
+                }
+
+                builder.AppendLine(
+                    "  " + handler.Id + ": " + finding.Status +
+                    "; owner=" + handler.Owner +
+                    "; target=" + handler.TargetKind +
+                    "; items=" + finding.ItemCount +
+                    (finding.Detail.Length == 0 ? string.Empty : "; " + finding.Detail));
+            }
             AppendPrototypeInventory(builder);
             builder.AppendLine("Unsupported or uncertain save data is intentionally left untouched.");
             return builder.ToString().TrimEnd();
@@ -83,46 +173,126 @@ namespace TajsCOI.Core.SaveRepair
                 !string.Equals(confirmation, "CONFIRM", StringComparison.Ordinal) ||
                 string.IsNullOrWhiteSpace(outputSaveName))
             {
-                return "Usage: tajs_save_sanitize_repair <infinite_groundwater|ship_auto_explore|world_map_quick_trades> CONFIRM <new-save-name>";
+                return "Usage: tajs_save_sanitize_repair <target> CONFIRM <new-save-name>";
             }
 
             string requestedTarget = targetId!;
             string requestedOutputSaveName = outputSaveName!;
-            if (!TryPrepareNewSave(requestedOutputSaveName, out string outputPath, out string saveFailure))
-            {
-                return saveFailure;
-            }
-
             string normalizedTarget = NormalizeTarget(requestedTarget);
-            if (normalizedTarget == WorldMapQuickTradesTarget)
-            {
-                return RepairWorldMapQuickTrades(requestedOutputSaveName, outputPath);
-            }
-
-            if (!TryGetLegacyTarget(normalizedTarget, out LegacyTarget target))
+            if (!m_handlers.TryGet(normalizedTarget, out SaveRepairHandler? handler) || handler is null)
             {
                 return "Unknown save-repair target. Run tajs_save_sanitize_report for supported targets.";
             }
 
-            LegacyInspection inspection = InspectLegacy(target);
-            if (inspection.Status != RepairStatus.NeedsRepair)
+            SaveRepairFinding before;
+            try
             {
-                return FormatLegacyInspection(target, inspection) + "; no repaired copy was queued.";
+                before = handler.Detect();
+            }
+            catch (Exception exception)
+            {
+                return "Save-repair detector failed closed (" + exception.GetType().Name + "); no changes made.";
             }
 
-            if (!TryRepairLegacy(target, out string repairFailure))
+            if (before.Status != SaveRepairStatus.NeedsRepair)
             {
-                return repairFailure + " Do not save this instance.";
+                return FormatFinding(handler, before) + "; no repaired copy was queued.";
             }
 
-            LegacyInspection after = InspectLegacy(target);
-            if (after.Status != RepairStatus.Clean)
+            if (!TryPrepareNewSave(requestedOutputSaveName, out string outputPath, out string manifestPath, out string saveFailure))
+            {
+                return saveFailure;
+            }
+
+            SaveRepairMutation mutation;
+            try
+            {
+                mutation = handler.Repair();
+            }
+            catch (Exception exception)
+            {
+                return "Save repair failed closed (" + exception.GetType().Name + "); no repaired copy was queued. Do not save this instance.";
+            }
+
+            if (!mutation.Succeeded)
+            {
+                return mutation.Failure + " Do not save this instance.";
+            }
+
+            SaveRepairFinding after;
+            try
+            {
+                // Verification deliberately calls the handler's detector, not a second ad-hoc
+                // predicate. Dry-run, mutation preflight, and postcondition therefore share the
+                // exact same classifier.
+                after = handler.Verify();
+            }
+            catch (Exception exception)
+            {
+                return "The repair verification failed closed (" + exception.GetType().Name + "); no repaired copy was queued. Do not save this instance.";
+            }
+
+            if (after.Status != SaveRepairStatus.Clean)
             {
                 return "The repair did not reach a clean postcondition; no repaired copy was queued. Do not save this instance.";
             }
 
-            return QueueRepairedCopy(target.Id, requestedOutputSaveName, outputPath);
+            if (!SaveRepairManifest.TryWriteNew(
+                    manifestPath,
+                    m_saveManager.GameName,
+                    requestedOutputSaveName,
+                    before,
+                    after,
+                    mutation.ChangedCount,
+                    out string manifestFailure))
+            {
+                return "The repair reached a clean in-memory postcondition, but its manifest could not be stored (" +
+                       manifestFailure + "); no repaired copy was queued. Do not save this instance.";
+            }
+
+            return QueueRepairedCopy(
+                handler.Id,
+                requestedOutputSaveName,
+                outputPath,
+                mutation.ChangedCount);
         }
+
+        private SaveRepairFinding CreateLegacyFinding(LegacyTarget target)
+        {
+            LegacyInspection inspection = InspectLegacy(target);
+            return new SaveRepairFinding(
+                target.Id,
+                ToSaveRepairStatus(inspection.Status),
+                inspection.CallbackCount + inspection.ResolverCount,
+                "callbacks=" + inspection.CallbackCount +
+                "; resolver-owners=" + inspection.ResolverCount +
+                "; scanned-events=" + inspection.EventCount +
+                (inspection.Detail.Length == 0 ? string.Empty : "; " + inspection.Detail));
+        }
+
+        private SaveRepairMutation ExecuteLegacyRepair(LegacyTarget target)
+        {
+            if (!TryRepairLegacy(target, out string failure))
+            {
+                return SaveRepairMutation.Failed(failure);
+            }
+
+            return SaveRepairMutation.SucceededWith(1);
+        }
+
+        private static SaveRepairStatus ToSaveRepairStatus(RepairStatus status) => status switch
+        {
+            RepairStatus.NotLoaded => SaveRepairStatus.NotLoaded,
+            RepairStatus.Clean => SaveRepairStatus.Clean,
+            RepairStatus.NeedsRepair => SaveRepairStatus.NeedsRepair,
+            RepairStatus.Unsupported => SaveRepairStatus.Unsupported,
+            RepairStatus.Unavailable => SaveRepairStatus.Unavailable,
+            _ => SaveRepairStatus.Unavailable,
+        };
+
+        private static string FormatFinding(SaveRepairHandler handler, SaveRepairFinding finding) =>
+            handler.Id + ": " + finding.Status + "; items=" + finding.ItemCount +
+            (finding.Detail.Length == 0 ? string.Empty : "; " + finding.Detail);
 
         /// <summary>
         ///     Compatibility command for the migration workflow shipped before the Core service
@@ -141,31 +311,63 @@ namespace TajsCOI.Core.SaveRepair
 
         private string MigrateLegacy(string targetId)
         {
-            if (!TryGetLegacyTarget(targetId, out LegacyTarget target))
+            if (!m_handlers.TryGet(targetId, out SaveRepairHandler? handler) || handler is null)
             {
                 return "The requested legacy migration is not supported by this Core build.";
             }
 
-            LegacyInspection inspection = InspectLegacy(target);
-            if (inspection.Status == RepairStatus.NotLoaded)
+            SaveRepairFinding inspection;
+            try
             {
-                return FormatLegacyInspection(target, inspection) + "; no migration was performed.";
+                inspection = handler.Detect();
             }
-            if (inspection.Status == RepairStatus.Clean)
+            catch (Exception exception)
             {
-                return FormatLegacyInspection(target, inspection) + ". Save a new copy, then disable the standalone mod.";
-            }
-            if (inspection.Status != RepairStatus.NeedsRepair)
-            {
-                return FormatLegacyInspection(target, inspection) + "; no migration was performed. Do not save this instance.";
+                return "Legacy migration detector failed closed (" + exception.GetType().Name + "); no migration was performed.";
             }
 
-            if (!TryRepairLegacy(target, out string failure))
+            if (inspection.Status == SaveRepairStatus.NotLoaded)
             {
-                return failure + " Do not save this instance.";
+                return FormatFinding(handler, inspection) + "; no migration was performed.";
+            }
+            if (inspection.Status == SaveRepairStatus.Clean)
+            {
+                return FormatFinding(handler, inspection) + ". Save a new copy, then disable the standalone mod.";
+            }
+            if (inspection.Status != SaveRepairStatus.NeedsRepair)
+            {
+                return FormatFinding(handler, inspection) + "; no migration was performed. Do not save this instance.";
             }
 
-            return "Legacy " + target.DisplayName + " detached. Save a new copy now, then disable the standalone mod.";
+            SaveRepairMutation mutation;
+            try
+            {
+                mutation = handler.Repair();
+            }
+            catch (Exception exception)
+            {
+                return "Legacy migration failed closed (" + exception.GetType().Name + "); no migration was performed. Do not save this instance.";
+            }
+            if (!mutation.Succeeded)
+            {
+                return mutation.Failure + " Do not save this instance.";
+            }
+
+            SaveRepairFinding after;
+            try
+            {
+                after = handler.Verify();
+            }
+            catch (Exception exception)
+            {
+                return "Legacy migration verification failed closed (" + exception.GetType().Name + "); do not save this instance.";
+            }
+            if (after.Status != SaveRepairStatus.Clean)
+            {
+                return "Legacy migration did not reach a clean postcondition; do not save this instance.";
+            }
+
+            return "Legacy " + handler.Id.Replace('_', ' ') + " detached. Save a new copy now, then disable the standalone mod.";
         }
 
         private bool TryRepairLegacy(LegacyTarget target, out string failure)
@@ -206,10 +408,11 @@ namespace TajsCOI.Core.SaveRepair
                     return false;
                 }
 
-                if (!LegacySaveCallbackMigration.RemoveResolverEntries(
+                if (!LegacySaveCallbackMigration.RemoveResolverObjects(
                         m_resolver,
-                        legacyType,
-                        callbackOwners,
+                        value => value.GetType() == legacyType ||
+                                 callbackOwners.Any(owner => ReferenceEquals(owner, value)),
+                        out _,
                         out string cleanupFailure))
                 {
                     failure = "The legacy " + target.DisplayName + " event was detached, but resolver cleanup failed (" + cleanupFailure + ").";
@@ -273,26 +476,6 @@ namespace TajsCOI.Core.SaveRepair
             }
         }
 
-        private void AppendLegacyReport(
-            StringBuilder builder,
-            string id,
-            string typeName,
-            string callbackName,
-            LegacyEventKind eventKind)
-        {
-            LegacyTarget target = new(id, id.Replace('_', ' '), typeName, callbackName, eventKind);
-            builder.AppendLine("  " + FormatLegacyInspection(target, InspectLegacy(target)));
-        }
-
-        private static string FormatLegacyInspection(LegacyTarget target, LegacyInspection inspection)
-        {
-            string detail = inspection.Detail.Length == 0 ? string.Empty : "; " + inspection.Detail;
-            return target.Id + ": " + inspection.Status +
-                   "; callbacks=" + inspection.CallbackCount +
-                   "; resolver-owners=" + inspection.ResolverCount +
-                   "; scanned-events=" + inspection.EventCount + detail;
-        }
-
         private void AppendPrototypeInventory(StringBuilder builder)
         {
             builder.AppendLine("Prototype inventory:");
@@ -300,97 +483,251 @@ namespace TajsCOI.Core.SaveRepair
             builder.AppendLine("  missing-reference scan=not enabled; unknown references remain untouched");
         }
 
-        private void AppendWorldMapQuickTradeReport(StringBuilder builder)
+        private SaveRepairFinding InspectWorldMapQuickTrades()
         {
-            try
+            if (!TryCollectImpossibleQuickTrades(
+                    out List<WorldMapQuickTradeCandidate> invalid,
+                    out int villageCount,
+                    out string failure))
             {
-                int villageCount = 0;
-                int invalidCount = 0;
-                foreach (WorldMapVillageProto village in m_protos.All<WorldMapVillageProto>())
-                {
-                    villageCount++;
-                    foreach (QuickTradePairProto trade in village.QuickTrades)
-                    {
-                        if (trade.MinReputationRequired > village.MaxReputation)
-                        {
-                            invalidCount++;
-                            builder.AppendLine(
-                                "  " + WorldMapQuickTradesTarget + ": needs repair; village=" + village.Id +
-                                "; trade=" + trade.Id + "; min-reputation=" + trade.MinReputationRequired +
-                                "; max-reputation=" + village.MaxReputation +
-                                "; confidence=type-specific");
-                        }
-                    }
-                }
+                return new SaveRepairFinding(
+                    WorldMapQuickTradesTarget,
+                    SaveRepairStatus.Unavailable,
+                    0,
+                    failure);
+            }
 
-                if (invalidCount == 0)
-                {
-                    builder.AppendLine("  " + WorldMapQuickTradesTarget + ": clean; villages-scanned=" + villageCount);
-                }
-            }
-            catch (Exception exception)
+            string detail = "villages-scanned=" + villageCount;
+            if (invalid.Count != 0)
             {
-                builder.AppendLine("  " + WorldMapQuickTradesTarget + ": unavailable; " + exception.GetType().Name);
+                WorldMapQuickTradeCandidate first = invalid[0];
+                detail += "; first=" + first.Village.Id + "/" + first.Trade.Id +
+                          "; min-reputation=" + first.Trade.MinReputationRequired +
+                          "; max-reputation=" + first.Village.MaxReputation +
+                          "; confidence=type-specific";
             }
+
+            return new SaveRepairFinding(
+                WorldMapQuickTradesTarget,
+                invalid.Count == 0 ? SaveRepairStatus.Clean : SaveRepairStatus.NeedsRepair,
+                invalid.Count,
+                detail);
         }
 
-        private string RepairWorldMapQuickTrades(string outputSaveName, string outputPath)
+        private SaveRepairMutation RepairWorldMapQuickTradesMutation()
         {
-            var invalid = new List<(WorldMapVillageProto village, QuickTradePairProto trade)>();
-            try
+            if (!TryCollectImpossibleQuickTrades(
+                    out List<WorldMapQuickTradeCandidate> invalid,
+                    out _,
+                    out string failure))
             {
-                foreach (WorldMapVillageProto village in m_protos.All<WorldMapVillageProto>())
-                {
-                    foreach (QuickTradePairProto trade in village.QuickTrades)
-                    {
-                        if (trade.MinReputationRequired > village.MaxReputation)
-                        {
-                            invalid.Add((village, trade));
-                        }
-                    }
-                }
-            }
-            catch (Exception exception)
-            {
-                return "World-map quick-trade validation failed (" + exception.GetType().Name + "); no repaired copy was queued.";
+                return SaveRepairMutation.Failed("World-map quick-trade validation failed (" + failure + "); no repaired copy was queued.");
             }
 
             if (invalid.Count == 0)
             {
-                return "World-map quick trades are clean; no repaired copy was queued.";
+                return SaveRepairMutation.Failed("World-map quick trades are clean; no repaired copy was queued.");
             }
 
             FieldInfo? minReputationField = typeof(QuickTradePairProto).GetField(
                 nameof(QuickTradePairProto.MinReputationRequired),
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (minReputationField is null || !minReputationField.IsInitOnly)
+            if (minReputationField is null || minReputationField.FieldType != typeof(int) || !minReputationField.IsInitOnly)
             {
-                return "World-map quick-trade repair refused because the audited immutable field shape changed; no repaired copy was queued.";
+                return SaveRepairMutation.Failed(
+                    "World-map quick-trade repair refused because the audited immutable field shape changed; no repaired copy was queued.");
             }
 
             try
             {
-                foreach ((WorldMapVillageProto village, QuickTradePairProto trade) item in invalid)
+                foreach (WorldMapQuickTradeCandidate item in invalid)
                 {
-                    minReputationField.SetValue(item.trade, item.village.MaxReputation);
-                }
-
-                foreach ((WorldMapVillageProto village, QuickTradePairProto trade) item in invalid)
-                {
-                    if (item.trade.MinReputationRequired > item.village.MaxReputation)
-                    {
-                        return "World-map quick-trade repair did not reach its postcondition; no repaired copy was queued. Do not save this instance.";
-                    }
+                    minReputationField.SetValue(item.Trade, item.Village.MaxReputation);
                 }
             }
             catch (Exception exception)
             {
                 m_log.Exception(exception, "World-map quick-trade repair failed; no safe save was produced.");
-                return "World-map quick-trade repair failed (" + exception.GetType().Name + "); do not save this instance.";
+                return SaveRepairMutation.Failed(
+                    "World-map quick-trade repair failed (" + exception.GetType().Name + "); no repaired copy was queued.");
             }
 
             m_log.Info("Clamped " + invalid.Count + " impossible world-map quick-trade reputation requirement(s).");
-            return QueueRepairedCopy(WorldMapQuickTradesTarget, outputSaveName, outputPath, invalid.Count);
+            return SaveRepairMutation.SucceededWith(invalid.Count);
+        }
+
+        private SaveRepairFinding InspectStaleTajsConfig()
+        {
+            if (!TryFindStaleTajsConfigs(out List<object> configs, out bool hasUnknownShape, out string failure))
+            {
+                return new SaveRepairFinding(
+                    StaleTajsConfigTarget,
+                    SaveRepairStatus.Unavailable,
+                    0,
+                    failure);
+            }
+
+            if (hasUnknownShape)
+            {
+                return new SaveRepairFinding(
+                    StaleTajsConfigTarget,
+                    SaveRepairStatus.Unsupported,
+                    configs.Count,
+                    "a TajsTweaks ModJsonConfig contains an unknown parameter; no config values will be changed");
+            }
+
+            return new SaveRepairFinding(
+                StaleTajsConfigTarget,
+                configs.Count == 0 ? SaveRepairStatus.Clean : SaveRepairStatus.NeedsRepair,
+                configs.Count,
+                configs.Count == 0
+                    ? "no allow-listed legacy ModJsonConfig values found"
+                    : "allow-listed legacy ModJsonConfig values found; unknown config values remain untouched");
+        }
+
+        private SaveRepairMutation RepairStaleTajsConfig()
+        {
+            if (!TryFindStaleTajsConfigs(out List<object> configs, out bool hasUnknownShape, out string failure))
+            {
+                return SaveRepairMutation.Failed("Stale Tajs config inspection failed closed (" + failure + "); no changes made.");
+            }
+            if (hasUnknownShape)
+            {
+                return SaveRepairMutation.Failed("Stale Tajs config contains an unknown parameter; no changes made.");
+            }
+            if (configs.Count == 0)
+            {
+                return SaveRepairMutation.Failed("No known stale Tajs config was found; no changes made.");
+            }
+
+            if (!LegacySaveCallbackMigration.RemoveResolverObjects(
+                    m_resolver,
+                    IsKnownStaleTajsConfig,
+                    out int removedCount,
+                    out failure))
+            {
+                return SaveRepairMutation.Failed("Stale Tajs config cleanup was refused (" + failure + "); no safe save was produced.");
+            }
+
+            if (!TryFindStaleTajsConfigs(out List<object> remaining, out bool hasUnknownRemaining, out failure))
+            {
+                return SaveRepairMutation.Failed("Stale Tajs config verification failed closed (" + failure + "); no repaired copy was queued.");
+            }
+            if (hasUnknownRemaining || remaining.Count != 0)
+            {
+                return SaveRepairMutation.Failed("Known stale Tajs config remained in the resolver; no repaired copy was queued.");
+            }
+
+            m_log.Info("Removed " + configs.Count + " known stale Tajs ModJsonConfig instance(s).");
+            return SaveRepairMutation.SucceededWith(Math.Max(1, Math.Min(configs.Count, removedCount)));
+        }
+
+        private bool TryFindStaleTajsConfigs(out List<object> configs, out bool hasUnknownShape, out string failure)
+        {
+            hasUnknownShape = false;
+            if (!LegacySaveCallbackMigration.TryFindResolverObjects(
+                    m_resolver,
+                    IsTajsTweaksConfig,
+                    out List<object> allConfigs,
+                    out failure))
+            {
+                configs = new List<object>();
+                return false;
+            }
+
+            configs = new List<object>();
+            foreach (object config in allConfigs)
+            {
+                if (IsKnownStaleTajsConfig(config))
+                {
+                    configs.Add(config);
+                }
+                else if (config is ModJsonConfig modConfig && modConfig.GetSavedValues().Count != 0)
+                {
+                    hasUnknownShape = true;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsTajsTweaksConfig(object value) =>
+            value is ModJsonConfig config &&
+            string.Equals(config.ModId, "TajsTweaks", StringComparison.Ordinal);
+
+        private static bool IsKnownStaleTajsConfig(object value)
+        {
+            if (value is not ModJsonConfig config ||
+                !string.Equals(config.ModId, "TajsTweaks", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            // TajsTweaks used to serialize this one setting through ModJsonConfig. During load
+            // without a current config.json, 0.8.7b keeps those values in GetSavedValues() while
+            // Parameters is empty. Inspect the saved values, not only the schema definitions.
+            // Remove only this exact legacy shape; unknown/future values fail closed.
+            var values = config.GetSavedValues();
+            if (values.Count != 1)
+            {
+                return false;
+            }
+
+            foreach (KeyValuePair<string, object> entry in values)
+            {
+                // The historical config.json declared this as an integer. A matching key with a
+                // different value type is an unknown shape and must remain untouched.
+                if (!string.Equals(entry.Key, "unlocked_speed_max", StringComparison.Ordinal) ||
+                    !(entry.Value is int))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool TryCollectImpossibleQuickTrades(
+            out List<WorldMapQuickTradeCandidate> invalid,
+            out int villageCount,
+            out string failure)
+        {
+            invalid = new List<WorldMapQuickTradeCandidate>();
+            villageCount = 0;
+            failure = string.Empty;
+            try
+            {
+                foreach (WorldMapVillageProto? village in m_protos.All<WorldMapVillageProto>())
+                {
+                    if (village is null || village.QuickTrades.IsNotValid)
+                    {
+                        failure = "a village or its quick-trade collection had an unsupported shape";
+                        return false;
+                    }
+
+                    villageCount++;
+                    foreach (QuickTradePairProto? trade in village.QuickTrades)
+                    {
+                        if (trade is null)
+                        {
+                            failure = "a quick-trade collection contained an unknown entry";
+                            return false;
+                        }
+
+                        if (trade.MinReputationRequired > village.MaxReputation)
+                        {
+                            invalid.Add(new WorldMapQuickTradeCandidate(village, trade));
+                        }
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception exception)
+            {
+                failure = exception.GetType().Name;
+                return false;
+            }
         }
 
         private string QueueRepairedCopy(string targetId, string outputSaveName, string outputPath, int changedCount = 1)
@@ -409,12 +746,24 @@ namespace TajsCOI.Core.SaveRepair
             }
         }
 
-        private bool TryPrepareNewSave(string outputSaveName, out string outputPath, out string failure)
+        private bool TryPrepareNewSave(
+            string outputSaveName,
+            out string outputPath,
+            out string manifestPath,
+            out string failure)
         {
             outputPath = string.Empty;
+            manifestPath = string.Empty;
             failure = string.Empty;
             try
             {
+                if (string.IsNullOrWhiteSpace(outputSaveName) ||
+                    outputSaveName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                {
+                    failure = "The requested output save name is invalid.";
+                    return false;
+                }
+
                 outputPath = m_fileSystemHelper.GetSaveFilePath(outputSaveName, m_saveManager.GameName);
                 if (File.Exists(outputPath))
                 {
@@ -429,6 +778,13 @@ namespace TajsCOI.Core.SaveRepair
                         StringComparison.OrdinalIgnoreCase))
                 {
                     failure = "Refusing to overwrite the currently loaded save. Choose a new save name.";
+                    return false;
+                }
+
+                manifestPath = outputPath + ".tajs-repair.txt";
+                if (File.Exists(manifestPath))
+                {
+                    failure = "Refusing to overwrite an existing repair manifest. Choose a new save name.";
                     return false;
                 }
 
@@ -469,9 +825,15 @@ namespace TajsCOI.Core.SaveRepair
             }
         }
 
-        private static MethodInfo? FindCallbackMethod(Type legacyType, string callbackName) => legacyType.GetMethod(
-            callbackName,
-            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        private static MethodInfo? FindCallbackMethod(Type legacyType, string callbackName)
+        {
+            MethodInfo? callback = legacyType.GetMethod(
+                callbackName,
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly);
+            return callback is not null && !callback.IsStatic && callback.ReturnType == typeof(void)
+                ? callback
+                : null;
+        }
 
         private int CountResolvedObjectsOfType(Type type)
         {
@@ -504,6 +866,9 @@ namespace TajsCOI.Core.SaveRepair
             "ship-auto-explore" => ShipAutoExploreTarget,
             "quick_trades" => WorldMapQuickTradesTarget,
             "world-map-quick-trades" => WorldMapQuickTradesTarget,
+            "tajs_config" => StaleTajsConfigTarget,
+            "stale-tajs-config" => StaleTajsConfigTarget,
+            "stale_config" => StaleTajsConfigTarget,
             _ => targetId.Trim().ToLowerInvariant(),
         };
 
@@ -572,6 +937,18 @@ namespace TajsCOI.Core.SaveRepair
             public int ResolverCount { get; }
             public int EventCount { get; }
             public string Detail { get; }
+        }
+
+        private sealed class WorldMapQuickTradeCandidate
+        {
+            public WorldMapQuickTradeCandidate(WorldMapVillageProto village, QuickTradePairProto trade)
+            {
+                Village = village;
+                Trade = trade;
+            }
+
+            public WorldMapVillageProto Village { get; }
+            public QuickTradePairProto Trade { get; }
         }
     }
 }

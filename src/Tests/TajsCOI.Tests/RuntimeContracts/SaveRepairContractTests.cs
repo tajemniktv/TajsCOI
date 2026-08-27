@@ -3,12 +3,17 @@
 // All Rights Reserved.
 
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using Mafi;
 using Mafi.Collections;
+using Mafi.Collections.ImmutableCollections;
 using Mafi.Core;
+using Mafi.Core.Mods;
 using Mafi.Core.Prototypes;
 using Mafi.Core.SaveGame;
+using Mafi.Core.World.Entities;
+using Mafi.Core.World.QuickTrade;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Core.SaveRepair;
 using Xunit;
@@ -89,6 +94,47 @@ namespace TajsCOI.Tests.RuntimeContracts
                 "m_instancedToBeDisposed",
                 typeof(Lyst<object>),
                 isStatic: false);
+        }
+
+        [Fact]
+        public void SaveRepairDataSeamsKeepTheirAudited087bShapes()
+        {
+            RuntimeContractAssertions.RequireField(
+                typeof(QuickTradePairProto),
+                nameof(QuickTradePairProto.MinReputationRequired),
+                typeof(int),
+                isStatic: false);
+            FieldInfo reputation = typeof(QuickTradePairProto).GetField(
+                nameof(QuickTradePairProto.MinReputationRequired),
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
+            Assert.True(reputation.IsInitOnly, "Quick-trade reputation must remain an immutable 0.8.7b prototype field.");
+
+            RuntimeContractAssertions.RequireField(
+                typeof(WorldMapVillageProto),
+                nameof(WorldMapVillageProto.QuickTrades),
+                typeof(ImmutableArray<QuickTradePairProto>),
+                isStatic: false);
+            RuntimeContractAssertions.RequireProperty(
+                typeof(ModJsonConfig),
+                nameof(ModJsonConfig.ModId),
+                typeof(string),
+                isStatic: false);
+            RuntimeContractAssertions.RequireProperty(
+                typeof(ModJsonConfig),
+                nameof(ModJsonConfig.Parameters),
+                typeof(IReadOnlyDictionary<string, ModJsonConfigParam>),
+                isStatic: false);
+        }
+
+        [Fact]
+        public void SaveableCallbackRecordRetainsOwnerDeclaringTypeAndMethodName()
+        {
+            Type callbackSaveData = typeof(EventBase<>).MakeGenericType(typeof(Action))
+                .GetNestedType("CallbackSaveData", BindingFlags.Public | BindingFlags.NonPublic)!;
+            Assert.NotNull(callbackSaveData);
+            RuntimeContractAssertions.RequireField(callbackSaveData, "Owner", typeof(object), isStatic: false);
+            RuntimeContractAssertions.RequireField(callbackSaveData, "DeclaringType", typeof(Type), isStatic: false);
+            RuntimeContractAssertions.RequireField(callbackSaveData, "MethodName", typeof(string), isStatic: false);
         }
     }
 }

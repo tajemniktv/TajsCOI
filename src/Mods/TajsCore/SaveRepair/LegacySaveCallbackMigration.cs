@@ -47,9 +47,28 @@ namespace TajsCOI.Core.SaveRepair
                 return false;
             }
 
-            foreach (object callbackOwner in activeCallbackOwners)
+            var callbacks = new List<Tuple<object, Action>>(activeCallbackOwners.Count);
+            try
             {
-                var callback = (Action)Delegate.CreateDelegate(typeof(Action), callbackOwner, callbackMethod);
+                // Resolve every delegate before touching the event. A corrupt callback entry
+                // must not leave an earlier entry detached as a side effect.
+                foreach (object callbackOwner in activeCallbackOwners)
+                {
+                    callbacks.Add(Tuple.Create(
+                        callbackOwner,
+                        (Action)Delegate.CreateDelegate(typeof(Action), callbackOwner, callbackMethod)));
+                }
+            }
+            catch (Exception exception)
+            {
+                failure = "a legacy callback delegate had an unsupported shape: " + exception.GetType().Name;
+                return false;
+            }
+
+            foreach (Tuple<object, Action> callbackEntry in callbacks)
+            {
+                object callbackOwner = callbackEntry.Item1;
+                Action callback = callbackEntry.Item2;
                 remove.Invoke(source, new object[] { callbackOwner, callback });
                 if (IsCallbackRegistered(source, ownerType, callbackOwner, callbackMethod) ||
                     IsCallbackSaveDataRegistered(source, ownerType, callbackOwner, callbackMethod.Name))
@@ -107,6 +126,16 @@ namespace TajsCOI.Core.SaveRepair
                 return false;
             }
 
+            // Validate every candidate before touching any event. A corrupt callback entry in a
+            // later event must not leave an earlier event partially detached.
+            foreach (IEvent source in sources)
+            {
+                if (!TryValidateCallbackDetachment(source, ownerType, callbackMethod, out failure))
+                {
+                    return false;
+                }
+            }
+
             foreach (IEvent source in sources)
             {
                 if (!TryDetachCallback(
@@ -131,6 +160,38 @@ namespace TajsCOI.Core.SaveRepair
             }
 
             return true;
+        }
+
+        private static bool TryValidateCallbackDetachment(
+            IEvent source,
+            Type ownerType,
+            MethodInfo callbackMethod,
+            out string failure)
+        {
+            failure = string.Empty;
+            if (!TryFindCallbackOwners(
+                    source,
+                    ownerType,
+                    callbackMethod.Name,
+                    out List<object> owners,
+                    out failure))
+            {
+                return false;
+            }
+
+            try
+            {
+                foreach (object owner in owners)
+                {
+                    _ = (Action)Delegate.CreateDelegate(typeof(Action), owner, callbackMethod);
+                }
+                return true;
+            }
+            catch (Exception exception)
+            {
+                failure = "a legacy callback delegate had an unsupported shape: " + exception.GetType().Name;
+                return false;
+            }
         }
 
         internal static bool TryInspectCallbacksFromResolvedEvents(
@@ -272,6 +333,289 @@ namespace TajsCOI.Core.SaveRepair
             }
 
             return true;
+        }
+
+        /// <summary>
+        ///     Finds resolver-owned objects by a narrowly supplied predicate. This is used for
+        ///     shared runtime types such as ModJsonConfig where removing every object of the CLR
+        ///     type would also remove unrelated mods' configurations.
+        /// </summary>
+        internal static bool TryFindResolverObjects(
+            DependencyResolver resolver,
+            Func<object, bool> predicate,
+            out List<object> matches,
+            out string failure)
+        {
+            matches = new List<object>();
+            failure = string.Empty;
+            if (resolver is null || predicate is null)
+            {
+                failure = "resolver or object predicate was unavailable";
+                return false;
+            }
+
+            if (!TryGetResolverCollections(
+                    resolver,
+                    out object registeredMap,
+                    out object realMap,
+                    out object resolvedObjects,
+                    out object multiInstanceDeps,
+                    out object disposableObjects,
+                    out failure))
+            {
+                return false;
+            }
+
+            try
+            {
+                AddMatchingResolverObjects(registeredMap, predicate, matches, mapValues: true, failure: ref failure);
+                AddMatchingResolverObjects(realMap, predicate, matches, mapValues: true, failure: ref failure);
+                AddMatchingResolverObjects(resolvedObjects, predicate, matches, mapValues: false, failure: ref failure);
+                AddMatchingResolverObjects(multiInstanceDeps, predicate, matches, mapValues: false, failure: ref failure);
+                AddMatchingResolverObjects(disposableObjects, predicate, matches, mapValues: false, failure: ref failure);
+                if (failure.Length != 0)
+                {
+                    matches.Clear();
+                    return false;
+                }
+            }
+            catch (Exception exception)
+            {
+                matches.Clear();
+                failure = "resolver collections could not be inspected: " + exception.GetType().Name;
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        ///     Removes only resolver entries selected by a trusted predicate. Every collection is
+        ///     validated before the first mutation, so an unknown/corrupt collection shape leaves
+        ///     the resolver untouched.
+        /// </summary>
+        internal static bool RemoveResolverObjects(
+            DependencyResolver resolver,
+            Func<object, bool> predicate,
+            out int removedCount,
+            out string failure)
+        {
+            removedCount = 0;
+            failure = string.Empty;
+            if (!TryGetResolverCollections(
+                    resolver,
+                    out object registeredMap,
+                    out object realMap,
+                    out object resolvedObjects,
+                    out object multiInstanceDeps,
+                    out object disposableObjects,
+                    out failure))
+            {
+                return false;
+            }
+
+            MethodInfo? registeredRemove = registeredMap.GetType().GetMethod("Remove", new[] { typeof(Type) });
+            MethodInfo? realRemove = realMap.GetType().GetMethod("Remove", new[] { typeof(Type) });
+            MethodInfo? resolvedObjectRemove = resolvedObjects.GetType().GetMethod("Remove", new[] { typeof(object) });
+            MethodInfo? multiInstanceRemove = multiInstanceDeps.GetType().GetMethod("Remove", new[] { typeof(object) });
+            MethodInfo? disposableRemove = disposableObjects.GetType().GetMethod("Remove", new[] { typeof(object) });
+            if (registeredRemove is null || realRemove is null || resolvedObjectRemove is null ||
+                multiInstanceRemove is null || disposableRemove is null)
+            {
+                failure = "resolver collection remove methods were unavailable";
+                return false;
+            }
+
+            var matches = new List<object>();
+            if (!TryFindResolverObjects(resolver, predicate, out matches, out failure))
+            {
+                return false;
+            }
+
+            // Validate all map entries and collect keys first. In particular, never remove a
+            // shared ModJsonConfig type key based on its key alone.
+            var registeredKeys = new List<Type>();
+            var realKeys = new List<Type>();
+            if (!CollectMatchingMapKeys(registeredMap, predicate, registeredKeys, out failure) ||
+                !CollectMatchingMapKeys(realMap, predicate, realKeys, out failure) ||
+                !CanEnumerate(resolvedObjects, out failure) ||
+                !CanEnumerate(multiInstanceDeps, out failure) ||
+                !CanEnumerate(disposableObjects, out failure))
+            {
+                return false;
+            }
+
+            try
+            {
+                foreach (Type key in registeredKeys)
+                {
+                    registeredRemove.Invoke(registeredMap, new object[] { key });
+                }
+                foreach (Type key in realKeys)
+                {
+                    realRemove.Invoke(realMap, new object[] { key });
+                }
+
+                removedCount += RemoveMatchingObjects(resolvedObjects, resolvedObjectRemove, predicate);
+                removedCount += RemoveMatchingObjects(multiInstanceDeps, multiInstanceRemove, predicate);
+                removedCount += RemoveMatchingObjects(disposableObjects, disposableRemove, predicate);
+            }
+            catch (Exception exception)
+            {
+                failure = "resolver cleanup failed: " + exception.GetType().Name;
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryGetResolverCollections(
+            DependencyResolver resolver,
+            out object registeredMap,
+            out object realMap,
+            out object resolvedObjects,
+            out object multiInstanceDeps,
+            out object disposableObjects,
+            out string failure)
+        {
+            registeredMap = null!;
+            realMap = null!;
+            resolvedObjects = null!;
+            multiInstanceDeps = null!;
+            disposableObjects = null!;
+            failure = string.Empty;
+            string[] names =
+            {
+                "m_resolvedInstancesByRegisteredType",
+                "m_resolvedInstancesByRealType",
+                "m_resolvedObjects",
+                "m_multiInstanceDeps",
+                "m_instancedToBeDisposed",
+            };
+            var fields = new FieldInfo?[names.Length];
+            for (int index = 0; index < names.Length; index++)
+            {
+                fields[index] = typeof(DependencyResolver).GetField(names[index], BindingFlags.Instance | BindingFlags.NonPublic);
+                if (fields[index] is null)
+                {
+                    failure = "resolver compatibility fields are unavailable";
+                    return false;
+                }
+            }
+
+            var values = new object?[fields.Length];
+            for (int index = 0; index < fields.Length; index++)
+            {
+                values[index] = fields[index]!.GetValue(resolver);
+            }
+            for (int index = 0; index < values.Length; index++)
+            {
+                if (values[index] is null)
+                {
+                    failure = "resolver compatibility collections are unavailable";
+                    return false;
+                }
+            }
+
+            registeredMap = values[0]!;
+            realMap = values[1]!;
+            resolvedObjects = values[2]!;
+            multiInstanceDeps = values[3]!;
+            disposableObjects = values[4]!;
+            return true;
+        }
+
+        private static void AddMatchingResolverObjects(
+            object collection,
+            Func<object, bool> predicate,
+            List<object> matches,
+            bool mapValues,
+            ref string failure)
+        {
+            if (collection is not IEnumerable entries)
+            {
+                failure = "a resolver collection had an unsupported shape";
+                return;
+            }
+
+            foreach (object? entry in entries)
+            {
+                object? value = mapValues ? GetCollectionValue(entry) : entry;
+                if (value is not null && predicate(value) && !ContainsReference(matches, value))
+                {
+                    matches.Add(value);
+                }
+            }
+        }
+
+        private static bool CollectMatchingMapKeys(
+            object map,
+            Func<object, bool> predicate,
+            List<Type> keys,
+            out string failure)
+        {
+            failure = string.Empty;
+            if (map is not IEnumerable entries)
+            {
+                failure = "a resolver map had an unsupported shape";
+                return false;
+            }
+
+            foreach (object? entry in entries)
+            {
+                if (entry is null)
+                {
+                    continue;
+                }
+
+                PropertyInfo? keyProperty = entry.GetType().GetProperty("Key");
+                PropertyInfo? valueProperty = entry.GetType().GetProperty("Value");
+                if (keyProperty is null || valueProperty is null || keyProperty.PropertyType != typeof(Type))
+                {
+                    failure = "a resolver map had an unsupported entry shape";
+                    return false;
+                }
+
+                if (valueProperty.GetValue(entry) is object value && predicate(value) &&
+                    keyProperty.GetValue(entry) is Type key)
+                {
+                    keys.Add(key);
+                }
+            }
+
+            return true;
+        }
+
+        private static bool CanEnumerate(object collection, out string failure)
+        {
+            failure = collection is IEnumerable ? string.Empty : "a resolver collection had an unsupported shape";
+            return failure.Length == 0;
+        }
+
+        private static int RemoveMatchingObjects(
+            object collection,
+            MethodInfo remove,
+            Func<object, bool> predicate)
+        {
+            if (collection is not IEnumerable entries)
+            {
+                throw new InvalidOperationException("resolver collection had an unsupported shape");
+            }
+
+            var values = new List<object>();
+            foreach (object? entry in entries)
+            {
+                if (entry is object value && predicate(value))
+                {
+                    values.Add(value);
+                }
+            }
+
+            foreach (object value in values)
+            {
+                remove.Invoke(collection, new[] { value });
+            }
+            return values.Count;
         }
 
         private static MethodInfo? FindEventMethod(string name)
