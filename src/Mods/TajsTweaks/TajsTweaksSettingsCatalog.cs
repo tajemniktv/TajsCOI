@@ -85,6 +85,7 @@ namespace TajsCOI.Tweaks
         internal const string ShowHudOnFullscreenViews = "show_hud_on_fullscreen_views";
 
         internal const string StorageOverrides = "storage_overrides";
+        internal const string StorageInspectorControls = "storage_inspector_controls";
         internal const string StorageMultiplier = "storage_capacity_multiplier";
         internal const string StorageThroughputMultiplier = "storage_throughput_multiplier";
         internal const string StorageOverrideData = "storage_override_data";
@@ -942,6 +943,16 @@ namespace TajsCOI.Tweaks
                 "Storage",
                 applyMode: SettingApplyMode.RestartGame,
                 flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                StorageInspectorControls,
+                "Advanced storage inspector controls",
+                "Adds numeric logistics entry, fine-grained storage alerts, compatible-product overrides, and safe copy/paste tools to ordinary storage inspectors.",
+                false,
+                "Storage",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
             SettingDescriptor.Float(
                 ModId,
                 DisplayName,

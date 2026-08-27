@@ -29,6 +29,7 @@ using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
 using TajsCOI.Tweaks.Features.Difficulty;
 using TajsCOI.Tweaks.Features.Overclocking;
+using TajsCOI.Tweaks.Features.Storage;
 
 namespace TajsCOI.Tweaks
 {
@@ -320,6 +321,7 @@ namespace TajsCOI.Tweaks
             TryInstallResolved(m_runtime, "EfficiencyOverlay", () => TweaksEfficiencyOverlayFeature.Install(m_resolver));
             TryInstall(m_runtime, "SteamAndExhaustStorage", harmony => TweaksSteamStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "StorageOverrides", harmony => TweaksStorageFeature.Install(harmony, m_resolver));
+            TryInstall(m_runtime, "StorageInspectorControls", harmony => TajsStorageAdvancedFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "GameplayPlusPlusBridge", harmony => TweaksGameplayPlusPlusFeature.Install(harmony, m_resolver));
             TryInstallResolved(
                 m_runtime,
@@ -418,6 +420,7 @@ namespace TajsCOI.Tweaks
             TweaksEfficiencyOverlayFeature.Dispose();
             TweaksStuckTruckRecoveryFeature.ClearDestinations();
             TweaksKeepFullEmptyMarkerFeature.Reset();
+            TajsStorageAdvancedFeature.Reset();
             TweaksHudLayoutFeature.ClearFullscreenState();
             CloseWorldOperationsWindow();
             CloseFleetManagementWindow();

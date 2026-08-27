@@ -83,6 +83,7 @@ namespace TajsCOI.Tweaks
         internal static bool HudBackgrounds;
         internal static bool ShowHudOnFullscreenViews;
         internal static bool StorageOverrides;
+        internal static bool StorageInspectorControls;
         internal static double StorageMultiplier;
         internal static double StorageThroughputMultiplier;
         internal static string StorageOverrideData = string.Empty;
@@ -204,6 +205,7 @@ namespace TajsCOI.Tweaks
             HudBackgrounds = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudBackgrounds);
             ShowHudOnFullscreenViews = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShowHudOnFullscreenViews);
             StorageOverrides = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StorageOverrides);
+            StorageInspectorControls = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StorageInspectorControls);
             StorageMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StorageMultiplier);
             StorageThroughputMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StorageThroughputMultiplier);
             StorageOverrideData = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StorageOverrideData);
@@ -398,6 +400,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.HudBackgrounds: HudBackgrounds = value; break;
                 case TajsTweaksSettingsCatalog.ShowHudOnFullscreenViews: ShowHudOnFullscreenViews = value; break;
                 case TajsTweaksSettingsCatalog.StorageOverrides: StorageOverrides = value; break;
+                case TajsTweaksSettingsCatalog.StorageInspectorControls: StorageInspectorControls = value; break;
                 case TajsTweaksSettingsCatalog.DesignationControls: DesignationControls = value; break;
                 case TajsTweaksSettingsCatalog.HideDesignations: HideDesignations = value; break;
                 case TajsTweaksSettingsCatalog.NotificationFilter: NotificationFilter = value; break;

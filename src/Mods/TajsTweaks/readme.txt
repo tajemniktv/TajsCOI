@@ -10,6 +10,10 @@ Current feature:
 - Optional line-placement limits, pinned-product sorting/filtering/columns/colors, storage
   defaults, bounded resource/tower labels, camera/HUD controls, designation limits, notification
   filters, storage capacity/throughput overrides, mine-truck staging, and stranded-truck recovery.
+- Optional advanced storage inspector controls add whole-number capacity and logistics threshold
+  entry, fine-grained alert choices, compatible-product selection, and guarded configuration
+  copy/paste with previewed bulk application. Inventory quantities are never copied; nuclear-waste
+  storage is excluded.
 - Optional world operations, ship preload/auto-delivery, and native management windows for
   repairs, mines/rigs, settlements, ship cargo, and fleet status/order/scrap/replacement.
   All world, vehicle, and depot mutations use normal game commands/jobs.
