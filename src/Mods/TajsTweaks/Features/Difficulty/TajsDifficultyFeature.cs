@@ -209,45 +209,6 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             return "Queued runtime-safe difficulty reset to " + (useVanilla ? "vanilla defaults" : "original save values") + ".";
         }
 
-        internal string RestoreMember(string memberName, bool useVanilla, bool confirmed)
-        {
-            if (!confirmed)
-            {
-                return "Restoring a difficulty value changes the active save. Repeat with CONFIRM.";
-            }
-            if (!TryFind(memberName, out TajsDifficultyDefinition? definition, out PropertyInfo? property, out IDiffSettingInfo? info))
-            {
-                return "Unknown or unsupported difficulty setting '" + memberName + "'.";
-            }
-            if (definition.ApplyMode is TajsDifficultyApplyMode.NewGameOnly or TajsDifficultyApplyMode.ReloadSave or TajsDifficultyApplyMode.Unsupported)
-            {
-                return definition.DisplayName + " is " + ApplyModeText(definition.ApplyMode) + "; the active save was not changed.";
-            }
-
-            object? value = useVanilla
-                ? GetVanillaConfigValue(property)
-                : m_store.TryGetOriginal(definition.MemberName, property, out object? original)
-                    ? original
-                    : null;
-            if (value is null)
-            {
-                return "No " + (useVanilla ? "vanilla" : "original-save") + " value is available for " + definition.DisplayName + ".";
-            }
-
-            if (property.GetValue(m_applier.DifficultyConfig) is object current && ValuesEqual(current, value))
-            {
-                return definition.DisplayName + " is already " + FormatValue(value, info) + ".";
-            }
-
-            if (!TajsDifficultyStateStore.TryEncode(value, out string encoded))
-            {
-                return "The value for " + definition.DisplayName + " cannot be represented safely.";
-            }
-
-            m_inputScheduler.ScheduleInputCmd(new TajsDifficultySetCmd(memberName.Trim(), encoded, true));
-            return "Queued " + definition.DisplayName + " reset to " + FormatValue(value, info) + ".";
-        }
-
         internal string ApplyModeText(TajsDifficultyApplyMode mode) =>
             mode == TajsDifficultyApplyMode.Immediate ? "safe to change now" :
             mode == TajsDifficultyApplyMode.FutureCalculations ? "takes effect on future calculations" :
