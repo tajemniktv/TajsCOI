@@ -28,8 +28,8 @@ For a supported finding, repair into a new save slot with an explicit confirmati
 tajs_save_sanitize_repair <target> CONFIRM <new-save-name>
 ```
 
-Supported targets currently include `infinite_groundwater`, `ship_auto_explore`, and
-`world_map_quick_trades`. Existing `tajs_infinite_groundwater_migrate` and
+Supported targets currently include `infinite_groundwater`, `ship_auto_explore`,
+`world_map_quick_trades`, and the allow-listed `stale_tajs_config` migration. Existing `tajs_infinite_groundwater_migrate` and
 `tajs_ship_auto_explore_migrate` commands remain as detach-only compatibility aliases. Unknown or uncertain save data is
 reported but not changed, and existing/current save files are never overwritten by the Core repair command.
 
@@ -41,11 +41,12 @@ The optional world efficiency overlay adds a dedicated toolbar toggle and compac
 productivity history of buildings and supported vehicles as a percentage, status, or colored marker. Labels are pooled,
 updated on a bounded cadence, and culled by camera distance; buildings and vehicles can be filtered independently.
 
-The optional Infinite ground water setting refills virtual groundwater deposits to their configured
-capacity at game initialization and at the start of each in-game day. It is implemented with
-non-saveable lifecycle callbacks so loaded saves do not retain stale service references. Disable
-the separate standalone InfiniteGroundwater mod before enabling this setting to avoid duplicate
-callbacks.
+The optional groundwater policy keeps the native weather-driven behavior by default and can instead
+regenerate a bounded amount, maintain a minimum reserve, or fill missing capacity each in-game day.
+It is implemented with one gameplay-scoped owner and non-saveable calendar callbacks, so loaded
+saves do not retain stale service references. In sandbox mode, `tajs_groundwater_refill` manually
+fills all deposits to their native capacity. Disable the separate standalone InfiniteGroundwater
+mod before enabling a non-Vanilla policy to avoid duplicate callbacks.
 
 #### Migrating an existing Infinite Groundwater save
 
@@ -110,12 +111,13 @@ can be enabled from the Taj's COI dashboard when you want to try it:
 - streaming save compression;
 - lower product textures;
 - paused-only manual asset trimming; and
-- conservative product-buffer shrinking.
+- conservative product-buffer shrinking;
+- opt-in lazy resource-visualization building.
 
 These features are experimental. Settings that affect startup or save/load behavior may require a
 game restart, and saves should be checked after trying them. Lazy resource-visualization building
-is intentionally not available on the current 0.8.7b target because its first-use initialization
-is synchronous and can freeze when the native resource overlay is opened.
+defers the synchronous first-use initialization on the current 0.8.7b target; profile the first
+overlay activation and verify overlay correctness before enabling it for regular play.
 
 ## Using the suite
 
