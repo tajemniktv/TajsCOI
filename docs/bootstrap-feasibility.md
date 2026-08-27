@@ -30,6 +30,12 @@ Repair and uninstall refuse drifted files. Root `winhttp.dll` and other external
 files are never copied, replaced, elevated, or removed; an operator must manage those files
 separately.
 
+If bootstrap prevents the game from starting, run `scripts/disable-bootstrap.ps1 -GameRoot
+<Captain-of-Industry-root>` after closing the game. The script refuses a running process,
+foreign/malformed manifests, and unknown payload records, then atomically changes only the
+Tajs-owned manifest's `Enabled` flag. It does not remove the payload or touch external Doorstop
+files, so the next launch falls back to the ordinary no-bootstrap installation.
+
 The BCL-only loader and custody operations are covered by unit tests. Successful UnityDoorstop
 startup on the supported 0.8.7b distribution remains an external acceptance step; no game process
 is launched by the repository build.
