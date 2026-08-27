@@ -28,6 +28,7 @@ using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Configuration;
 using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Logging;
+using TajsCOI.Common.Metadata;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
 using TajsCOI.Common.Shortcuts;
@@ -58,6 +59,8 @@ namespace TajsCOI.Tweaks
         private TajsOverclockingFeature? m_overclocking;
         private TajsDifficultyFeature? m_difficulty;
         private bool m_overclockingInitializationAttempted;
+        private bool m_metadataSelectionInitializationAttempted;
+        private EntityMetadataSelectionTool? m_metadataSelection;
         private Option<TajsWorldOperationsWindow> m_worldOperationsWindow;
         private Option<TajsFleetManagementWindow> m_fleetManagementWindow;
         private Option<TajsOverclockingWindow> m_overclockingWindow;
@@ -393,7 +396,9 @@ namespace TajsCOI.Tweaks
         private void OnRenderUpdateEnd(GameTime _)
         {
             EnsureOverclockingFeature();
+            EnsureEntityMetadataSelection();
             m_overclocking?.UpdateSelectionInput();
+            m_metadataSelection?.UpdateInput();
             if (++m_renderTick % 15 == 0)
             {
                 TweaksPinnedProductsFeature.Tick();
@@ -504,12 +509,44 @@ namespace TajsCOI.Tweaks
             }
         }
 
+        private void EnsureEntityMetadataSelection()
+        {
+            if (m_metadataSelectionInitializationAttempted)
+            {
+                return;
+            }
+
+            m_metadataSelectionInitializationAttempted = true;
+            try
+            {
+                if (!m_resolver.TryResolve(out IEntitiesManager? entities) || entities is null ||
+                    !m_resolver.TryResolve(out IEntityMetadataService? metadata) || metadata is null)
+                {
+                    throw new InvalidOperationException("The current scene has no entity manager or Core metadata service.");
+                }
+                m_metadataSelection = new EntityMetadataSelectionTool(entities, metadata);
+            }
+            catch (Exception exception)
+            {
+                m_log.Exception(exception, "Entity metadata rectangle selection is unavailable in this scene.");
+                m_runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsTweaksSettingsCatalog.ModId,
+                        "EntityMetadataSelection",
+                        CompatibilityState.Disabled,
+                        "Gameplay-scene entity manager and Core metadata service",
+                        exception.GetType().Name,
+                        "Metadata browsing remains available; rectangle assignment is disabled."));
+            }
+        }
+
         private void OnTerminate()
         {
             m_settings.Changed -= OnSettingChanged;
             TweaksAutoShipDeliveryFeature.Reset();
             m_infiniteGroundwater.Dispose();
             m_overclocking?.Dispose();
+            m_metadataSelection?.Deactivate();
             m_difficulty?.Dispose();
             TweaksResourceDepositFeature.Dispose();
             TweaksStackerDesignationFeature.Dispose();
@@ -794,9 +831,49 @@ namespace TajsCOI.Tweaks
             }
 
             return int.TryParse(groupId, out int parsedGroup)
-                ? m_overclocking.StartGroupSelection(parsedGroup)
+                ? StartOverclockGroupSelection(parsedGroup)
                 : "Usage: tajs_overclock_group_pick <group-id>";
         }
+
+        private string StartOverclockGroupSelection(int groupId)
+        {
+            m_metadataSelection?.Deactivate();
+            return m_overclocking!.StartGroupSelection(groupId);
+        }
+
+        [ConsoleCommand(
+            documentation: "Starts a screen-space rectangle picker that assigns a metadata group to live entities.",
+            customCommandName: "tajs_metadata_group_pick")]
+        public string MetadataGroupPick(string groupId)
+        {
+            if (m_metadataSelection is null)
+            {
+                return "Metadata rectangle selection is unavailable in this scene.";
+            }
+
+            m_overclocking?.CancelSelection();
+            return m_metadataSelection.Activate(groupId);
+        }
+
+        [ConsoleCommand(
+            documentation: "Cancels an active metadata rectangle picker.",
+            customCommandName: "tajs_metadata_group_pick_cancel")]
+        public string MetadataGroupPickCancel()
+        {
+            if (m_metadataSelection is null)
+            {
+                return "Metadata rectangle selection is unavailable in this scene.";
+            }
+
+            m_metadataSelection.Deactivate();
+            return "Metadata rectangle selection cancelled.";
+        }
+
+        [ConsoleCommand(
+            documentation: "Shows the result of the last metadata rectangle assignment.",
+            customCommandName: "tajs_metadata_group_pick_status")]
+        public string MetadataGroupPickStatus() =>
+            m_metadataSelection?.SelectionStatus ?? "Metadata rectangle selection is unavailable in this scene.";
 
         [ConsoleCommand(
             documentation: "Highlights all supported members of an overclock group in the world.",

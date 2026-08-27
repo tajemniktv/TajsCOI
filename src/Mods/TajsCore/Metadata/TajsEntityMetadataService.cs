@@ -204,7 +204,7 @@ namespace TajsCOI.Core.Metadata
                     error = "The requested metadata group does not exist.";
                     return false;
                 }
-                if (existing.Locked && (name is not null || color is not null || locked != existing.Locked))
+                if (existing.Locked && (name is not null || color is not null || order != existing.Order))
                 {
                     error = "The metadata group is locked.";
                     return false;
@@ -316,6 +316,42 @@ namespace TajsCOI.Core.Metadata
             {
                 return "Entity metadata was not saved: " + exception.Message;
             }
+        }
+
+        [ConsoleCommand(
+            documentation: "Creates a save-scoped entity metadata group.",
+            customCommandName: "tajs_metadata_group_create")]
+        public string CreateMetadataGroup(string? name = null, string? color = null)
+        {
+            return TryCreateGroup(name, color, out EntityMetadataGroup? group, out string error)
+                ? "Created metadata group " + group!.GroupId + " ('" + group.Name + "')."
+                : "Metadata group was not created: " + error;
+        }
+
+        [ConsoleCommand(
+            documentation: "Updates a save-scoped entity metadata group.",
+            customCommandName: "tajs_metadata_group_update")]
+        public string UpdateMetadataGroup(string groupId, string order, string locked, string? name = null, string? color = null)
+        {
+            if (!int.TryParse(order, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedOrder) ||
+                parsedOrder < 0 || !bool.TryParse(locked, out bool parsedLocked))
+            {
+                return "Usage: tajs_metadata_group_update <group-id> <order> <true|false> [name] [color]";
+            }
+
+            return TryUpdateGroup(groupId, name, parsedOrder, color, parsedLocked, out string error)
+                ? "Metadata group " + groupId + " updated."
+                : "Metadata group was not updated: " + error;
+        }
+
+        [ConsoleCommand(
+            documentation: "Deletes an unlocked save-scoped entity metadata group and clears its membership.",
+            customCommandName: "tajs_metadata_group_delete")]
+        public string DeleteMetadataGroup(string groupId)
+        {
+            return TryDeleteGroup(groupId)
+                ? "Metadata group " + groupId + " deleted."
+                : "Metadata group is missing, locked, or could not be persisted.";
         }
 
         public void Dispose()

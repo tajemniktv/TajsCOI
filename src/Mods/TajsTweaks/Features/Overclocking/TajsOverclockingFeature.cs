@@ -770,6 +770,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
         internal void UpdateSelectionInput() => m_selection.UpdateInput();
 
+        internal void CancelSelection() => m_selection.Deactivate();
+
         internal bool IsSelectionActive => m_selection.IsActive;
 
         internal void ClearHighlights()
