@@ -59,6 +59,10 @@ namespace TajsCOI.Tweaks
         internal const string ResourceTowerZoomStart = "resource_tower_zoom_start";
         internal const string ResourceTowerAreaHeight = "resource_tower_area_height";
         internal const string ResourceTowerColors = "resource_tower_colors";
+        internal const string GroundwaterPolicy = "groundwater_policy";
+        internal const string GroundwaterRegenerationPercent = "groundwater_regeneration_percent";
+        internal const string GroundwaterMinimumPercent = "groundwater_minimum_percent";
+        // Retained for one-way migration of the former boolean setting.
         internal const string InfiniteGroundwater = "infinite_groundwater";
         internal const string AllowSteam = "allow_steam";
         internal const string AllowExhaust = "allow_exhaust";
@@ -204,6 +208,14 @@ namespace TajsCOI.Tweaks
             new SettingChoice("percentage", "Percentage"), new SettingChoice("status", "Status"), new SettingChoice("compact", "Compact marker"),
         };
 
+        private static readonly IReadOnlyList<SettingChoice> s_groundwaterPolicies = new[]
+        {
+            new SettingChoice("vanilla", "Vanilla"),
+            new SettingChoice("regenerate", "Regenerate"),
+            new SettingChoice("maintain_minimum", "Maintain minimum"),
+            new SettingChoice("infinite", "Infinite"),
+        };
+
         internal static IReadOnlyList<SettingDescriptor> All { get; } = new SettingDescriptor[]
         {
             SettingDescriptor.Boolean(
@@ -288,7 +300,8 @@ namespace TajsCOI.Tweaks
                 "HUD",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced,
-                componentRequirement: PinnedSort),
+                componentRequirement: PinnedSort,
+                valueFormat: SettingValueFormat.Percentage),
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,
@@ -369,7 +382,8 @@ namespace TajsCOI.Tweaks
                 "HUD",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced,
-                componentRequirement: PinnedLowOnly),
+                componentRequirement: PinnedLowOnly,
+                valueFormat: SettingValueFormat.Percentage),
             SettingDescriptor.Integer(
                 ModId,
                 DisplayName,
@@ -587,7 +601,8 @@ namespace TajsCOI.Tweaks
                 "Overlays",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced,
-                componentRequirement: ResourceOverlay),
+                componentRequirement: ResourceOverlay,
+                valueFormat: SettingValueFormat.Percentage),
             SettingDescriptor.Integer(
                 ModId,
                 DisplayName,
@@ -601,7 +616,8 @@ namespace TajsCOI.Tweaks
                 "Overlays",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced,
-                componentRequirement: ResourceOverlay),
+                componentRequirement: ResourceOverlay,
+                valueFormat: SettingValueFormat.Percentage),
             SettingDescriptor.Float(
                 ModId,
                 DisplayName,
@@ -695,16 +711,56 @@ namespace TajsCOI.Tweaks
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced,
                 componentRequirement: ResourceOverlayTowerAreas),
+            SettingDescriptor.Choice(
+                ModId,
+                DisplayName,
+                GroundwaterPolicy,
+                "Groundwater policy",
+                "Vanilla keeps the native weather-driven groundwater manager. Regenerate adds a deterministic daily refill, maintain minimum tops up low deposits, and infinite fills only the missing amount to native capacity. All callbacks are gameplay-scoped and non-saveable.",
+                "vanilla",
+                s_groundwaterPolicies,
+                "Simulation",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                GroundwaterRegenerationPercent,
+                "Groundwater regeneration per day",
+                "Additional percentage of each deposit's configured capacity added on each in-game day in Regenerate mode.",
+                18.5,
+                0,
+                100,
+                0.5,
+                "Simulation",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: GroundwaterPolicy,
+                valueFormat: SettingValueFormat.Percentage),
+            SettingDescriptor.Integer(
+                ModId,
+                DisplayName,
+                GroundwaterMinimumPercent,
+                "Groundwater minimum",
+                "Minimum percentage of native capacity maintained by Maintain minimum mode.",
+                25,
+                0,
+                100,
+                1,
+                "Simulation",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: GroundwaterPolicy),
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,
                 InfiniteGroundwater,
-                "Infinite ground water",
-                "Refills virtual ground-water deposits to their configured capacity at game initialization and at the start of each in-game day. Uses non-saveable lifecycle callbacks and is disabled by default.",
+                "Infinite groundwater (legacy)",
+                "Compatibility alias for the former boolean setting. A saved true value is migrated once to Groundwater policy = Infinite; use Groundwater policy for new configuration.",
                 false,
-                "Simulation",
+                "Compatibility",
                 applyMode: SettingApplyMode.Immediate,
-                flags: SettingFlags.Advanced),
+                flags: SettingFlags.Advanced | SettingFlags.Experimental),
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,
@@ -890,7 +946,8 @@ namespace TajsCOI.Tweaks
                 "HUD",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced,
-                componentRequirement: HudLayout),
+                componentRequirement: HudLayout,
+                valueFormat: SettingValueFormat.Percentage),
             SettingDescriptor.String(
                 ModId,
                 DisplayName,

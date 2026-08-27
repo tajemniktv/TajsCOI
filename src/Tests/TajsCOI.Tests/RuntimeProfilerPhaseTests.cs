@@ -70,6 +70,21 @@ namespace TajsCOI.Tests
                     string.Empty,
                     RuntimeComponentLifetime.Process),
             };
+            var components = new[]
+            {
+                new RuntimeComponentDescriptor(
+                    "TajsCore",
+                    "Tests",
+                    RuntimeComponentLifetime.Process,
+                    "unit-test seam",
+                    new[] { "TajsCOI.Tests" },
+                    new[] { "TajsCore.Tests" },
+                    Array.Empty<string>()),
+            };
+            var loadedMods = new[]
+            {
+                new LoadedModSnapshot("TajsCore", "1", "Taj's Core", true, string.Empty),
+            };
             string path = Path.Combine(Path.GetTempPath(), "tajs-diagnostics-" + Guid.NewGuid().ToString("N") + ".json");
             try
             {
@@ -81,13 +96,19 @@ namespace TajsCOI.Tests
                     Array.Empty<RuntimeTraceMarker>(),
                     harmony: harmony,
                     capabilities: capabilities,
-                    components: Array.Empty<RuntimeComponentDescriptor>());
+                    components: components,
+                    loadedMods: loadedMods);
 
                 var parsed = new JavaScriptSerializer().DeserializeObject(File.ReadAllText(path)) as Dictionary<string, object>;
                 Assert.NotNull(parsed);
                 Assert.True(parsed!.ContainsKey("tajsDiagnostics"));
-                Assert.Contains("Test.Type.Target", File.ReadAllText(path));
-                Assert.Contains("TajsCore.Tests", File.ReadAllText(path));
+                string json = File.ReadAllText(path);
+                Assert.Contains("Test.Type.Target", json);
+                Assert.Contains("TajsCore.Tests", json);
+                Assert.Contains("\"before\":[\"OtherMod\"]", json);
+                Assert.Contains("\"returnsBoolean\":true", json);
+                Assert.Contains("\"harmonyOwners\":[\"TajsCOI.Tests\"]", json);
+                Assert.Contains("\"loadedMods\":[", json);
             }
             finally
             {

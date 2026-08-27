@@ -373,6 +373,7 @@ namespace TajsCOI.Core.Settings
             string.Equals(left.Category, right.Category, StringComparison.Ordinal) &&
             string.Equals(left.ComponentRequirement, right.ComponentRequirement, StringComparison.Ordinal) &&
             left.ValueType == right.ValueType &&
+            left.ValueFormat == right.ValueFormat &&
             Equals(left.DefaultValue, right.DefaultValue) && Nullable.Equals(left.Minimum, right.Minimum) &&
             Nullable.Equals(left.Maximum, right.Maximum) && Nullable.Equals(left.Step, right.Step) && left.Scope == right.Scope &&
             left.ApplyMode == right.ApplyMode && left.Flags == right.Flags &&

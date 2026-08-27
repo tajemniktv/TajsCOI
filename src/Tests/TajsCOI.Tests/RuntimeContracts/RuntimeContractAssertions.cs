@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using HarmonyLib;
 using Xunit;
 
 namespace TajsCOI.Tests.RuntimeContracts
@@ -44,6 +45,36 @@ namespace TajsCOI.Tests.RuntimeContracts
                 "Runtime contract missing or ambiguous: " + expected + Environment.NewLine +
                 "Loaded game context: " + GameAssemblyContext.Describe());
             return candidates[0];
+        }
+
+        internal static Type RequireType(Assembly assembly, string fullName)
+        {
+            Type? type = assembly?.GetType(fullName, throwOnError: false, ignoreCase: false);
+            Assert.True(
+                type is not null,
+                "Runtime type contract missing: " + fullName + Environment.NewLine +
+                "Loaded game context: " + GameAssemblyContext.Describe());
+            return type!;
+        }
+
+        internal static Patches AssertHarmonyTarget(MethodBase target, string ownerId)
+        {
+            Patches? patches = Harmony.GetPatchInfo(target);
+            Assert.True(
+                patches is not null && HasOwner(patches, ownerId),
+                "Harmony target contract missing owner '" + ownerId + "': " + target + Environment.NewLine +
+                "Loaded game context: " + GameAssemblyContext.Describe());
+            return patches!;
+        }
+
+        internal static void AssertHarmonyOwnerCount(MethodBase target, string ownerId, int expected)
+        {
+            Patches patches = AssertHarmonyTarget(target, ownerId);
+            int count = (patches.Prefixes?.Count(patch => patch.owner == ownerId) ?? 0) +
+                        (patches.Postfixes?.Count(patch => patch.owner == ownerId) ?? 0) +
+                        (patches.Transpilers?.Count(patch => patch.owner == ownerId) ?? 0) +
+                        (patches.Finalizers?.Count(patch => patch.owner == ownerId) ?? 0);
+            Assert.Equal(expected, count);
         }
 
         internal static ConstructorInfo RequireConstructor(Type declaringType, params Type[] parameterTypes)
@@ -140,11 +171,24 @@ namespace TajsCOI.Tests.RuntimeContracts
 
         private static string FormatParameters(IEnumerable<Type> parameterTypes) =>
             string.Join(", ", parameterTypes.Select(type => type.FullName));
+
+        private static bool HasOwner(Patches patches, string ownerId) =>
+            (patches.Prefixes?.Any(patch => patch.owner == ownerId) ?? false) ||
+            (patches.Postfixes?.Any(patch => patch.owner == ownerId) ?? false) ||
+            (patches.Transpilers?.Any(patch => patch.owner == ownerId) ?? false) ||
+            (patches.Finalizers?.Any(patch => patch.owner == ownerId) ?? false);
     }
 
     internal static class GameAssemblyContext
     {
         private static readonly string[] RequiredAssemblies = { "Mafi", "Mafi.Core", "Mafi.Base", "Mafi.Unity" };
+
+        static GameAssemblyContext()
+        {
+            // Emit the exact resolver context once when the contract assembly starts using it;
+            // this makes CI failures actionable even when no individual assertion is reached.
+            Console.WriteLine("[RuntimeContracts] " + Describe());
+        }
 
         internal static string Describe()
         {

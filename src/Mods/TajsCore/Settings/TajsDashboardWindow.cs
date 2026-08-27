@@ -14,7 +14,10 @@ using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Diagnostics;
+using TajsCOI.Common.Localization;
 using TajsCOI.Common.Runtime;
+using TajsCOI.Common.Shortcuts;
+using TajsCOI.Common.Ui;
 using TajsCOI.Common.Settings;
 using UnityEngine.UIElements;
 using Button = Mafi.Unity.UiToolkit.Library.Button;
@@ -98,6 +101,8 @@ namespace TajsCOI.Core.Settings
 
         private readonly ITajsSettings m_settings;
         private readonly ITajsRuntime m_runtime;
+        private readonly IShortcutRegistry m_shortcuts;
+        private readonly ILocalizationService m_localization;
         private readonly GameConsoleCommandsExecutor m_consoleCommands;
         private readonly ScrollColumn m_pageContent;
         private readonly Column m_dashboardShell;
@@ -125,11 +130,15 @@ namespace TajsCOI.Core.Settings
             ITajsSettings settings,
             ITajsRuntime runtime,
             GameConsoleCommandsExecutor consoleCommands,
-            UiRoot uiRoot)
+            UiRoot uiRoot,
+            IShortcutRegistry shortcuts,
+            ILocalizationService localization)
             : base("TajsCOI Dashboard".AsLoc())
         {
             m_settings = settings;
             m_runtime = runtime;
+            m_shortcuts = shortcuts;
+            m_localization = localization;
             m_consoleCommands = consoleCommands;
             m_pageContent = new ScrollColumn().Fill().AlignItemsStretch().Gap(5.pt());
             m_dashboardShell = new Column(6.pt()).Fill().AlignItemsStretch();
@@ -350,6 +359,7 @@ namespace TajsCOI.Core.Settings
             AddPageButton(pageNavigation, DashboardPage.Rendering, "Rendering");
             AddPageButton(pageNavigation, DashboardPage.Compatibility, "Compatibility");
             AddPageButton(pageNavigation, DashboardPage.Logs, "Logs");
+            AddPageButton(pageNavigation, DashboardPage.Shortcuts, "Shortcuts");
 
             Column settingNavigation = new Column(1.pt()).AlignItemsStretch();
             IReadOnlyList<SettingSnapshot> settings = m_settings.GetSnapshot();
@@ -406,6 +416,7 @@ namespace TajsCOI.Core.Settings
                 DashboardPage.Rendering => "Assets/Unity/UserInterface/General/Layers.svg",
                 DashboardPage.Compatibility => "Assets/Unity/UserInterface/General/Handshake.svg",
                 DashboardPage.Logs => "Assets/Unity/UserInterface/General/Message.svg",
+                DashboardPage.Shortcuts => "Assets/Unity/UserInterface/General/Controls.svg",
                 DashboardPage.Settings => "Assets/Unity/UserInterface/General/Mod.svg",
                 _ => "Assets/Unity/UserInterface/General/Mod.svg",
             };
@@ -605,6 +616,12 @@ namespace TajsCOI.Core.Settings
                 case DashboardPage.Logs:
                     EnsureLogsPage();
                     m_logsPage!.Update(ReadProfilerSnapshot());
+                    break;
+                case DashboardPage.Shortcuts:
+                    if (m_builtPages.Add(m_selectedPage))
+                    {
+                        AddShortcutsPage();
+                    }
                     break;
                 case DashboardPage.Settings:
                     // Settings controls are dynamic and may change shape when descriptors are
@@ -839,31 +856,84 @@ namespace TajsCOI.Core.Settings
                 BuildCompatibilitySummary(reports),
                 BuildLoadedModsPanel(mods),
                 BuildRuntimeRegistryPanel(capabilities, components),
-                BuildHarmonyDiagnosticsPanel(harmony));
+                BuildHarmonyDiagnosticsPanel(harmony),
+                BuildLocalizationDiagnosticsPanel());
 
-            Panel details = TajsDashboardUi.Card("Component reports", "Unavailable and degraded components remain visible with their owning mod and reason.");
+            Panel details = TajsDashboardUi.Card(
+                "Component reports",
+                "Unavailable and degraded components remain visible with their owning mod and reason.");
             if (reports.Count == 0)
             {
                 details.Body.Add(new Label("No component reports are available in this scene.".AsLoc()).FontSize(12));
             }
             else
             {
-                foreach (CompatibilityReport report in reports)
-                {
-                    details.Body.Add(
+                var tableModel = new DataTableModel<CompatibilityReport>(
+                    new[]
+                    {
+                        DataTableColumn<CompatibilityReport>.CreateText(
+                            "component",
+                            "Component",
+                            report => report.ModId + " / " + report.ComponentId,
+                            width: DataTableColumnWidth.Constrained(180, 320),
+                            visibilityPriority: 10),
+                        DataTableColumn<CompatibilityReport>.CreateText(
+                            "state",
+                            "State",
+                            report => report.State.ToString(),
+                            width: DataTableColumnWidth.Fixed(110),
+                            visibilityPriority: 9),
+                        DataTableColumn<CompatibilityReport>.CreateText(
+                            "details",
+                            "Details",
+                            report => report.Reason + " | expected: " + report.Expected + " | observed: " + report.Observed,
+                            width: DataTableColumnWidth.Flex(),
+                            visibilityPriority: 1),
+                    },
+                    report => report.ModId + "/" + report.ComponentId,
+                    DataTableSelectionMode.Single);
+                var table = new TajsDataTable<CompatibilityReport>(tableModel);
+                table.Refresh(reports);
+                table.SetAvailableWidth(760f);
+                details.Body.Add(table);
+            }
+            CurrentPage.Add(details);
+        }
+
+        private void AddShortcutsPage()
+        {
+            IReadOnlyList<ShortcutBindingSnapshot> shortcuts = m_shortcuts.GetSnapshot();
+            CurrentPage.Add(
+                TajsDashboardUi.SectionHeader(m_localization.Get("TajsCore", "dashboard.shortcuts.title", "Shortcuts")),
+                new Label(m_localization.Get(
+                        "TajsCore",
+                        "dashboard.shortcuts.description",
+                        "Central bindings are persisted by Core and dispatched only when text fields, modals, tools, and UI do not capture input.")
+                    .AsLoc()).FontSize(12));
+            if (shortcuts.Count == 0)
+            {
+                CurrentPage.Add(new Label("No suite shortcuts are registered yet.".AsLoc()).FontSize(12));
+                return;
+            }
+
+            foreach (ShortcutBindingSnapshot shortcut in shortcuts)
+            {
+                string primary = shortcut.Primary.IsEmpty ? "Unbound" : shortcut.Primary.Serialized;
+                string secondary = shortcut.Secondary.IsEmpty ? string.Empty : " / " + shortcut.Secondary.Serialized;
+                CurrentPage.Add(
+                    new Panel()
+                    {
                         new Row(4.pt())
                         {
                             new Column(1.pt())
                             {
-                                new Label($"{report.ModId} / {report.ComponentId}".AsLoc()).FontBold(),
-                                new Label(report.Reason.AsLoc()).FontSize(11),
-                                new Label($"Expected: {report.Expected} · Observed: {report.Observed}".AsLoc()).FontSize(11),
+                                new Label(shortcut.Descriptor.Label.AsLoc()).FontBold(),
+                                new Label((shortcut.Descriptor.Category + " · " + shortcut.Descriptor.Context).AsLoc()).FontSize(11),
                             }.FlexGrow(1f),
-                            TajsDashboardUi.StatusBadge(report.State.ToString(), CompatibilityColor(report.State)),
-                        }.AlignItemsCenter());
-                }
+                            new Label((primary + secondary).AsLoc()).FontBold(),
+                        }.AlignItemsCenter(),
+                    });
             }
-            CurrentPage.Add(details);
         }
 
         private Panel BuildRuntimeRegistryPanel(
@@ -1017,6 +1087,51 @@ namespace TajsCOI.Core.Settings
             return panel;
         }
 
+        private Panel BuildLocalizationDiagnosticsPanel()
+        {
+            IReadOnlyList<LocalizationCatalog> catalogs = m_localization.GetCatalogSnapshot();
+            IReadOnlyList<string> missing = m_localization.GetMissingKeysSnapshot();
+            Panel panel = TajsDashboardUi.Card(
+                "Localization diagnostics",
+                "Core-owned catalogs are namespaced and fall back from the active locale to its language and default catalog.");
+            Row summary = new Row(3.pt()).Wrap().AlignItemsCenter();
+            summary.Add(
+                TajsDashboardUi.StatusBadge("Locale: " + m_localization.ActiveLocale, TajsDashboardUi.Cyan),
+                TajsDashboardUi.StatusBadge("Catalogs: " + catalogs.Count, TajsDashboardUi.Cyan),
+                TajsDashboardUi.StatusBadge(
+                    "Missing: " + missing.Count,
+                    missing.Count == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Yellow),
+                TajsDashboardUi.StatusBadge(
+                    "Debug keys: " + (m_localization.DebugKeys ? "on" : "off"),
+                    m_localization.DebugKeys ? TajsDashboardUi.Yellow : TajsDashboardUi.Green));
+            panel.Body.Add(summary);
+            if (catalogs.Count > 0)
+            {
+                panel.Body.Add(
+                    new Label(string.Join(", ", catalogs.Select(catalog => catalog.Source + "/" + catalog.Locale)).AsLoc())
+                        .FontSize(11)
+                        .Selectable(true));
+            }
+            if (missing.Count > 0)
+            {
+                panel.Body.Add(
+                    new Label(("Missing keys: " + string.Join(", ", missing.Take(12))).AsLoc())
+                        .FontSize(11)
+                        .Selectable(true));
+            }
+            panel.Body.Add(
+                TajsDashboardUi.ActionButton(
+                    Button.Area,
+                    m_localization.DebugKeys ? "Disable debug keys" : "Enable debug keys",
+                    "Assets/Unity/UserInterface/General/Configure.svg",
+                    () =>
+                    {
+                        m_localization.DebugKeys = !m_localization.DebugKeys;
+                        QueueRefresh();
+                    }));
+            return panel;
+        }
+
         private void AddSettingsPage(IReadOnlyList<SettingSnapshot> settings)
         {
             IReadOnlyList<IGrouping<string, SettingSnapshot>> categories = GetCategories(settings);
@@ -1155,17 +1270,21 @@ namespace TajsCOI.Core.Settings
                     editor = dropdown;
                     break;
 
+                case SettingValueType.Integer:
+                case SettingValueType.Float:
+                    editor = new TajsSettingValueEditor(
+                        descriptor,
+                        snapshot.Value,
+                        value => m_settings.TrySet(descriptor.ModId, descriptor.Key, value),
+                        CultureInfo.CurrentCulture);
+                    break;
+
                 default:
-                    TextField field = new TextField().Text(FormatValue(snapshot.Value));
-                    field.OnEditEnd(text =>
-                    {
-                        SettingSetResult result = Set(descriptor, text, feedback);
-                        if (!result.Success)
-                        {
-                            field.Text(FormatCurrent(descriptor));
-                        }
-                    });
-                    editor = field;
+                    editor = new TajsSettingValueEditor(
+                        descriptor,
+                        snapshot.Value,
+                        value => Set(descriptor, value, feedback),
+                        CultureInfo.CurrentCulture);
                     break;
             }
 
@@ -1706,6 +1825,7 @@ namespace TajsCOI.Core.Settings
             Rendering,
             Compatibility,
             Logs,
+            Shortcuts,
             Settings,
         }
 

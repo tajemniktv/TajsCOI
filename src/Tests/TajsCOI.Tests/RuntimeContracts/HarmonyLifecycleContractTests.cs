@@ -34,15 +34,17 @@ namespace TajsCOI.Tests.RuntimeContracts
                 "ReplaceBufferSize",
                 BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!;
             var harmony = new Harmony(Owner);
-            var runtime = new TajsRuntime();
-            var feature = new SaveLoadReadBufferFeature();
+            var firstRuntime = new TajsRuntime();
+            var secondRuntime = new TajsRuntime();
+            var firstFeature = new SaveLoadReadBufferFeature();
+            var secondFeature = new SaveLoadReadBufferFeature();
 
             try
             {
                 harmony.UnpatchAll(Owner);
                 Assert.Equal(0, CountOwner(Harmony.GetPatchInfo(target), Owner));
 
-                feature.Install(runtime, runtime.GetLogger("TajsPerformance", "SaveLoadReadBuffer"));
+                firstFeature.Install(firstRuntime, firstRuntime.GetLogger("TajsPerformance", "SaveLoadReadBuffer"));
                 Assert.Equal(1, CountOwner(Harmony.GetPatchInfo(target), Owner));
                 Assert.Contains(
                     Harmony.GetPatchInfo(target)!.Transpilers,
@@ -50,9 +52,10 @@ namespace TajsCOI.Tests.RuntimeContracts
 
                 // A second resolver/runtime must observe the compatible process patch rather than
                 // register another transpiler or remove the first one.
-                feature.Install(runtime, runtime.GetLogger("TajsPerformance", "SaveLoadReadBuffer"));
+                secondFeature.Install(secondRuntime, secondRuntime.GetLogger("TajsPerformance", "SaveLoadReadBuffer"));
                 Assert.Equal(1, CountOwner(Harmony.GetPatchInfo(target), Owner));
-                Assert.Equal(1, runtime.GetCompatibilitySnapshot().Count(report => report.ComponentId == "SaveLoadReadBuffer"));
+                Assert.Equal(1, firstRuntime.GetCompatibilitySnapshot().Count(report => report.ComponentId == "SaveLoadReadBuffer"));
+                Assert.Equal(1, secondRuntime.GetCompatibilitySnapshot().Count(report => report.ComponentId == "SaveLoadReadBuffer"));
             }
             finally
             {

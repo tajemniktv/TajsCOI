@@ -85,10 +85,14 @@ namespace TajsCOI.Core.Diagnostics
         {
             foreach (Patch patch in patches ?? Enumerable.Empty<Patch>())
             {
-                string owner = patch.owner ?? string.Empty;
+                string owner = (patch.owner ?? string.Empty).Trim();
                 MethodInfo? patchMethod = patch.PatchMethod;
                 string method = patchMethod is null ? "<unknown>" : FormatHarmonyMethod(patchMethod);
-                if (owner.Length == 0 || method == "<unknown>")
+                // Harmony can retain a patch record after its declaring assembly has
+                // disappeared (for example while a mod is reloading). Keep the owner in
+                // the snapshot even when the method cannot be resolved so shared-target
+                // diagnostics do not silently lose a foreign owner.
+                if (owner.Length == 0)
                 {
                     continue;
                 }
@@ -123,7 +127,22 @@ namespace TajsCOI.Core.Diagnostics
             {
                 return result;
             }
-            return right.Priority.CompareTo(left.Priority);
+            result = right.Priority.CompareTo(left.Priority);
+            if (result != 0)
+            {
+                return result;
+            }
+            result = string.Compare(string.Join(",", left.Before), string.Join(",", right.Before), StringComparison.Ordinal);
+            if (result != 0)
+            {
+                return result;
+            }
+            result = string.Compare(string.Join(",", left.After), string.Join(",", right.After), StringComparison.Ordinal);
+            if (result != 0)
+            {
+                return result;
+            }
+            return left.ReturnsBoolean.CompareTo(right.ReturnsBoolean);
         }
 
         internal static (HarmonyCollisionRisk Risk, string Reason) ClassifyRisk(IReadOnlyList<HarmonyPatchSnapshot> entries)

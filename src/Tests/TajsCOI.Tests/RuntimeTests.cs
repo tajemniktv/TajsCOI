@@ -141,6 +141,10 @@ namespace TajsCOI.Tests
                 RuntimeComponentLifetime.Process);
             Assert.Equal(RuntimeRegistrationStatus.Rejected, runtime.RegisterCapability(conflictingOwner).Status);
             Assert.Contains(runtime.GetCompatibilitySnapshot(), report => report.ComponentId == "RuntimeRegistry");
+            RuntimeCapabilityDescriptor retainedCapability = Assert.Single(runtime.GetCapabilitySnapshot());
+            Assert.Equal(capability.ModId, retainedCapability.ModId);
+            Assert.Equal(capability.ComponentId, retainedCapability.ComponentId);
+            Assert.Equal(RuntimeCapabilityState.Degraded, retainedCapability.State);
 
             RuntimeComponentDescriptor component = new(
                 "TajsCore",
@@ -163,6 +167,29 @@ namespace TajsCOI.Tests
                 Array.Empty<string>(),
                 Array.Empty<string>());
             Assert.Equal(RuntimeRegistrationStatus.Rejected, runtime.RegisterComponent(conflictingComponent).Status);
+        }
+
+        [Fact]
+        public void RuntimeRegistryClearsGameplaySceneMetadataButRetainsProcessMetadata()
+        {
+            var runtime = new TajsRuntime();
+            runtime.RegisterCapability(new RuntimeCapabilityDescriptor(
+                "Tests.Process", "TajsCore", "Tests", RuntimeCapabilityState.Available,
+                "1", "process", string.Empty, RuntimeComponentLifetime.Process));
+            runtime.RegisterCapability(new RuntimeCapabilityDescriptor(
+                "Tests.Scene", "TajsTweaks", "Tests", RuntimeCapabilityState.Available,
+                "1", "scene", string.Empty, RuntimeComponentLifetime.GameplayScene));
+            runtime.RegisterComponent(new RuntimeComponentDescriptor(
+                "TajsCore", "Process", RuntimeComponentLifetime.Process, "", null, null, null));
+            runtime.RegisterComponent(new RuntimeComponentDescriptor(
+                "TajsTweaks", "Scene", RuntimeComponentLifetime.GameplayScene, "", null, null, null));
+
+            runtime.ClearGameplaySceneRegistrations();
+
+            Assert.Contains(runtime.GetCapabilitySnapshot(), value => value.CapabilityId == "Tests.Process");
+            Assert.DoesNotContain(runtime.GetCapabilitySnapshot(), value => value.CapabilityId == "Tests.Scene");
+            Assert.Contains(runtime.GetComponentSnapshot(), value => value.ComponentId == "Process");
+            Assert.DoesNotContain(runtime.GetComponentSnapshot(), value => value.ComponentId == "Scene");
         }
 
         [Fact]

@@ -60,6 +60,10 @@ namespace TajsCOI.Tweaks
         internal static double ResourceTowerZoomStart;
         internal static double ResourceTowerAreaHeight;
         internal static string ResourceTowerColors = string.Empty;
+        internal static GroundwaterPolicy GroundwaterPolicyMode = GroundwaterPolicy.Vanilla;
+        internal static double GroundwaterRegenerationPercent = 18.5;
+        internal static int GroundwaterMinimumPercent = 25;
+        // Kept as a compatibility value while old settings are migrated to GroundwaterPolicyMode.
         internal static bool InfiniteGroundwater;
         internal static bool AllowSteam;
         internal static bool AllowExhaust;
@@ -182,7 +186,32 @@ namespace TajsCOI.Tweaks
             ResourceTowerZoomStart = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceTowerZoomStart);
             ResourceTowerAreaHeight = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceTowerAreaHeight);
             ResourceTowerColors = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ResourceTowerColors);
+            string configuredGroundwaterPolicy = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.GroundwaterPolicy);
             InfiniteGroundwater = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.InfiniteGroundwater);
+            GroundwaterRegenerationPercent = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.GroundwaterRegenerationPercent);
+            GroundwaterMinimumPercent = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.GroundwaterMinimumPercent);
+            GroundwaterPolicyMode = GroundwaterPolicyRules.Parse(configuredGroundwaterPolicy, InfiniteGroundwater);
+            if (InfiniteGroundwater && GroundwaterPolicyMode == GroundwaterPolicy.Infinite &&
+                string.Equals(configuredGroundwaterPolicy, "vanilla", StringComparison.Ordinal))
+            {
+                // Persist the one-way migration so a later explicit Vanilla choice is not
+                // overridden by the old boolean on the next process start.
+                SettingSetResult policyMigration = settings.TrySet(
+                    TajsTweaksSettingsCatalog.ModId,
+                    TajsTweaksSettingsCatalog.GroundwaterPolicy,
+                    GroundwaterPolicyRules.ToSettingValue(GroundwaterPolicy.Infinite));
+                if (policyMigration.Success)
+                {
+                    SettingSetResult legacyMigration = settings.TrySet(
+                        TajsTweaksSettingsCatalog.ModId,
+                        TajsTweaksSettingsCatalog.InfiniteGroundwater,
+                        false);
+                    if (legacyMigration.Success)
+                    {
+                        InfiniteGroundwater = false;
+                    }
+                }
+            }
             AllowSteam = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AllowSteam);
             AllowExhaust = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AllowExhaust);
             WorldOperations = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.WorldOperations);
@@ -383,7 +412,13 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.BridgeCableEnabled: BridgeCableEnabled = value; break;
                 case TajsTweaksSettingsCatalog.CenterDriving: CenterDriving = value; break;
                 case TajsTweaksSettingsCatalog.IgnorePillarRequirements: IgnorePillarRequirements = value; break;
-                case TajsTweaksSettingsCatalog.InfiniteGroundwater: InfiniteGroundwater = value; break;
+                case TajsTweaksSettingsCatalog.InfiniteGroundwater:
+                    InfiniteGroundwater = value;
+                    if (value && GroundwaterPolicyMode == GroundwaterPolicy.Vanilla)
+                    {
+                        GroundwaterPolicyMode = GroundwaterPolicy.Infinite;
+                    }
+                    break;
                 case TajsTweaksSettingsCatalog.AllowSteam: AllowSteam = value; break;
                 case TajsTweaksSettingsCatalog.AllowExhaust: AllowExhaust = value; break;
                 case TajsTweaksSettingsCatalog.WorldOperations: WorldOperations = value; break;
@@ -434,6 +469,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.TransportPillarMaxHeight: TransportPillarMaxHeight = value; break;
                 case TajsTweaksSettingsCatalog.TrainTrackPillarMaxHeight: TrainTrackPillarMaxHeight = value; break;
                 case TajsTweaksSettingsCatalog.TrainTrackPillarSupportDistance: TrainTrackPillarSupportDistance = value; break;
+                case TajsTweaksSettingsCatalog.GroundwaterMinimumPercent: GroundwaterMinimumPercent = value; break;
                 case TajsTweaksSettingsCatalog.OverclockMaxPercent: OverclockMaxPercent = value; break;
                 case TajsTweaksSettingsCatalog.OverclockTransportSpacingBonus: OverclockTransportSpacingBonus = value; break;
                 case TajsTweaksSettingsCatalog.OverclockTransportStackBonus: OverclockTransportStackBonus = value; break;
@@ -520,6 +556,10 @@ namespace TajsCOI.Tweaks
             {
                 EfficiencyOverlayLabelScale = value;
             }
+            if (key == TajsTweaksSettingsCatalog.GroundwaterRegenerationPercent)
+            {
+                GroundwaterRegenerationPercent = value;
+            }
         }
 
         private static void SetText(string key, string value)
@@ -548,6 +588,9 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.ParkingHqOffloadMode: ParkingHqOffloadMode = value; break;
                 case TajsTweaksSettingsCatalog.BridgeScaleMode: BridgeScaleMode = value; break;
                 case TajsTweaksSettingsCatalog.EfficiencyOverlayMode: EfficiencyOverlayMode = value; break;
+                case TajsTweaksSettingsCatalog.GroundwaterPolicy:
+                    GroundwaterPolicyMode = GroundwaterPolicyRules.Parse(value, legacyInfinite: false);
+                    break;
                 case TajsTweaksSettingsCatalog.MutedNotifications:
                     s_mutedNotificationData = value;
                     RebuildParsedValues();

@@ -20,6 +20,7 @@ namespace TajsCOI.Common.Settings
             string description,
             string category,
             SettingValueType valueType,
+            SettingValueFormat valueFormat,
             object defaultValue,
             double? minimum,
             double? maximum,
@@ -37,6 +38,7 @@ namespace TajsCOI.Common.Settings
             Description = RequireText(description, nameof(description));
             Category = RequireText(category, nameof(category));
             ValueType = valueType;
+            ValueFormat = valueFormat;
             Minimum = minimum;
             Maximum = maximum;
             Step = step;
@@ -62,6 +64,7 @@ namespace TajsCOI.Common.Settings
         public string Description { get; }
         public string Category { get; }
         public SettingValueType ValueType { get; }
+        public SettingValueFormat ValueFormat { get; }
         public object DefaultValue { get; }
         public double? Minimum { get; }
         public double? Maximum { get; }
@@ -92,6 +95,7 @@ namespace TajsCOI.Common.Settings
                 description,
                 category,
                 SettingValueType.Boolean,
+                SettingValueFormat.Default,
                 defaultValue,
                 null,
                 null,
@@ -116,7 +120,8 @@ namespace TajsCOI.Common.Settings
             SettingScope scope = SettingScope.Global,
             SettingApplyMode applyMode = SettingApplyMode.Immediate,
             SettingFlags flags = SettingFlags.None,
-            string? componentRequirement = null) =>
+            string? componentRequirement = null,
+            SettingValueFormat valueFormat = SettingValueFormat.Default) =>
             new(
                 modId,
                 modDisplayName,
@@ -125,6 +130,7 @@ namespace TajsCOI.Common.Settings
                 description,
                 category,
                 SettingValueType.Integer,
+                valueFormat,
                 defaultValue,
                 minimum,
                 maximum,
@@ -149,7 +155,8 @@ namespace TajsCOI.Common.Settings
             SettingScope scope = SettingScope.Global,
             SettingApplyMode applyMode = SettingApplyMode.Immediate,
             SettingFlags flags = SettingFlags.None,
-            string? componentRequirement = null) =>
+            string? componentRequirement = null,
+            SettingValueFormat valueFormat = SettingValueFormat.Default) =>
             new(
                 modId,
                 modDisplayName,
@@ -158,6 +165,7 @@ namespace TajsCOI.Common.Settings
                 description,
                 category,
                 SettingValueType.Float,
+                valueFormat,
                 defaultValue,
                 minimum,
                 maximum,
@@ -189,6 +197,7 @@ namespace TajsCOI.Common.Settings
                 description,
                 category,
                 SettingValueType.Choice,
+                SettingValueFormat.Default,
                 defaultValue,
                 null,
                 null,
@@ -219,6 +228,7 @@ namespace TajsCOI.Common.Settings
                 description,
                 category,
                 SettingValueType.String,
+                SettingValueFormat.Default,
                 defaultValue,
                 null,
                 null,
@@ -369,6 +379,12 @@ namespace TajsCOI.Common.Settings
         {
             ValidateNumericShape(minimum, maximum, step);
             ValidateChoiceShape();
+            if (ValueFormat != SettingValueFormat.Default &&
+                ValueType != SettingValueType.Integer &&
+                ValueType != SettingValueType.Float)
+            {
+                throw new ArgumentException("Value formats are supported only for numeric settings.", nameof(ValueFormat));
+            }
         }
 
         private void ValidateNumericShape(double? minimum, double? maximum, double? step)

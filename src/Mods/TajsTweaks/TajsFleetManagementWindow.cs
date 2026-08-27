@@ -19,6 +19,7 @@ using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
 using UnityEngine;
 using UnityEngine.UIElements;
+using TajsCOI.Common.Ui;
 using Column = Mafi.Unity.UiToolkit.Library.Column;
 using Label = Mafi.Unity.UiToolkit.Library.Label;
 using TextField = Mafi.Unity.UiToolkit.Library.TextField;
@@ -48,6 +49,7 @@ namespace TajsCOI.Tweaks
         private readonly UiRoot m_uiRoot;
         private readonly Column m_groups;
         private readonly Label m_status;
+        private readonly DataTableModel<VehicleGroup> m_groupTable;
         private readonly TextField m_source;
         private readonly TextField m_target;
         private readonly TextField m_count;
@@ -68,6 +70,27 @@ namespace TajsCOI.Tweaks
             m_host = host;
             m_entities = entities;
             m_uiRoot = uiRoot;
+            m_groupTable = new DataTableModel<VehicleGroup>(
+                new[]
+                {
+                    DataTableColumn<VehicleGroup>.CreateText(
+                        "prototype",
+                        "Prototype",
+                        group => group.PrototypeId,
+                        sortable: false),
+                    DataTableColumn<VehicleGroup>.Create(
+                        "total",
+                        "Total",
+                        group => group.Total,
+                        sortable: false),
+                    DataTableColumn<VehicleGroup>.Create(
+                        "assigned",
+                        "Assigned",
+                        group => group.Assigned,
+                        sortable: false),
+                },
+                group => group.PrototypeId,
+                DataTableSelectionMode.None);
             WindowSize(new Px(940f), new Px(650f));
 
             Panel panel = new Panel().BodyGap(new Px(5f));
@@ -215,9 +238,14 @@ namespace TajsCOI.Tweaks
                     AddQueueCounts(depot.ReplaceQueue, groups, queued: false);
                 }
 
-                foreach (VehicleGroup group in groups.Values.OrderByDescending(value => value.Total).ThenBy(value => value.PrototypeId, StringComparer.Ordinal))
+                VehicleGroup[] orderedGroups = groups.Values
+                    .OrderByDescending(value => value.Total)
+                    .ThenBy(value => value.PrototypeId, StringComparer.Ordinal)
+                    .ToArray();
+                m_groupTable.SetRows(orderedGroups);
+                foreach (DataTableRow<VehicleGroup> tableRow in m_groupTable.GetVisibleRows())
                 {
-                    m_groups.Add(BuildGroupRow(group));
+                    m_groups.Add(BuildGroupRow(tableRow.Value));
                 }
 
                 int assigned = vehicles.Count(vehicle => vehicle.AssignedTo.HasValue);

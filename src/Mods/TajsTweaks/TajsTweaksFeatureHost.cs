@@ -3,6 +3,7 @@
 // All Rights Reserved.
 
 using System;
+using System.Globalization;
 using System.Linq;
 using HarmonyLib;
 using Mafi;
@@ -23,13 +24,16 @@ using Mafi.Core.World;
 using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Compatibility;
+using TajsCOI.Common.Configuration;
 using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
+using TajsCOI.Common.Shortcuts;
 using TajsCOI.Tweaks.Features.Difficulty;
 using TajsCOI.Tweaks.Features.Overclocking;
 using TajsCOI.Tweaks.Features.Storage;
+using TajsCOI.Tweaks.Configuration;
 
 namespace TajsCOI.Tweaks
 {
@@ -46,6 +50,7 @@ namespace TajsCOI.Tweaks
         private readonly DependencyResolver m_resolver;
         private readonly ITajsRuntime m_runtime;
         private readonly ITajsSettings m_settings;
+        private readonly IShortcutRegistry m_shortcuts;
         private readonly ITajsLogger m_log;
         private readonly TweaksInfiniteGroundwaterFeature m_infiniteGroundwater;
         private TajsOverclockingFeature? m_overclocking;
@@ -53,17 +58,27 @@ namespace TajsCOI.Tweaks
         private bool m_overclockingInitializationAttempted;
         private Option<TajsWorldOperationsWindow> m_worldOperationsWindow;
         private Option<TajsFleetManagementWindow> m_fleetManagementWindow;
+        private Option<TajsOverclockingWindow> m_overclockingWindow;
         private int m_renderTick;
 
-        public TajsTweaksFeatureHost(DependencyResolver resolver, IGameLoopEvents gameLoop, ITajsRuntime runtime, ITajsSettings settings)
+        public TajsTweaksFeatureHost(
+            DependencyResolver resolver,
+            IGameLoopEvents gameLoop,
+            ITajsRuntime runtime,
+            ITajsSettings settings,
+            IConfigurationRegistry configurationRegistry,
+            IShortcutRegistry shortcuts)
         {
             m_resolver = resolver;
             m_runtime = runtime;
             m_settings = settings;
+            m_shortcuts = shortcuts;
             m_log = runtime.GetLogger(TajsTweaksSettingsCatalog.ModId, "FeatureHost");
             m_infiniteGroundwater = new TweaksInfiniteGroundwaterFeature(resolver, gameLoop, m_log);
             TajsTweaksSettingsCatalog.RegisterAll(settings);
             TajsTweaksRuntimeState.Load(settings);
+            RegisterConfigurationHandlers(configurationRegistry);
+            RegisterShortcutMetadata(shortcuts);
             TransportPillarRulesFeature.Initialize();
             settings.Changed += OnSettingChanged;
             gameLoop.RenderUpdateEnd.AddNonSaveable(this, OnRenderUpdateEnd);
@@ -111,6 +126,45 @@ namespace TajsCOI.Tweaks
                     "Typed global settings and independently fail-open feature patches",
                     TajsTweaksSettingsCatalog.All.Count + " settings; " + HarmonyId,
                     "Features are optional and retain vanilla behavior when a target is unavailable."));
+        }
+
+        private static void RegisterConfigurationHandlers(IConfigurationRegistry registry)
+        {
+            TajsConfigurationPipeline.Bind(registry);
+            registry.Register(
+                new ConfigurationHandlerDescriptor(
+                    "TajsTweaks.StorageAdvanced",
+                    TajsTweaksSettingsCatalog.ModId,
+                    1,
+                    entity => entity.TypeId.EndsWith("Storage", StringComparison.Ordinal),
+                    TajsStorageAdvancedConfiguration.ReadBlueprintValues,
+                    TajsStorageAdvancedConfiguration.ApplyBlueprintValues));
+            registry.Register(
+                new ConfigurationHandlerDescriptor(
+                    "TajsTweaks.OverclockPolicy",
+                    TajsTweaksSettingsCatalog.ModId,
+                    1,
+                    entity => entity.TypeId.IndexOf(".Factory.Machines.", StringComparison.Ordinal) >= 0 ||
+                              entity.TypeId.EndsWith("Transport", StringComparison.Ordinal) ||
+                              entity.TypeId.IndexOf(".Buildings.OreSorting.", StringComparison.Ordinal) >= 0 ||
+                              entity.TypeId.IndexOf(".Buildings.Offices.", StringComparison.Ordinal) >= 0 ||
+                              entity.TypeId.IndexOf(".Buildings.Waste.", StringComparison.Ordinal) >= 0,
+                    OverclockingPatches.ReadBlueprintValues,
+                    OverclockingPatches.ApplyBlueprintValues));
+        }
+
+        private static void RegisterShortcutMetadata(IShortcutRegistry registry)
+        {
+            registry.Register(
+                new ShortcutDescriptor(
+                    "TajsTweaks.LinePlacement",
+                    "Line placement",
+                    "Building tools",
+                    ShortcutCombination.TryParse(TajsTweaksRuntimeState.LinePlacementShortcut, out ShortcutCombination primary)
+                        ? primary
+                        : new ShortcutCombination("LEFTALT"),
+                    ShortcutCombination.Empty,
+                    ShortcutActivationContext.Tool));
         }
 
         private static void RegisterDesignationIntegration(ITajsRuntime runtime, bool designationInstalled)
@@ -251,13 +305,32 @@ namespace TajsCOI.Tweaks
             {
                 TweaksAutoShipDeliveryFeature.Reset();
             }
-            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.InfiniteGroundwater)
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.GroundwaterPolicy ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.GroundwaterRegenerationPercent ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.GroundwaterMinimumPercent ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.InfiniteGroundwater)
             {
+                if (change.Descriptor.Key == TajsTweaksSettingsCatalog.GroundwaterPolicy &&
+                    string.Equals(Convert.ToString(change.NewValue, CultureInfo.InvariantCulture), "vanilla", StringComparison.Ordinal))
+                {
+                    // A deliberate return to Vanilla completes the one-way legacy migration and
+                    // prevents the former boolean from re-enabling Infinite on the next start.
+                    m_settings.TrySet(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.InfiniteGroundwater, false);
+                }
                 m_infiniteGroundwater.RefreshFromSettings();
             }
             if (change.Descriptor.Key == TajsTweaksSettingsCatalog.KeepFullEmptyLabelScale)
             {
                 TweaksKeepFullEmptyMarkerFeature.Apply();
+            }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.StorageInspectorControls)
+            {
+                TajsStorageAdvancedFeature.ApplySettings(m_resolver);
+            }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.LinePlacementShortcut &&
+                ShortcutCombination.TryParse(Convert.ToString(change.NewValue, CultureInfo.InvariantCulture), out ShortcutCombination binding))
+            {
+                m_shortcuts.TrySetBinding("TajsTweaks.LinePlacement", binding, ShortcutCombination.Empty);
             }
             if (change.Descriptor.Key == TajsTweaksSettingsCatalog.EfficiencyOverlay ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.EfficiencyOverlayMode ||
@@ -424,6 +497,7 @@ namespace TajsCOI.Tweaks
             TweaksHudLayoutFeature.ClearFullscreenState();
             CloseWorldOperationsWindow();
             CloseFleetManagementWindow();
+            CloseOverclockingWindow();
         }
 
         [ConsoleCommand(
@@ -443,6 +517,11 @@ namespace TajsCOI.Tweaks
             documentation: "Shows supported difficulty values and lifecycle classifications.",
             customCommandName: "tajs_difficulty_status")]
         public string DifficultyStatus() => m_difficulty?.Status() ?? "Native difficulty settings are unavailable in this scene.";
+
+        [ConsoleCommand(
+            documentation: "Refills all groundwater deposits to native capacity; available only in sandbox mode.",
+            customCommandName: "tajs_groundwater_refill")]
+        public string RefillGroundwater() => m_infiniteGroundwater.ManualRefill();
 
         [ConsoleCommand(
             documentation: "Queues one runtime-safe difficulty value. Extreme values require CONFIRM.",
@@ -572,6 +651,41 @@ namespace TajsCOI.Tweaks
             }
 
             return m_overclocking.QueueReset(new EntityId(parsedId), out string message) ? message : "Not queued: " + message;
+        }
+
+        [ConsoleCommand(
+            documentation: "Opens the gameplay-scoped named overclock group and bulk policy manager.",
+            customCommandName: "tajs_overclock_manager")]
+        public string ToggleOverclockingManager()
+        {
+            if (m_overclocking is null)
+            {
+                return OverclockingUnavailableMessage;
+            }
+
+            if (m_overclockingWindow.HasValue && m_overclockingWindow.Value.IsOpen)
+            {
+                CloseOverclockingWindow();
+                return "Overclocking manager: hidden";
+            }
+
+            if (!m_resolver.TryResolve(out UiRoot uiRoot))
+            {
+                return "Overclocking manager is unavailable in this scene.";
+            }
+
+            try
+            {
+                var window = new TajsOverclockingWindow(m_overclocking, uiRoot);
+                window.OnCloseStart += OnOverclockingWindowClose;
+                m_overclockingWindow = window;
+                return "Overclocking manager: shown";
+            }
+            catch (Exception exception)
+            {
+                m_log.Exception(exception, "Overclocking manager failed open.");
+                return "Overclocking manager is unavailable in this scene.";
+            }
         }
 
         [ConsoleCommand(
@@ -981,6 +1095,28 @@ namespace TajsCOI.Tweaks
             window.OnCloseStart -= OnFleetManagementWindowClose;
             window.CloseNoFade();
             m_fleetManagementWindow = Option<TajsFleetManagementWindow>.None;
+        }
+
+        private void OnOverclockingWindowClose(Window window)
+        {
+            if (m_overclockingWindow.HasValue && ReferenceEquals(m_overclockingWindow.Value, window))
+            {
+                window.OnCloseStart -= OnOverclockingWindowClose;
+                m_overclockingWindow = Option<TajsOverclockingWindow>.None;
+            }
+        }
+
+        private void CloseOverclockingWindow()
+        {
+            if (!m_overclockingWindow.HasValue)
+            {
+                return;
+            }
+
+            TajsOverclockingWindow window = m_overclockingWindow.Value;
+            window.OnCloseStart -= OnOverclockingWindowClose;
+            window.CloseNoFade();
+            m_overclockingWindow = Option<TajsOverclockingWindow>.None;
         }
 
         [ConsoleCommand(

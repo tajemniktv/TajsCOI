@@ -173,6 +173,20 @@ namespace TajsCOI.Tweaks.Features.Storage
                         fields &= ~StorageTransferFields.CapacityOverride;
                         reasons.Add("storage " + targetId + ": capacity skipped (" + capacityReason + ")");
                     }
+                    else if (!sourceCapacity.HasValue &&
+                             TajsStorageAdvancedState.GetCapacityOverride(target.Id.Value).HasValue &&
+                             !TajsStorageAdvancedConfiguration.CanClearCapacityOverride(target, out string resetReason))
+                    {
+                        fields &= ~StorageTransferFields.CapacityOverride;
+                        reasons.Add("storage " + targetId + ": capacity reset skipped (" + resetReason + ")");
+                    }
+                }
+
+                if (fields == StorageTransferFields.None)
+                {
+                    skipped++;
+                    reasons.Add("storage " + targetId + ": no selected fields were compatible");
+                    continue;
                 }
 
                 try

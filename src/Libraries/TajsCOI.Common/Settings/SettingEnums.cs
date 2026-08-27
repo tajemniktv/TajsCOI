@@ -15,6 +15,18 @@ namespace TajsCOI.Common.Settings
         String,
     }
 
+    /// <summary>
+    /// Describes how a typed setting value should be presented by a reusable
+    /// editor. This is presentation metadata only; the descriptor's numeric
+    /// bounds and validator remain authoritative.
+    /// </summary>
+    public enum SettingValueFormat
+    {
+        Default,
+        Percentage,
+        ColorComponent,
+    }
+
     public enum SettingScope
     {
         Global,

@@ -22,6 +22,7 @@ namespace TajsCOI.Core.Runtime
         private readonly ConcurrentDictionary<ComponentKey, ITajsLogger> m_loggers = new();
         private readonly ConcurrentDictionary<string, RuntimeCapabilityDescriptor> m_capabilities = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<ComponentKey, RuntimeComponentDescriptor> m_components = new();
+        private readonly ConcurrentDictionary<ComponentKey, byte> m_gameplayComponentKeys = new();
 
         public ITajsLogger GetLogger(string modId, string componentId)
         {
@@ -60,26 +61,37 @@ namespace TajsCOI.Core.Runtime
                     "Capability registered: " + capability.CapabilityId);
             }
 
-            RuntimeCapabilityDescriptor previous = m_capabilities[capability.CapabilityId];
-
-            if (!SameCapabilityOwner(previous, capability))
+            // Use TryUpdate rather than an indexer assignment so concurrent scene
+            // initialization cannot overwrite a newer descriptor or accidentally let a
+            // conflicting owner win based on registration timing.
+            while (m_capabilities.TryGetValue(capability.CapabilityId, out RuntimeCapabilityDescriptor previous))
             {
-                return RejectRegistration(
-                    "Capability '" + capability.CapabilityId + "' is already owned by " +
-                    previous.ModId + "/" + previous.ComponentId + ".");
+                if (!SameCapabilityOwner(previous, capability))
+                {
+                    return RejectRegistration(
+                        "Capability '" + capability.CapabilityId + "' is already owned by " +
+                        previous.ModId + "/" + previous.ComponentId + ".");
+                }
+
+                if (SameCapabilityValues(previous, capability))
+                {
+                    return new RuntimeRegistrationResult(
+                        RuntimeRegistrationStatus.AlreadyRegistered,
+                        "Capability already registered: " + capability.CapabilityId);
+                }
+
+                if (m_capabilities.TryUpdate(capability.CapabilityId, capability, previous))
+                {
+                    return new RuntimeRegistrationResult(
+                        RuntimeRegistrationStatus.Updated,
+                        "Capability updated: " + capability.CapabilityId);
+                }
             }
 
-            if (SameCapabilityValues(previous, capability))
-            {
-                return new RuntimeRegistrationResult(
-                    RuntimeRegistrationStatus.AlreadyRegistered,
-                    "Capability already registered: " + capability.CapabilityId);
-            }
-
-            m_capabilities[capability.CapabilityId] = capability;
-            return new RuntimeRegistrationResult(
-                RuntimeRegistrationStatus.Updated,
-                "Capability updated: " + capability.CapabilityId);
+            // The only expected reason for the value to disappear is an external teardown;
+            // report it visibly instead of pretending that registration succeeded.
+            return RejectRegistration(
+                "Capability '" + capability.CapabilityId + "' disappeared during registration.");
         }
 
         public RuntimeRegistrationResult RegisterComponent(RuntimeComponentDescriptor component)
@@ -92,6 +104,10 @@ namespace TajsCOI.Core.Runtime
             ComponentKey key = CreateKey(component.ModId, component.ComponentId);
             if (m_components.TryAdd(key, component))
             {
+                if (component.Lifetime == RuntimeComponentLifetime.GameplayScene)
+                {
+                    m_gameplayComponentKeys[key] = 0;
+                }
                 return new RuntimeRegistrationResult(
                     RuntimeRegistrationStatus.Added,
                     "Component registered: " + component.ModId + "/" + component.ComponentId);
@@ -138,6 +154,27 @@ namespace TajsCOI.Core.Runtime
                 .ToArray();
 
         public HarmonyInspectionSnapshot GetHarmonyInspectionSnapshot() => HarmonyInspector.Capture();
+
+        public void ClearGameplaySceneRegistrations()
+        {
+            foreach (KeyValuePair<string, RuntimeCapabilityDescriptor> item in m_capabilities.ToArray())
+            {
+                if (item.Value.Lifetime == RuntimeComponentLifetime.GameplayScene)
+                {
+                    m_capabilities.TryRemove(item.Key, out _);
+                }
+            }
+
+            foreach (KeyValuePair<ComponentKey, RuntimeComponentDescriptor> item in m_components.ToArray())
+            {
+                if (item.Value.Lifetime == RuntimeComponentLifetime.GameplayScene)
+                {
+                    m_components.TryRemove(item.Key, out _);
+                    m_gameplayComponentKeys.TryRemove(item.Key, out _);
+                    m_compatibility.TryRemove(item.Key, out _);
+                }
+            }
+        }
 
         private RuntimeRegistrationResult RejectRegistration(string message)
         {
