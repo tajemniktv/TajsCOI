@@ -429,6 +429,7 @@ namespace TajsCOI.Core.Settings
 
             Column pageNavigation = new Column(1.pt()).AlignItemsStretch();
             AddPageButton(pageNavigation, DashboardPage.Overview, "Overview");
+            AddPageButton(pageNavigation, DashboardPage.Bootstrap, "Bootstrap");
             AddPageButton(pageNavigation, DashboardPage.Profiler, "Profiler");
             AddPageButton(pageNavigation, DashboardPage.Performance, "Performance");
             AddPageButton(pageNavigation, DashboardPage.Tweaks, "Tweaks");
@@ -486,6 +487,7 @@ namespace TajsCOI.Core.Settings
             page switch
             {
                 DashboardPage.Overview => "Assets/Unity/UserInterface/General/Home.svg",
+                DashboardPage.Bootstrap => "Assets/Unity/UserInterface/General/Package.svg",
                 DashboardPage.Profiler => "Assets/Unity/UserInterface/Toolbar/Stats.svg",
                 DashboardPage.Performance => "Assets/Unity/UserInterface/General/UptimeStats.svg",
                 DashboardPage.Tweaks => "Assets/Unity/UserInterface/General/Configure.svg",
@@ -626,6 +628,12 @@ namespace TajsCOI.Core.Settings
                     if (m_builtPages.Add(m_selectedPage))
                     {
                         AddOverview(LoadSettings(), LoadReports(), LoadMods(), ReadProfilerSnapshot());
+                    }
+                    break;
+                case DashboardPage.Bootstrap:
+                    if (m_builtPages.Add(m_selectedPage))
+                    {
+                        AddBootstrapPage();
                     }
                     break;
                 case DashboardPage.Profiler:
@@ -839,6 +847,14 @@ namespace TajsCOI.Core.Settings
                 BuildCompatibilitySummary(reports).FlexGrow(1f),
                 BuildLoadedModsPanel(mods).FlexGrow(1f));
             CurrentPage.Add(summaries);
+        }
+
+        private void AddBootstrapPage()
+        {
+            CurrentPage.Add(
+                TajsDashboardUi.SectionHeader("Bootstrap"),
+                new Label("Optional early-load integration and its installation state.".AsLoc()).FontSize(12),
+                TajsDashboardBootstrapPanel.Build(QueueRefresh));
         }
 
         private void AddDomainPage(
@@ -1223,7 +1239,6 @@ namespace TajsCOI.Core.Settings
 
             CurrentPage.Add(
                 TajsDashboardUi.SectionHeader("Settings"),
-                TajsDashboardBootstrapPanel.Build(QueueRefresh),
                 BuildMetadataGroupsPanel(),
                 BuildProfilesPanel(),
                 TajsDashboardUi.Card(
@@ -1905,6 +1920,7 @@ namespace TajsCOI.Core.Settings
         private enum DashboardPage
         {
             Overview,
+            Bootstrap,
             Profiler,
             Performance,
             Tweaks,
