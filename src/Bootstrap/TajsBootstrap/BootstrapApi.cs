@@ -129,6 +129,7 @@ namespace TajsCOI.Bootstrap
                 Path.Combine(root, "0Harmony.dll"),
                 Path.Combine(root, "Captain of Industry_Data", "Managed", "0Harmony.dll"),
                 Path.Combine(root, "Mods", "TajsCore", "0Harmony.dll"),
+                Path.Combine(root, "TajsCOI", "Bootstrap", "0Harmony.dll"),
             };
             return candidates.FirstOrDefault(File.Exists);
         }

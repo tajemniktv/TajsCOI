@@ -5,6 +5,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using TajsCOI.Bootstrap;
 using Xunit;
 
@@ -24,6 +25,21 @@ namespace TajsCOI.Tests
             Assert.DoesNotContain("Mafi.Core", references, StringComparer.OrdinalIgnoreCase);
             Assert.DoesNotContain("0Harmony", references, StringComparer.OrdinalIgnoreCase);
             Assert.DoesNotContain("HarmonyLib", references, StringComparer.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void BootstrapExposesTheUnityDoorstopEntrypoint()
+        {
+            Type? entrypoint = typeof(BootstrapApi).Assembly.GetType("Doorstop.Entrypoint");
+            Assert.NotNull(entrypoint);
+            MethodInfo? start = entrypoint!.GetMethod(
+                "Start",
+                BindingFlags.Public | BindingFlags.Static,
+                binder: null,
+                types: Type.EmptyTypes,
+                modifiers: null);
+            Assert.NotNull(start);
+            Assert.Equal(typeof(void), start!.ReturnType);
         }
 
         [Fact]
