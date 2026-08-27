@@ -112,8 +112,10 @@ namespace TajsCOI.Core.Settings
         private readonly IEntityMetadataService m_metadata;
         private readonly ScrollColumn m_pageContent;
         private readonly Column m_dashboardShell;
+        private Column m_sidebar = null!;
         private readonly ButtonIcon m_minimizeButton;
         private readonly ButtonIcon m_maximizeButton;
+        private readonly ButtonIcon m_sidebarButton;
         private readonly UiComponent m_resizeHandle;
         private readonly Dictionary<DashboardPage, Column> m_pageContainers = new();
         private readonly HashSet<DashboardPage> m_builtPages = new();
@@ -125,9 +127,12 @@ namespace TajsCOI.Core.Settings
         private bool m_refreshQueued;
         private bool m_isMinimized;
         private bool m_isMaximized;
+        private bool m_sidebarCollapsed;
         private bool m_isResizing;
         private float m_lastParentWidth = -1f;
         private float m_lastParentHeight = -1f;
+        private float m_lastViewportWidth = -1f;
+        private float m_lastViewportHeight = -1f;
         private float m_savedWidth = DefaultWindowWidth;
         private float m_savedHeight = DefaultWindowHeight;
         private ProfilerPageView? m_profilerPage;
@@ -165,6 +170,11 @@ namespace TajsCOI.Core.Settings
                     "Assets/Unity/UserInterface/General/Maximize.svg",
                     ToggleMaximized)
                 .ObserveSelected(() => m_isMaximized);
+            m_sidebarButton = new ButtonIcon(
+                    Button.Header,
+                    "Assets/Unity/UserInterface/General/Configure.svg",
+                    ToggleSidebar)
+                .Tooltip("Toggle dashboard navigation".AsLoc());
             m_resizeHandle = new Icon("Assets/Unity/UserInterface/General/ResCornerBR32.png")
                 .AbsolutePosition(null, 2.px(), 2.px(), null)
                 .Width(16.px())
@@ -182,10 +192,12 @@ namespace TajsCOI.Core.Settings
             WindowSize(
                 (hasSavedSize ? m_savedWidth : DefaultWindowWidth).px(),
                 (hasSavedSize ? m_savedHeight : DefaultWindowHeight).px());
+            UpdateResponsiveChrome(hasSavedSize ? m_savedWidth : DefaultWindowWidth);
             MakeMovableAndEnablePositionSaving();
             EnablePinning();
             AddHeaderButton(m_minimizeButton);
             AddHeaderButton(m_maximizeButton);
+            AddHeaderButton(m_sidebarButton);
             CloseOnClickOutside();
             OnCloseStart += _ => m_refreshQueued = false;
             Schedule.Execute(UpdateResponsiveWindowSize).Every(20L);
@@ -221,7 +233,7 @@ namespace TajsCOI.Core.Settings
                     .Height(30.px()),
                 titleText);
 
-            Row actions = new Row(2.pt()).AlignItemsCenter();
+            Row actions = new Row(2.pt()).AlignItemsCenter().Wrap();
             actions.Add(
                 TajsDashboardUi.ActionButton(
                     Button.Area,
@@ -238,7 +250,8 @@ namespace TajsCOI.Core.Settings
 
             Row body = new Row(6.pt()).FlexGrow(1f).AlignItemsStretch();
             BuildPageContainers();
-            body.Add(BuildSidebar(), m_pageContent);
+            m_sidebar = BuildSidebar();
+            body.Add(m_sidebar, m_pageContent);
 
             m_dashboardShell.Add(header, body);
             AddBodySingle(m_dashboardShell);
@@ -289,14 +302,27 @@ namespace TajsCOI.Core.Settings
 
             float parentWidth = Parent.Value.ResolvedWidth;
             float parentHeight = Parent.Value.ResolvedHeight;
+            float viewportWidth = RootElement.resolvedStyle.width;
+            float viewportHeight = RootElement.resolvedStyle.height;
+            if (float.IsNaN(viewportWidth) || float.IsInfinity(viewportWidth))
+            {
+                viewportWidth = -1f;
+            }
+            if (float.IsNaN(viewportHeight) || float.IsInfinity(viewportHeight))
+            {
+                viewportHeight = -1f;
+            }
             if (m_lastParentWidth > 0f && m_lastParentHeight > 0f &&
-                Math.Abs(parentWidth - m_lastParentWidth) < 1f && Math.Abs(parentHeight - m_lastParentHeight) < 1f)
+                Math.Abs(parentWidth - m_lastParentWidth) < 1f && Math.Abs(parentHeight - m_lastParentHeight) < 1f &&
+                Math.Abs(viewportWidth - m_lastViewportWidth) < 1f && Math.Abs(viewportHeight - m_lastViewportHeight) < 1f)
             {
                 return;
             }
 
             m_lastParentWidth = parentWidth;
             m_lastParentHeight = parentHeight;
+            m_lastViewportWidth = viewportWidth;
+            m_lastViewportHeight = viewportHeight;
             float maxWidth = Math.Max(MinimumWindowWidth, parentWidth * 0.96f);
             float maxHeight = Math.Max(MinimumWindowHeight, parentHeight * 0.96f);
             float width = m_isMaximized
@@ -306,6 +332,21 @@ namespace TajsCOI.Core.Settings
                 ? maxHeight
                 : Math.Min(Math.Max(MinimumWindowHeight, m_savedHeight), maxHeight);
             WindowSize(width.px(), height.px());
+            UpdateResponsiveChrome(width);
+        }
+
+        private void ToggleSidebar()
+        {
+            m_sidebarCollapsed = !m_sidebarCollapsed;
+            UpdateResponsiveChrome(GetCurrentWindowWidth());
+        }
+
+        private void UpdateResponsiveChrome(float width)
+        {
+            bool compact = width < 920f;
+            m_sidebar.RootElement.style.width = new StyleLength(new Length(compact ? 170f : 214f, LengthUnit.Pixel));
+            m_sidebarButton.SetVisible(compact || m_sidebarCollapsed);
+            m_sidebar.SetVisible(!m_sidebarCollapsed);
         }
 
         private float GetCurrentWindowWidth() => Frame.ResolvedWidth > 1f ? Frame.ResolvedWidth : DefaultWindowWidth;
@@ -1197,202 +1238,11 @@ namespace TajsCOI.Core.Settings
                 : $"Settings · {m_selectedCategory}");
         }
 
-        private Panel BuildMetadataGroupsPanel()
-        {
-            Panel panel = TajsDashboardUi.Card(
-                "Entity metadata groups",
-                "Save-scoped groups organize aliases and notes. Use the rectangle action to assign a group to live entities; selection is disabled for locked groups.");
-            IReadOnlyList<EntityMetadataGroup> groups = m_metadata.GetGroupSnapshot();
-            IReadOnlyList<EntityMetadataRecord> records = m_metadata.GetEntityMetadataSnapshot();
-            Dictionary<string, int> members = records
-                .Where(record => record.GroupId is not null)
-                .GroupBy(record => record.GroupId!, StringComparer.Ordinal)
-                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+        private Panel BuildMetadataGroupsPanel() =>
+            TajsDashboardMetadataPanel.Build(m_metadata, ExecuteConsoleCommand, QueueRefresh);
 
-            TextField name = new TextField().Placeholder("New group name".AsLoc()).MaxWidth(220.px());
-            TextField color = new TextField().Placeholder("Color #66C2A5".AsLoc()).MaxWidth(150.px());
-            Label createFeedback = new Label().FontSize(11).Hide();
-            Row createRow = new Row(3.pt()).AlignItemsCenter();
-            createRow.Add(
-                name,
-                color,
-                TajsDashboardUi.ActionButton(
-                    Button.Area,
-                    "Create group",
-                    "Assets/Unity/UserInterface/General/Configure.svg",
-                    () =>
-                    {
-                        if (m_metadata.TryCreateGroup(name.GetText(), color.GetText(), out _, out string error))
-                        {
-                            createFeedback.Value("Metadata group created.".AsLoc()).Show();
-                            name.Text(string.Empty);
-                            color.Text(string.Empty);
-                            QueueRefresh();
-                        }
-                        else
-                        {
-                            createFeedback.Value(("Group was not created: " + error).AsLoc()).Show();
-                        }
-                    }),
-                createFeedback);
-            panel.Body.Add(createRow);
-
-            if (groups.Count == 0)
-            {
-                panel.Body.Add(new Label("No metadata groups exist yet.".AsLoc()).FontSize(11));
-                return panel;
-            }
-
-            var tableModel = new DataTableModel<EntityMetadataGroup>(
-                new[]
-                {
-                    DataTableColumn<EntityMetadataGroup>.CreateText(
-                        "name",
-                        "Group",
-                        group => group.Name,
-                        width: DataTableColumnWidth.Constrained(180, 320),
-                        visibilityPriority: 10),
-                    DataTableColumn<EntityMetadataGroup>.CreateText(
-                        "members",
-                        "Members",
-                        group => members.TryGetValue(group.GroupId, out int count)
-                            ? count.ToString(CultureInfo.InvariantCulture)
-                            : "0",
-                        width: DataTableColumnWidth.Fixed(80),
-                        alignment: DataTableColumnAlignment.End,
-                        visibilityPriority: 9),
-                    DataTableColumn<EntityMetadataGroup>.CreateText(
-                        "color",
-                        "Color",
-                        group => group.Color,
-                        width: DataTableColumnWidth.Fixed(110),
-                        visibilityPriority: 8),
-                    DataTableColumn<EntityMetadataGroup>.CreateText(
-                        "lock",
-                        "Lock",
-                        group => group.Locked ? "Locked" : "Open",
-                        width: DataTableColumnWidth.Fixed(90),
-                        visibilityPriority: 7),
-                },
-                group => group.GroupId,
-                DataTableSelectionMode.Single);
-            var table = new TajsDataTable<EntityMetadataGroup>(tableModel);
-            table.Refresh(groups);
-            table.SetAvailableWidth(760f);
-            panel.Body.Add(table);
-
-            foreach (EntityMetadataGroup group in groups)
-            {
-                Label feedback = new Label().FontSize(11).Hide();
-                Row actions = new Row(2.pt()).AlignItemsCenter();
-                actions.Add(
-                    TajsDashboardUi.ActionButton(
-                        Button.Area,
-                        "Pick rectangle",
-                        "Assets/Unity/UserInterface/General/MapBounds.svg",
-                        () => ExecuteConsoleCommand("tajs_metadata_group_pick " + group.GroupId, feedback)),
-                    TajsDashboardUi.ActionButton(
-                        Button.Area,
-                        group.Locked ? "Unlock" : "Lock",
-                        "Assets/Unity/UserInterface/General/Configure.svg",
-                        () =>
-                        {
-                            if (m_metadata.TryUpdateGroup(group.GroupId, null, group.Order, null, !group.Locked, out string error))
-                            {
-                                feedback.Value((group.Name + ": " + (!group.Locked ? "locked" : "unlocked") + ".").AsLoc()).Show();
-                                QueueRefresh();
-                            }
-                            else
-                            {
-                                feedback.Value((group.Name + ": " + error).AsLoc()).Show();
-                            }
-                        }));
-                if (!group.Locked)
-                {
-                    actions.Add(
-                        TajsDashboardUi.ActionButton(
-                            Button.Warning,
-                            "Delete",
-                            "Assets/Unity/UserInterface/General/Cancel.svg",
-                            () =>
-                            {
-                                if (m_metadata.TryDeleteGroup(group.GroupId))
-                                {
-                                    QueueRefresh();
-                                }
-                                else
-                                {
-                                    feedback.Value((group.Name + ": delete failed.").AsLoc()).Show();
-                                }
-                            }));
-                }
-                Row groupRow = new Row(3.pt()).AlignItemsCenter();
-                groupRow.Add(
-                    new Label((group.Name + " · " + group.GroupId).AsLoc()).FontSize(11).FlexGrow(1f),
-                    actions,
-                    feedback);
-                panel.Body.Add(groupRow);
-            }
-            return panel;
-        }
-
-        private Panel BuildProfilesPanel()
-        {
-            Panel panel = TajsDashboardUi.Card(
-                "Settings profiles",
-                "Profiles contain only settings explicitly marked profile-safe. Preview validates every entry before apply; unknown IDs are skipped and reported.");
-            IReadOnlyList<SettingsProfile> profiles = m_profiles.List();
-            if (profiles.Count == 0)
-            {
-                panel.Body.Add(new Label("No profiles saved. Capture one with tajs_profile_capture <name> from the console.".AsLoc()).FontSize(11));
-                return panel;
-            }
-
-            foreach (SettingsProfile profile in profiles)
-            {
-                Label feedback = new Label().FontSize(11).Hide();
-                Row actions = new Row(2.pt()).AlignItemsCenter();
-                actions.Add(
-                    TajsDashboardUi.ActionButton(
-                        Button.Area,
-                        "Preview",
-                        "Assets/Unity/UserInterface/General/Configure.svg",
-                        () =>
-                        {
-                            SettingsProfilePreview preview = m_profiles.Preview(profile);
-                            feedback.Value(
-                                    (preview.Profile.Name + ": " +
-                                     string.Join(", ", preview.Entries.GroupBy(entry => entry.State).Select(group => group.Key + "=" + group.Count())) +
-                                     (preview.SkippedIds.Count == 0 ? string.Empty : "; skipped=" + preview.SkippedIds.Count)).AsLoc())
-                                .Show();
-                        }),
-                    TajsDashboardUi.ActionButton(
-                        Button.Area,
-                        "Apply",
-                        "Assets/Unity/UserInterface/General/Configure.svg",
-                        () =>
-                        {
-                            SettingsProfileApplyResult result = m_profiles.Apply(profile);
-                            feedback.Value(
-                                    (profile.Name + ": applied=" + result.AppliedCount + ", skipped=" + result.SkippedIds.Count +
-                                     ", errors=" + result.Errors.Count).AsLoc())
-                                .Show();
-                            QueueRefresh();
-                        }));
-                panel.Body.Add(
-                    new Row(4.pt())
-                    {
-                        new Column(1.pt())
-                        {
-                            new Label(profile.Name.AsLoc()).FontBold(),
-                            new Label((profile.Values.Count + " saved value(s) · schema " + profile.Schema).AsLoc()).FontSize(11),
-                            feedback,
-                        }.FlexGrow(1f),
-                        actions,
-                    }.AlignItemsCenter());
-            }
-            return panel;
-        }
+        private Panel BuildProfilesPanel() =>
+            TajsDashboardProfilesPanel.Build(m_profiles, QueueRefresh);
 
         private ButtonText CreateInlineCategoryButton(string category, int count)
         {
