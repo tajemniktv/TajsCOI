@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsCoiMod>true</IsCoiMod>
+
+    <ModId>TajsVisuals</ModId>
+    <ModVersion>0.1.0</ModVersion>
+    <ModDisplayName>Taj's Visuals</ModDisplayName>
+    <ModDescription>Visual lighting and presentation controls for Captain of Industry.</ModDescription>
+    <ModAuthor>TajemnikTV</ModAuthor>
+    <MinGameVersion>0.8.7</MinGameVersion>
+    <MaxVerifiedGameVersion>0.8.7b</MaxVerifiedGameVersion>
+    <PrimaryModClassName>TajsVisualsMod</PrimaryModClassName>
+
+    <AssemblyName>$(ModId)</AssemblyName>
+    <RootNamespace>TajsCOI.Visuals</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ModDependency Include="TajsCore&gt;=0.1.0"/>
+    <ProjectReference Include="..\..\Libraries\TajsCOI.Common\TajsCOI.Common.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+    <Reference Include="Mafi.Unity">
+      <HintPath>$(COIManagedDir)\Mafi.Unity.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(COIManagedDir)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>TajsCOI.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

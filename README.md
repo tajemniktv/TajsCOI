@@ -130,6 +130,13 @@ game restart, and saves should be checked after trying them. Lazy resource-visua
 defers the synchronous first-use initialization on the current 0.8.7b target; profile the first
 overlay activation and verify overlay correctness before enabling it for regular play.
 
+### Taj's Visuals
+
+Taj's Visuals provides opt-in, reversible sun intensity, visual angle, and safe shadow-strength
+controls. Its presentation-only day/night cycle interpolates those same controls from the smooth
+simulation clock without changing the simulation date, weather, or fog. Scene teardown restores
+the captured vanilla lighting state.
+
 ## Using the suite
 
 When the suite is available in-game, use the Taj's COI dashboard to see which settings and features

@@ -43,6 +43,8 @@
                       AdditionalProperties="DeployToModsFolder=false;CopyToUnityProject=false;CreateReleaseZip=false"/>
     <ProjectReference Include="..\..\Mods\TajsTweaks\TajsTweaks.csproj"
                       AdditionalProperties="DeployToModsFolder=false;CopyToUnityProject=false;CreateReleaseZip=false"/>
+    <ProjectReference Include="..\..\Mods\TajsVisuals\TajsVisuals.csproj"
+                      AdditionalProperties="DeployToModsFolder=false;CopyToUnityProject=false;CreateReleaseZip=false"/>
 
     <Reference Include="Mafi">
       <HintPath>$(COIManagedDir)\Mafi.dll</HintPath>
