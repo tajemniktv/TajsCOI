@@ -33,6 +33,7 @@ using TajsCOI.Common.Settings;
 using TajsCOI.Common.Shortcuts;
 using TajsCOI.Tweaks.Configuration;
 using TajsCOI.Tweaks.Features.Difficulty;
+using TajsCOI.Tweaks.Features.EntityMetadata;
 using TajsCOI.Tweaks.Features.Overclocking;
 using TajsCOI.Tweaks.Features.Storage;
 
@@ -98,6 +99,7 @@ namespace TajsCOI.Tweaks
             TryInstall(runtime, "StatisticsTotals", TweaksStatisticsTotalsFeature.Install);
             TryInstall(runtime, "ResourceDepositClusters", TweaksResourceDepositFeature.Install);
             TryInstallResolved(runtime, "InfiniteGroundwater", m_infiniteGroundwater.Install);
+            TryInstallResolved(runtime, "EntityMetadataInspector", InstallEntityMetadataInspector);
             TryInstall(runtime, "ShipCargoPreload", harmony => TweaksShipPreloadFeature.Install(harmony, resolver, settings));
             TryInstall(runtime, "AutoWorldDelivery", harmony => TweaksAutoShipDeliveryFeature.Install(harmony, resolver));
             TryInstall(runtime, "BattleScoreOnMap", TweaksBattleScoreFeature.Install);
@@ -271,6 +273,27 @@ namespace TajsCOI.Tweaks
                         "0.8.7b target or native fallback",
                         exception.GetType().Name,
                         "No behavior was changed for this feature; vanilla behavior remains active."));
+            }
+        }
+
+        private void InstallEntityMetadataInspector()
+        {
+            var harmony = new Harmony(HarmonyId + ".EntityMetadataInspector");
+            try
+            {
+                EntityMetadataInspectorPatch.Install(harmony, m_resolver);
+            }
+            catch
+            {
+                try
+                {
+                    harmony.UnpatchAll(harmony.Id);
+                }
+                catch (Exception rollbackException)
+                {
+                    m_log.Exception(rollbackException, "Entity metadata inspector rollback failed.");
+                }
+                throw;
             }
         }
 

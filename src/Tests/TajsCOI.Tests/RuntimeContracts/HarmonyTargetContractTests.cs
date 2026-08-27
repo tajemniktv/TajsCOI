@@ -30,6 +30,7 @@ using Mafi.Serialization;
 using Mafi.Unity.InputControl;
 using TajsCOI.Performance.Features.LazyResourceVisualization;
 using TajsCOI.Profiler.Probes.Dumping;
+using TajsCOI.Tweaks.Features.EntityMetadata;
 using Xunit;
 using Assert = Xunit.Assert;
 
@@ -61,6 +62,19 @@ namespace TajsCOI.Tests.RuntimeContracts
             Assert.Null(
                 typeof(Tweaks.Features.Difficulty.TajsDifficultyFeature).Assembly.GetType(
                     "TajsCOI.Tweaks.Features.Difficulty.TajsDifficultyWindow"));
+        }
+
+        [Fact]
+        public void EntityMetadataInspectorTargetsTheNativeGenericActivationSeam()
+        {
+            MethodInfo? activate = typeof(Mafi.Unity.Ui.InspectorsManager).GetMethod(
+                nameof(Mafi.Unity.Ui.InspectorsManager.TryActivateFor),
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null,
+                new[] { typeof(IEntity), typeof(Mafi.Unity.Ui.IEntityInspector).MakeByRefType() },
+                null);
+            Assert.NotNull(activate);
+            Assert.True(EntityMetadataInspectorPatch.HasExpectedTarget());
         }
 
         [Fact]
