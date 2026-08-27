@@ -95,6 +95,37 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void DisabledInstallManifestPreventsEarlyBootstrapInitialization()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-bootstrap-disabled-" + Guid.NewGuid().ToString("N"));
+            string sources = Path.Combine(root, "sources");
+            Directory.CreateDirectory(sources);
+            string bootstrapSource = Path.Combine(sources, "bootstrap.dll");
+            string harmonySource = Path.Combine(sources, "harmony.dll");
+            File.WriteAllText(bootstrapSource, "bootstrap");
+            File.WriteAllText(harmonySource, "harmony");
+
+            try
+            {
+                var request = new BootstrapInstallRequest(root, bootstrapSource, harmonySource);
+                Assert.Equal(BootstrapInstallState.Installed, BootstrapInstaller.Install(request).State);
+                Assert.Equal(BootstrapInstallState.Disabled, BootstrapInstaller.Disable(root).State);
+
+                BootstrapStatus status = BootstrapApi.InitializeFromGameRoot(root);
+                Assert.Equal(BootstrapState.Disabled, status.State);
+                Assert.Contains("install manifest", status.Message, StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                BootstrapApi.Disable();
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
         public void InstallerRefusesUnknownPayloadAndDiscoversRuntimeRoot()
         {
             string root = Path.Combine(Path.GetTempPath(), "TajsCOI-bootstrap-" + Guid.NewGuid().ToString("N"));

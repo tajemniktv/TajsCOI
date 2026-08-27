@@ -255,6 +255,53 @@ namespace TajsCOI.Bootstrap
             return UpdateEnabled(gameRoot, false);
         }
 
+        /// <summary>
+        ///     Reads the optional install manifest without changing any files. A missing manifest
+        ///     means that no installer-managed bootstrap is present, so direct/manual loading is
+        ///     still allowed. A malformed or foreign manifest fails closed for early startup.
+        /// </summary>
+        internal static bool TryGetEnabled(string? gameRoot, out bool enabled, out string message)
+        {
+            enabled = true;
+            message = string.Empty;
+            if (string.IsNullOrWhiteSpace(gameRoot))
+            {
+                return true;
+            }
+
+            if (!TryNormalizeRoot(gameRoot, out string root, out string rootError))
+            {
+                message = rootError;
+                return false;
+            }
+
+            InstallManifest? manifest = TryReadManifest(GetManifestPath(root), out string? readError);
+            if (readError is not null)
+            {
+                enabled = false;
+                message = readError;
+                return false;
+            }
+            if (manifest is null)
+            {
+                return true;
+            }
+
+            if (!TryNormalizeRoot(manifest.GameRoot, out string manifestRoot, out string manifestError) ||
+                !string.Equals(manifestRoot, root, StringComparison.OrdinalIgnoreCase))
+            {
+                enabled = false;
+                message = string.IsNullOrEmpty(manifestError)
+                    ? "Install manifest belongs to another game root."
+                    : manifestError;
+                return false;
+            }
+
+            enabled = manifest.Enabled;
+            message = enabled ? "Bootstrap is enabled." : "Bootstrap is disabled by its install manifest.";
+            return true;
+        }
+
         public static BootstrapInstallResult Uninstall(string gameRoot)
         {
             if (!TryNormalizeRoot(gameRoot, out string root, out string error))

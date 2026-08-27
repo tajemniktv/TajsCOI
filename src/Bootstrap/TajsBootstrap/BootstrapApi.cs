@@ -89,6 +89,20 @@ namespace TajsCOI.Bootstrap
 
         public static BootstrapStatus InitializeFromGameRoot(string? gameRoot)
         {
+            if (!BootstrapInstaller.TryGetEnabled(gameRoot, out bool enabled, out string gateMessage))
+            {
+                return SetStatus(
+                    BootstrapState.Failed,
+                    "Bootstrap install state could not be read; the normal no-bootstrap installation remains available. " +
+                    gateMessage);
+            }
+            if (!enabled)
+            {
+                return SetStatus(
+                    BootstrapState.Disabled,
+                    "Bootstrap disabled by its install manifest; the normal no-bootstrap installation remains available.");
+            }
+
             string? path = BootstrapLoader.FindCanonicalHarmony(gameRoot);
             return Initialize(path);
         }
@@ -104,6 +118,21 @@ namespace TajsCOI.Bootstrap
                     s_status.CanonicalPath,
                     s_status.CanonicalSha256,
                     s_status.CanonicalVersion);
+                return s_status;
+            }
+        }
+
+        private static BootstrapStatus SetStatus(BootstrapState state, string message)
+        {
+            lock (s_gate)
+            {
+                BootstrapLoader.RemoveAssemblyResolver();
+                s_status = new BootstrapStatus(
+                    state,
+                    message,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty);
                 return s_status;
             }
         }
