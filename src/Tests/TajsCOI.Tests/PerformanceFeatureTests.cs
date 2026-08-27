@@ -11,16 +11,22 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
 using HarmonyLib;
+using Mafi.Collections;
+using Mafi.Core.PathFinding;
 using Mafi.Core.SaveGame;
 using Mafi.Serialization;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Core.Runtime;
 using TajsCOI.Performance.Features.LowProductTextures;
+using TajsCOI.Performance.Features.PathabilityInitialization;
 using TajsCOI.Performance.Features.ProductBufferShrink;
 using TajsCOI.Performance.Features.RenderingLoadShedding;
 using TajsCOI.Performance.Features.SaveLoadReadBuffer;
 using TajsCOI.Performance.Features.StreamingSaveCompression;
 using Xunit;
+
+using DependencyResolver = Mafi.DependencyResolver;
+using Tile2i = Mafi.Tile2i;
 
 namespace TajsCOI.Tests
 {
@@ -45,6 +51,42 @@ namespace TajsCOI.Tests
             Assert.Equal(
                 "heavy smoke cloud",
                 ParticleNameMatcher.Normalize("HeavySmoke-Cloud"));
+        }
+
+        [Fact]
+        public void DeferredPathabilityCandidateTargetsExact087bPrivateMethod()
+        {
+            PathabilityInitializationFeature.TargetSet? targets = PathabilityInitializationFeature.FindTargets();
+            Assert.NotNull(targets);
+
+            MethodInfo target = targets!.ComputeInitialBlocking;
+            Assert.Equal("computeInitialBlocking", target.Name);
+            Assert.Equal(typeof(void), target.ReturnType);
+            Assert.False(target.IsStatic);
+            Assert.Empty(target.GetParameters());
+
+            Assert.Equal(
+                new[] { typeof(int), typeof(DependencyResolver) },
+                targets.InitSelf.GetParameters().Select(x => x.ParameterType));
+            Assert.Equal(
+                new[] { typeof(Tile2i), typeof(bool) },
+                targets.ComputeAllPathability.GetParameters().Select(x => x.ParameterType));
+            Assert.Equal(
+                new[] { typeof(Tile2i), typeof(int) },
+                targets.IsChunkBlocked.GetParameters().Select(x => x.ParameterType));
+            Assert.Equal(
+                new[]
+                {
+                    typeof(PfNodeInfo).MakeByRefType(),
+                    typeof(int),
+                    typeof(int),
+                    typeof(bool),
+                    typeof(Lyst<PfNodeInfo>),
+                    typeof(ShipsPathFinderMode),
+                    typeof(Tile2i?),
+                },
+                targets.GetValidNeighboursForTile.GetParameters().Select(x => x.ParameterType));
+            Assert.Empty(targets.UpdateChangedTiles.GetParameters());
         }
 
         [Fact]

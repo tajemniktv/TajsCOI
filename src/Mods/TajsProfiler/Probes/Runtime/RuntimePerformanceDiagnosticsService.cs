@@ -978,6 +978,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
             Type? type = FindType(typeName, assemblyName);
             MethodInfo[] methods = type?.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
                 .Where(x => x.Name == methodName &&
+                            !x.IsStatic &&
+                            x.ReturnType == typeof(void) &&
                             x.GetParameters().Length == leadingParameterTypes.Length &&
                             (leadingParameterTypes.Length == 0 || x.GetParameters().Take(leadingParameterTypes.Length)
                                 .Select(p => p.ParameterType).SequenceEqual(leadingParameterTypes)))

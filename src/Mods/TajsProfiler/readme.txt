@@ -16,11 +16,16 @@ Current probes:
 - Managed/Unity/GC counters where supported, optional player ProfilerRecorder render counters,
   explicit unsupported graphics-memory handling, and shared dumping/pathfinding/terrain timeline correlation.
 - One TajsProfiler subsystem report and trace model for all registered probe counters/events.
+- Pathability/connectivity initialization probe with exact 0.8.7b target contracts. `tajs_profiler_pathability`
+  reports map dimensions, loaded cells, saved PF graph nodes/edges, entity inputs, allocation/managed deltas, and
+  O(area)/O(graph) classification; `tajs_profiler_pathability_clear` resets its bounded summaries.
 
 Console commands:
 - tajs_profiler_dumping
 - tajs_profiler_subsystems [seconds]
 - tajs_profiler_subsystems_clear
+- tajs_profiler_pathability
+- tajs_profiler_pathability_clear
 
 Legacy detailed dumping compatibility views:
 - tajs_dump_search_stats

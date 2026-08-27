@@ -7,6 +7,7 @@ using TajsCOI.Common.Settings;
 using TajsCOI.Performance.Features.LazyResourceVisualization;
 using TajsCOI.Performance.Features.LowProductTextures;
 using TajsCOI.Performance.Features.ManualAssetTrim;
+using TajsCOI.Performance.Features.PathabilityInitialization;
 using TajsCOI.Performance.Features.ProductBufferShrink;
 using TajsCOI.Performance.Features.RenderingLoadShedding;
 using TajsCOI.Performance.Features.SaveLoadReadBuffer;
@@ -189,6 +190,16 @@ namespace TajsCOI.Performance
                 "Defers the hidden whole-map resource-bar build until the first resource overlay activation; first-use cost and overlay correctness still require an in-game A/B check.",
                 false,
                 "Rendering",
+                applyMode: SettingApplyMode.RestartGame,
+                flags: CandidateFlags),
+            SettingDescriptor.Boolean(
+                ModId,
+                ModDisplayName,
+                PathabilityInitializationSettings.EnableConfigKey,
+                "Deferred ship pathability initialization",
+                "Defers the load-only full-map ship blocking scan until the first ship pathability query, then runs the exact vanilla pass once. Disabled by default; compare load time and ship/terrain correctness in-game.",
+                false,
+                "Pathfinding",
                 applyMode: SettingApplyMode.RestartGame,
                 flags: CandidateFlags),
             SettingDescriptor.Boolean(

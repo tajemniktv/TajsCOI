@@ -30,6 +30,7 @@ using Mafi.Serialization;
 using Mafi.Unity.InputControl;
 using TajsCOI.Performance.Features.LazyResourceVisualization;
 using TajsCOI.Profiler.Probes.Dumping;
+using TajsCOI.Profiler.Probes.PathFinding;
 using TajsCOI.Profiler.Probes.Runtime;
 using TajsCOI.Tweaks.Features.EntityMetadata;
 using Xunit;
@@ -321,6 +322,71 @@ namespace TajsCOI.Tests.RuntimeContracts
             Assert.Equal(new[] { showExactlySequence, showExactlyArray }, targets.ShowExactly);
             Assert.Same(showAll, targets.ShowAll);
             Assert.Equal(4, targets.Activators.Count);
+        }
+
+        [Fact]
+        public void PathabilityInitializationTargetsMatchExact087bContracts()
+        {
+            PathabilityInitializationDiagnosticsService.TargetSet? targets =
+                PathabilityInitializationDiagnosticsService.FindTargets();
+            Assert.NotNull(targets);
+
+            RuntimeContractAssertions.RequireMethod(
+                typeof(ClearancePathabilityProvider),
+                "initSelf",
+                typeof(void),
+                isStatic: false,
+                typeof(DependencyResolver));
+            Type dataChunk = typeof(ClearancePathabilityProvider).GetNestedType(
+                "DataChunk",
+                BindingFlags.Public | BindingFlags.NonPublic)!;
+            RuntimeContractAssertions.RequireMethod(
+                dataChunk,
+                "RecomputeCoreData",
+                typeof(void),
+                isStatic: false);
+            RuntimeContractAssertions.RequireMethod(
+                typeof(ClearancePathabilityProvider),
+                "connectNeighbors",
+                typeof(void),
+                isStatic: false,
+                dataChunk);
+            RuntimeContractAssertions.RequireMethod(
+                typeof(ShipsClearancePathabilityProvider),
+                "initSelf",
+                typeof(void),
+                isStatic: false,
+                typeof(int),
+                typeof(DependencyResolver));
+            RuntimeContractAssertions.RequireMethod(
+                typeof(ShipsClearancePathabilityProvider),
+                "computeInitialBlocking",
+                typeof(void),
+                isStatic: false);
+            RuntimeContractAssertions.RequireMethod(
+                typeof(VehiclesConnectivityManager),
+                "initAfterLoad",
+                typeof(void),
+                isStatic: false,
+                typeof(int),
+                typeof(DependencyResolver));
+            MethodInfo getOrCreate = RuntimeContractAssertions.RequireMethod(
+                typeof(ClearancePathabilityProvider),
+                "GetOrCreatePfNodeAt",
+                typeof(Option<VehiclePfNode>),
+                isStatic: false,
+                typeof(Tile2i),
+                typeof(int));
+
+            Assert.Same(getOrCreate, targets!.GetOrCreatePfNodeAt);
+            Assert.Same(dataChunk.GetMethod(
+                "RecomputeCoreData",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic), targets.RecomputeCoreData);
+            Assert.Same(
+                typeof(ShipsClearancePathabilityProvider).GetMethod(
+                    "computeInitialBlocking",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
+                targets.ComputeInitialBlocking);
         }
 
         [Fact]

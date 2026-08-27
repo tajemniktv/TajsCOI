@@ -22,6 +22,10 @@ Available opt-in features:
 - Lazy resource visualization: defers the hidden whole-map resource-bar build until the first
   resource overlay activation. It remains opt-in until first-use cost and overlay correctness
   have been checked in-game.
+- Pathability initialization: defers the load-only
+  `ShipsClearancePathabilityProvider.computeInitialBlocking()` pass until the first ship
+  pathability query, then invokes the exact vanilla pass once. It remains opt-in until ship,
+  terrain, mining, dumping, and load-time A/B checks are complete.
 - Manual asset trim: exposes paused-only trim_unused_assets and trim_unused_assets_status
   commands. It clears only CoI's reloadable AssetsDb cache and invokes Unity's normal unused-
   asset unload operation; it is never scheduled automatically.

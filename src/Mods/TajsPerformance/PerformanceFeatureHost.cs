@@ -13,6 +13,7 @@ using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
 using TajsCOI.Performance.Features.LazyResourceVisualization;
 using TajsCOI.Performance.Features.LowProductTextures;
+using TajsCOI.Performance.Features.PathabilityInitialization;
 using TajsCOI.Performance.Features.ProductBufferShrink;
 using TajsCOI.Performance.Features.RenderingLoadShedding;
 using TajsCOI.Performance.Features.SaveLoadReadBuffer;
@@ -34,6 +35,7 @@ namespace TajsCOI.Performance
                 () => new StreamingSaveCompressionFeature(),
                 () => new LowProductTexturesFeature(),
                 () => new LazyResourceVisualizationFeature(),
+                () => new PathabilityInitializationFeature(),
                 () => new ProductBufferShrinkFeature(),
             };
 
