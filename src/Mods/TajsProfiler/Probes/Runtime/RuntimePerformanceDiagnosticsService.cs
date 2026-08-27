@@ -37,6 +37,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private const int MaxGcPassHistory = 32;
         private const int MaxLifecycleCheckpointHistory = 64;
         private const int MaxWeakLifecycleWatchHistory = 32;
+        private const string LazyResourceVisualizationHarmonyId = "TajsCOI.Performance.LazyResourceVisualization";
 
         internal const string SaveSerialization = "save.serialization";
         internal const string SaveFinalize = "save.compression-write-total";
@@ -67,6 +68,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
             s_stageOrder.ToDictionary(x => x, _ => new StageAccumulator(), StringComparer.Ordinal);
 
         private static readonly ConcurrentDictionary<MethodBase, NamedTimingAccumulator> s_initializationTargets = new();
+        private static readonly ConditionalWeakTable<object, ResourceInitializationTelemetryState> s_resourceInitializationStates = new();
         private static readonly ConcurrentDictionary<MethodBase, string> s_iteratorLifecycleTargets = new();
         private static readonly ConditionalWeakTable<object, IteratorLifecycleState> s_iteratorLifecycleStates = new();
         private static readonly object s_historyGate = new();
@@ -89,6 +91,23 @@ namespace TajsCOI.Profiler.Probes.Runtime
         private static long s_lifecycleSequence;
         private static bool s_patchAttempted;
         private static PatchSummary s_patchSummary;
+        private static MethodBase? s_resourceInitializationTarget;
+
+        internal static readonly RuntimeTelemetryCounter ResourceVisualizationSkippedEagerBuildCounter =
+            RuntimeTelemetry.RegisterCounter(
+                "resource-visualization.eager-build-skipped",
+                owner: "TajsProfiler.ResourceVisualization");
+
+        internal static readonly RuntimeTelemetryCounter ResourceVisualizationFirstActivationDurationCounter =
+            RuntimeTelemetry.RegisterCounter(
+                "resource-visualization.first-activation-duration",
+                RuntimeTelemetryUnit.StopwatchTicks,
+                "TajsProfiler.ResourceVisualization");
+
+        internal static readonly RuntimeTelemetryCounter ResourceVisualizationInitializationFallbackCounter =
+            RuntimeTelemetry.RegisterCounter(
+                "resource-visualization.initialization-fallback",
+                owner: "TajsProfiler.ResourceVisualization");
 
         private readonly DependencyResolver m_resolver;
         private readonly ITajsRuntime m_runtime;
@@ -136,7 +155,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
                     "TajsProfiler",
                     "RuntimePerformance",
                     state,
-                    $"{summary.RequiredExpected} required and {summary.OptionalExpected} optional 0.8.7a probe targets",
+                    $"{summary.RequiredExpected} required and {summary.OptionalExpected} optional supported-game probe targets",
                     $"{summary.RequiredInstalled} required and {summary.OptionalInstalled} optional targets installed",
                     state == CompatibilityState.Compatible
                         ? "Save/load, memory, GC, and renderer snapshot probes are available."
@@ -191,7 +210,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
         public string HarmonyAudit() => BuildHarmonyAudit();
 
         [ConsoleCommand(
-            documentation: "Shows bounded top-N timing for known 0.8.7a dependency and renderer initialization targets.",
+            documentation: "Shows bounded top-N timing for supported dependency and renderer initialization targets.",
             customCommandName: "tajs_runtime_initialization_hotspots")]
         public string InitializationHotspots()
         {
@@ -808,12 +827,13 @@ namespace TajsCOI.Profiler.Probes.Runtime
                 typeof(int),
                 typeof(DependencyResolver));
             expected++;
-            AddTimedInitializationTarget(
+            MethodInfo? resourceInitializationTarget = AddTimedInitializationTarget(
                 targets,
                 "Mafi.Unity.InputControl.ResVis.ResVisBarsRenderer",
                 "Mafi.Unity",
                 "initState",
                 "ResVisBarsRenderer.initState");
+            expected++;
             AddTimedInitializationTarget(
                 targets,
                 "Mafi.Unity.Terrain.TerrainRenderer",
@@ -859,6 +879,13 @@ namespace TajsCOI.Profiler.Probes.Runtime
                         new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), nameof(AfterTimed)),
                         finalizer: new HarmonyMethod(typeof(RuntimePerformanceDiagnosticsService), nameof(FinalizeTimed)));
                 }
+
+                if (resourceInitializationTarget is null ||
+                    !PatchResourceInitializationTelemetry(harmony, resourceInitializationTarget))
+                {
+                    throw new InvalidOperationException(
+                        "ResVisBarsRenderer.initState telemetry target was not installed.");
+                }
                 return true;
             }
             catch (Exception exception)
@@ -873,7 +900,30 @@ namespace TajsCOI.Profiler.Probes.Runtime
             }
         }
 
-        private static void AddTimedInitializationTarget(
+        private static bool PatchResourceInitializationTelemetry(Harmony harmony, MethodBase target)
+        {
+            try
+            {
+                s_resourceInitializationTarget = target;
+                harmony.Patch(
+                    target,
+                    prefix: new HarmonyMethod(
+                        typeof(RuntimePerformanceDiagnosticsService),
+                        nameof(BeforeResourceInitialization)),
+                    finalizer: new HarmonyMethod(
+                        typeof(RuntimePerformanceDiagnosticsService),
+                        nameof(FinalizeResourceInitialization)));
+                return true;
+            }
+            catch (Exception exception)
+            {
+                s_resourceInitializationTarget = null;
+                LogCallbackFailure(exception, "patch resource visualization initialization telemetry");
+                return false;
+            }
+        }
+
+        private static MethodInfo? AddTimedInitializationTarget(
             ICollection<(MethodBase Target, string Name)> targets,
             string typeName,
             string assemblyName,
@@ -891,7 +941,10 @@ namespace TajsCOI.Profiler.Probes.Runtime
             if (methods.Length == 1)
             {
                 targets.Add((methods[0], displayName));
+                return methods[0];
             }
+
+            return null;
         }
 
         private static MethodBase? GetIteratorMoveNext(MethodBase? factory)
@@ -1149,6 +1202,97 @@ namespace TajsCOI.Profiler.Probes.Runtime
             catch (Exception exception)
             {
                 LogCallbackFailure(exception, "timing prefix");
+            }
+        }
+
+        private static void BeforeResourceInitialization(object __instance)
+        {
+            try
+            {
+                ResourceInitializationTelemetryState state = s_resourceInitializationStates.GetValue(
+                    __instance,
+                    _ => new ResourceInitializationTelemetryState());
+                state.StartTicks = Stopwatch.GetTimestamp();
+            }
+            catch (Exception exception)
+            {
+                LogCallbackFailure(exception, "resource visualization initialization prefix");
+            }
+        }
+
+        private static Exception? FinalizeResourceInitialization(
+            Exception? __exception,
+            object __instance,
+            bool __runOriginal)
+        {
+            try
+            {
+                // The profiler only attributes a skipped initState to this candidate when the
+                // opt-in Performance owner is present. Other Harmony prefixes remain unrelated.
+                if (!IsLazyResourceVisualizationPatchPresent())
+                {
+                    return __exception;
+                }
+
+                ResourceInitializationTelemetryState observation = s_resourceInitializationStates.GetValue(
+                    __instance,
+                    _ => new ResourceInitializationTelemetryState());
+                if (!__runOriginal)
+                {
+                    RuntimeTelemetry.Increment(ResourceVisualizationSkippedEagerBuildCounter);
+                    observation.DeferredInitializationPending = true;
+                    observation.StartTicks = 0;
+                    return __exception;
+                }
+
+                if (__exception is not null)
+                {
+                    if (observation.DeferredInitializationPending)
+                    {
+                        RuntimeTelemetry.Increment(ResourceVisualizationInitializationFallbackCounter);
+                        observation.DeferredInitializationPending = false;
+                    }
+                    observation.StartTicks = 0;
+                    return __exception;
+                }
+
+                if (observation.DeferredInitializationPending)
+                {
+                    long elapsedTicks = observation.StartTicks <= 0
+                        ? 0
+                        : Math.Max(0, Stopwatch.GetTimestamp() - observation.StartTicks);
+                    RuntimeTelemetry.Add(
+                        ResourceVisualizationFirstActivationDurationCounter,
+                        elapsedTicks);
+                    observation.DeferredInitializationPending = false;
+                    observation.StartTicks = 0;
+                }
+            }
+            catch (Exception exception)
+            {
+                LogCallbackFailure(exception, "resource visualization initialization finalizer");
+            }
+
+            return __exception;
+        }
+
+        private static bool IsLazyResourceVisualizationPatchPresent()
+        {
+            MethodBase? target = s_resourceInitializationTarget;
+            if (target is null)
+            {
+                return false;
+            }
+
+            try
+            {
+                return Harmony.GetPatchInfo(target)?.Prefixes?.Any(
+                    patch => string.Equals(patch.owner, LazyResourceVisualizationHarmonyId, StringComparison.Ordinal)) == true;
+            }
+            catch (Exception exception)
+            {
+                LogCallbackFailure(exception, "resource visualization patch ownership check");
+                return false;
             }
         }
 
@@ -1571,7 +1715,7 @@ namespace TajsCOI.Profiler.Probes.Runtime
 
                     lines.Add(
                         $"  original={target.OriginalSignature} | kind={patch.Kind.ToString().ToLowerInvariant()} | owner={patch.OwnerId} | patch={patch.PatchMethod} | priority={patch.Priority} | " +
-                        $"before={FormatOwners(patch.Before)} | after={FormatOwners(patch.After)} | risk={target.Risk} | " +
+                        $"before={FormatOwners(patch.Before)} | after={FormatOwners(patch.After)} | risk={target.Risk} | reason={target.RiskReason} | " +
                         $"shared={FormatOwners(target.NonTajsOwners)} | count={count}" +
                         (patch.IsTajsOwned && count > 1 ? " | DUPLICATE" : string.Empty));
                 }
@@ -1738,6 +1882,12 @@ namespace TajsCOI.Profiler.Probes.Runtime
             internal long Count { get; }
             internal long TotalTicks { get; }
             internal long MaxTicks { get; }
+        }
+
+        private sealed class ResourceInitializationTelemetryState
+        {
+            internal bool DeferredInitializationPending;
+            internal long StartTicks;
         }
 
         private sealed class TimingState

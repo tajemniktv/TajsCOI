@@ -19,6 +19,9 @@ Available opt-in features:
   The uncompressed CRC is retained unless its separate option is explicitly enabled.
 - Low product textures: applies mip bias 3 (Low) or 4 (Very Low) through the normal product
   texture-array rebuild. Vanilla presets and CoI's 64 px minimum remain unchanged.
+- Lazy resource visualization: defers the hidden whole-map resource-bar build until the first
+  resource overlay activation. It remains opt-in until first-use cost and overlay correctness
+  have been checked in-game.
 - Manual asset trim: exposes paused-only trim_unused_assets and trim_unused_assets_status
   commands. It clears only CoI's reloadable AssetsDb cache and invokes Unity's normal unused-
   asset unload operation; it is never scheduled automatically.

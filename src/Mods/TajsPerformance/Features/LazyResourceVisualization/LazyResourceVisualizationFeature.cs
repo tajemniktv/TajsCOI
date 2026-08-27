@@ -65,7 +65,7 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                             "TajsPerformance",
                             Id,
                             CompatibilityState.Compatible,
-                            "Existing process-lifetime Harmony owner on the 0.8.7a resource overlay targets",
+                            "Existing process-lifetime Harmony owner on the 0.8.7b resource overlay targets",
                             "Already installed / compatible",
                             "The validated lazy-build patch remains active; no duplicate prefixes were registered."));
                     return;
@@ -98,7 +98,7 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                     "TajsPerformance",
                     Id,
                     CompatibilityState.Compatible,
-                    "Exact 0.8.7a ResVisBarsRenderer initState and Activator.Show* targets",
+                    "Exact 0.8.7b ResVisBarsRenderer initState and Activator.Show* targets",
                     "Lazy initial resource-bar build installed",
                     "The hidden initial build is deferred until first overlay activation; the exact vanilla init method runs before that activation."));
         }
@@ -175,25 +175,26 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
             }
         }
 
-        private static TargetSet? FindTargets()
+        internal static TargetSet? FindTargets()
         {
             Type? renderer = AppDomain.CurrentDomain.GetAssemblies()
                 .FirstOrDefault(x => string.Equals(x.GetName().Name, "Mafi.Unity", StringComparison.Ordinal))
                 ?.GetType(RendererTypeName, false);
+            BindingFlags rendererFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
             Type? activator = renderer?.GetNestedType("Activator", BindingFlags.Public | BindingFlags.NonPublic);
             FieldInfo? rendererField = activator?.GetField(
                 "Renderer",
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                rendererFlags);
             MethodInfo? initState = renderer is null
                 ? null
-                : renderer.GetMethod("initState", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+                : renderer.GetMethod("initState", rendererFlags, null, Type.EmptyTypes, null);
             MethodInfo? forceSetActive = renderer?.GetMethod(
                 "ForceSetActive",
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                rendererFlags,
                 null,
                 new[] { typeof(bool) },
                 null);
-            BindingFlags activatorFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            BindingFlags activatorFlags = rendererFlags;
             MethodInfo? show = activator?.GetMethod(
                 "Show",
                 activatorFlags,
@@ -216,11 +217,12 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                 .OrderBy(x => x.GetParameters()[0].ParameterType == productSequence ? 0 : 1)
                 .ToArray() ?? Array.Empty<MethodInfo>();
 
-            MethodInfo[]? activators = show is null || showAll is null || showExactly.Length != 2
-                ? null
-                : new[] { show, showAll, showExactly[0], showExactly[1] };
-
-            if (initState is null || forceSetActive is null || rendererField?.FieldType != renderer || activators is null)
+            if (initState is null || initState.ReturnType != typeof(void) ||
+                forceSetActive is null || forceSetActive.ReturnType != typeof(void) ||
+                rendererField is null || rendererField.FieldType != renderer || !rendererField.IsInitOnly ||
+                show is null || show.ReturnType != typeof(void) ||
+                showAll is null || showAll.ReturnType != typeof(void) ||
+                showExactly.Length != 2 || showExactly.Any(method => method.ReturnType != typeof(void)))
             {
                 return null;
             }
@@ -228,7 +230,7 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
             s_initState = initState;
             s_forceSetActive = forceSetActive;
             s_rendererField = rendererField;
-            return new TargetSet(initState, activators);
+            return new TargetSet(initState, forceSetActive, rendererField, show, showExactly, showAll);
         }
 
         private sealed class LazyState
@@ -238,15 +240,35 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
             internal bool InitializationInProgress;
         }
 
-        private sealed class TargetSet
+        /// <summary>
+        ///     Exact 0.8.7b resource-visualization seam. Keeping each member named makes the
+        ///     contract test describe the target surface instead of relying on method ordering.
+        /// </summary>
+        internal sealed class TargetSet
         {
-            internal TargetSet(MethodInfo initState, IReadOnlyList<MethodInfo> activators)
+            internal TargetSet(
+                MethodInfo initState,
+                MethodInfo forceSetActive,
+                FieldInfo rendererField,
+                MethodInfo show,
+                IReadOnlyList<MethodInfo> showExactly,
+                MethodInfo showAll)
             {
                 InitState = initState;
-                Activators = activators;
+                ForceSetActive = forceSetActive;
+                RendererField = rendererField;
+                Show = show;
+                ShowExactly = showExactly;
+                ShowAll = showAll;
+                Activators = new[] { show, showAll, showExactly[0], showExactly[1] };
             }
 
             internal MethodInfo InitState { get; }
+            internal MethodInfo ForceSetActive { get; }
+            internal FieldInfo RendererField { get; }
+            internal MethodInfo Show { get; }
+            internal IReadOnlyList<MethodInfo> ShowExactly { get; }
+            internal MethodInfo ShowAll { get; }
             internal IReadOnlyList<MethodInfo> Activators { get; }
         }
     }

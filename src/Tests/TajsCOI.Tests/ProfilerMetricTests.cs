@@ -18,6 +18,23 @@ namespace TajsCOI.Tests
     public sealed class ProfilerMetricTests
     {
         [Fact]
+        public void ResourceVisualizationTelemetryUsesStableBoundedCounters()
+        {
+            Assert.Equal(
+                "resource-visualization.eager-build-skipped",
+                RuntimeTelemetry.CounterName(RuntimePerformanceDiagnosticsService.ResourceVisualizationSkippedEagerBuildCounter.Index));
+            Assert.Equal(
+                "resource-visualization.first-activation-duration",
+                RuntimeTelemetry.CounterName(RuntimePerformanceDiagnosticsService.ResourceVisualizationFirstActivationDurationCounter.Index));
+            Assert.Equal(
+                RuntimeTelemetryUnit.StopwatchTicks,
+                RuntimeTelemetry.CounterUnit(RuntimePerformanceDiagnosticsService.ResourceVisualizationFirstActivationDurationCounter.Index));
+            Assert.Equal(
+                "resource-visualization.initialization-fallback",
+                RuntimeTelemetry.CounterName(RuntimePerformanceDiagnosticsService.ResourceVisualizationInitializationFallbackCounter.Index));
+        }
+
+        [Fact]
         public void StageAccumulatorTracksCountTotalsWorstAndMemory()
         {
             var accumulator = new StageAccumulator();

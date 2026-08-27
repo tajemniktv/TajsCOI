@@ -19,8 +19,8 @@ namespace TajsCOI.Tests
         [Fact]
         public void PerformanceCatalogDeclaresEveryExpectedSetting()
         {
-            Assert.Equal(17, PerformanceSettingsCatalog.All.Count);
-            Assert.Equal(17, PerformanceSettingsCatalog.All.Select(x => x.Key).Distinct(StringComparer.Ordinal).Count());
+            Assert.Equal(18, PerformanceSettingsCatalog.All.Count);
+            Assert.Equal(18, PerformanceSettingsCatalog.All.Select(x => x.Key).Distinct(StringComparer.Ordinal).Count());
             Assert.All(
                 PerformanceSettingsCatalog.All,
                 descriptor =>

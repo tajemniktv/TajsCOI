@@ -236,7 +236,9 @@ namespace TajsCOI.Profiler.Core
                         AppendJsonStringArray(builder, patch.Before);
                         builder.Append(",\"after\":");
                         AppendJsonStringArray(builder, patch.After);
-                        builder.Append(",\"tajsOwned\":").Append(patch.IsTajsOwned ? "true" : "false").Append('}');
+                        builder.Append(",\"tajsOwned\":").Append(patch.IsTajsOwned ? "true" : "false")
+                            .Append(",\"returnsBoolean\":").Append(patch.ReturnsBoolean ? "true" : "false")
+                            .Append('}');
                     }
                     builder.Append("]}");
                 }

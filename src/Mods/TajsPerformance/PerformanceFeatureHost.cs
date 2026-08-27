@@ -11,6 +11,7 @@ using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
+using TajsCOI.Performance.Features.LazyResourceVisualization;
 using TajsCOI.Performance.Features.LowProductTextures;
 using TajsCOI.Performance.Features.ProductBufferShrink;
 using TajsCOI.Performance.Features.RenderingLoadShedding;
@@ -21,7 +22,7 @@ namespace TajsCOI.Performance
 {
     /// <summary>
     ///     Installs independently configured patch features. Candidates remain disabled by default
-    ///     and fail open when their exact 0.8.7a compatibility seam is unavailable.
+    ///     and fail open when their exact supported-game compatibility seam is unavailable.
     /// </summary>
     [GlobalDependency(RegistrationMode.AsSelf)]
     internal sealed class PerformanceFeatureHost
@@ -32,6 +33,7 @@ namespace TajsCOI.Performance
                 () => new SaveLoadReadBufferFeature(),
                 () => new StreamingSaveCompressionFeature(),
                 () => new LowProductTexturesFeature(),
+                () => new LazyResourceVisualizationFeature(),
                 () => new ProductBufferShrinkFeature(),
             };
 
@@ -115,7 +117,7 @@ namespace TajsCOI.Performance
                             PerformanceSettingsCatalog.ModId,
                             feature.Id,
                             CompatibilityState.Disabled,
-                            "Compatible 0.8.7a targets and a successful patch installation",
+                            "Compatible supported-game targets and a successful patch installation",
                             exception.GetType().Name,
                             $"Installation failed open; {status}."));
                 }
