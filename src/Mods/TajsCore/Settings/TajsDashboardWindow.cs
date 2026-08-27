@@ -189,10 +189,15 @@ namespace TajsCOI.Core.Settings
             BuildShell();
             Frame.Add(m_resizeHandle);
             bool hasSavedSize = DashboardLayoutState.TryLoad(out m_savedWidth, out m_savedHeight);
+            if (!hasSavedSize)
+            {
+                m_savedWidth = DefaultWindowWidth;
+                m_savedHeight = DefaultWindowHeight;
+            }
             WindowSize(
-                (hasSavedSize ? m_savedWidth : DefaultWindowWidth).px(),
-                (hasSavedSize ? m_savedHeight : DefaultWindowHeight).px());
-            UpdateResponsiveChrome(hasSavedSize ? m_savedWidth : DefaultWindowWidth);
+                m_savedWidth.px(),
+                m_savedHeight.px());
+            UpdateResponsiveChrome(m_savedWidth);
             MakeMovableAndEnablePositionSaving();
             EnablePinning();
             AddHeaderButton(m_minimizeButton);
