@@ -376,7 +376,9 @@ namespace TajsCOI.Core.Shortcuts
             string.Equals(left.Category, right.Category, StringComparison.Ordinal) &&
             left.DefaultPrimary == right.DefaultPrimary &&
             left.DefaultSecondary == right.DefaultSecondary &&
-            left.Context == right.Context;
+            left.Context == right.Context &&
+            string.Equals(left.Description, right.Description, StringComparison.Ordinal) &&
+            left.BindingType == right.BindingType;
     }
 
     [GlobalDependency(RegistrationMode.AsEverything)]

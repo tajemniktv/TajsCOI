@@ -3,6 +3,7 @@
 // All Rights Reserved.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using TajsCOI.Common.Settings;
 using TajsCOI.Tweaks;
@@ -59,11 +60,45 @@ namespace TajsCOI.Tests
             Assert.Equal(8d, spacing.Maximum);
         }
 
+        [Fact]
+        public void HudActionPolicyUsesStableIdsAndUnknownActionsRemainVisible()
+        {
+            IReadOnlyDictionary<string, HudActionPreference> policy = HudActionPolicyCodec.Parse("calendar.speed.0=2:false:true;status.food.0=0:true:false");
+
+            Assert.Equal(2, policy["calendar.speed.0"].Order);
+            Assert.False(policy["calendar.speed.0"].Visible == true);
+            Assert.True(policy["calendar.speed.0"].Core);
+            Assert.True(new HudActionPreference(null, true, false).Visible == true);
+        }
+
+        [Fact]
+        public void TowerInspectorPresentationPreferencesAreGlobalAndBounded()
+        {
+            SettingDescriptorAssert(TajsTweaksSettingsCatalog.AdaptiveTowerInspector, false);
+            SettingDescriptorAssert(TajsTweaksSettingsCatalog.InspectorSectionCollapsed, string.Empty);
+            SettingDescriptorAssert(TajsTweaksSettingsCatalog.InspectorVehicleFilters, "excavator,truck,tree_planter,tree_harvester");
+
+            var rows = TajsTweaksSettingsCatalog.All.Single(x => x.Key == TajsTweaksSettingsCatalog.InspectorVehicleVisibleRows);
+            Assert.Equal(8, rows.DefaultValue);
+            Assert.Equal(3, rows.Minimum);
+            Assert.Equal(24, rows.Maximum);
+            Assert.Equal(SettingScope.Global, rows.Scope);
+        }
+
         private static void SettingDescriptorAssert(string key, string defaultValue)
         {
             var descriptor = TajsTweaksSettingsCatalog.All.Single(x => x.Key == key);
             Assert.Equal(defaultValue, descriptor.DefaultValue);
             Assert.Equal(SettingApplyMode.Immediate, descriptor.ApplyMode);
+            Assert.Equal(SettingScope.Global, descriptor.Scope);
+        }
+
+        private static void SettingDescriptorAssert(string key, bool defaultValue)
+        {
+            var descriptor = TajsTweaksSettingsCatalog.All.Single(x => x.Key == key);
+            Assert.Equal(defaultValue, descriptor.DefaultValue);
+            Assert.Equal(SettingApplyMode.Immediate, descriptor.ApplyMode);
+            Assert.Equal(SettingScope.Global, descriptor.Scope);
         }
     }
 }

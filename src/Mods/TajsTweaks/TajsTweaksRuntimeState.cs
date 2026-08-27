@@ -93,6 +93,15 @@ namespace TajsCOI.Tweaks
         internal static string HudPositions = string.Empty;
         internal static bool HudBackgrounds;
         internal static bool ShowHudOnFullscreenViews;
+        internal static string HudActionPolicy = string.Empty;
+        internal static bool HudActionCollapsed;
+        internal static bool HudActionHoverReveal = true;
+        internal static bool HudRealWorldClock;
+        internal static bool HudClock24Hour = true;
+        internal static bool AdaptiveTowerInspector;
+        internal static string InspectorSectionCollapsed = string.Empty;
+        internal static string InspectorVehicleFilters = "excavator,truck,tree_planter,tree_harvester";
+        internal static int InspectorVehicleVisibleRows = 8;
         internal static bool StorageOverrides;
         internal static bool StorageInspectorControls;
         internal static double StorageMultiplier;
@@ -108,6 +117,8 @@ namespace TajsCOI.Tweaks
         internal static bool ElectricityComputingTotals;
         internal static bool StackerDesignationOverlay;
         internal static bool TerrainGrid;
+        internal static bool TerrainXRay;
+        internal static string TerrainXRayShortcut = "F7";
         internal static bool EfficiencyOverlay;
         internal static string EfficiencyOverlayMode = "percentage";
         internal static bool EfficiencyOverlayBuildings;
@@ -245,6 +256,15 @@ namespace TajsCOI.Tweaks
             HudPositions = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudPositions);
             HudBackgrounds = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudBackgrounds);
             ShowHudOnFullscreenViews = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShowHudOnFullscreenViews);
+            HudActionPolicy = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudActionPolicy);
+            HudActionCollapsed = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudActionCollapsed);
+            HudActionHoverReveal = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudActionHoverReveal);
+            HudRealWorldClock = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudRealWorldClock);
+            HudClock24Hour = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.HudClock24Hour);
+            AdaptiveTowerInspector = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AdaptiveTowerInspector);
+            InspectorSectionCollapsed = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.InspectorSectionCollapsed);
+            InspectorVehicleFilters = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.InspectorVehicleFilters);
+            InspectorVehicleVisibleRows = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.InspectorVehicleVisibleRows);
             StorageOverrides = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StorageOverrides);
             StorageInspectorControls = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StorageInspectorControls);
             StorageMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StorageMultiplier);
@@ -260,6 +280,8 @@ namespace TajsCOI.Tweaks
             ElectricityComputingTotals = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ElectricityComputingTotals);
             StackerDesignationOverlay = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StackerDesignationOverlay);
             TerrainGrid = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TerrainGrid);
+            TerrainXRay = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TerrainXRay);
+            TerrainXRayShortcut = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TerrainXRayShortcut);
             EfficiencyOverlay = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlay);
             EfficiencyOverlayMode = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlayMode);
             EfficiencyOverlayBuildings = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlayBuildings);
@@ -446,6 +468,11 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.HudDragLocked: HudDragLocked = value; break;
                 case TajsTweaksSettingsCatalog.HudBackgrounds: HudBackgrounds = value; break;
                 case TajsTweaksSettingsCatalog.ShowHudOnFullscreenViews: ShowHudOnFullscreenViews = value; break;
+                case TajsTweaksSettingsCatalog.HudActionCollapsed: HudActionCollapsed = value; break;
+                case TajsTweaksSettingsCatalog.HudActionHoverReveal: HudActionHoverReveal = value; break;
+                case TajsTweaksSettingsCatalog.HudRealWorldClock: HudRealWorldClock = value; break;
+                case TajsTweaksSettingsCatalog.HudClock24Hour: HudClock24Hour = value; break;
+                case TajsTweaksSettingsCatalog.AdaptiveTowerInspector: AdaptiveTowerInspector = value; break;
                 case TajsTweaksSettingsCatalog.StorageOverrides: StorageOverrides = value; break;
                 case TajsTweaksSettingsCatalog.StorageInspectorControls: StorageInspectorControls = value; break;
                 case TajsTweaksSettingsCatalog.DesignationControls: DesignationControls = value; break;
@@ -456,6 +483,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.BattleScoreOnMap: BattleScoreOnMap = value; break;
                 case TajsTweaksSettingsCatalog.FleetManager: FleetManager = value; break;
                 case TajsTweaksSettingsCatalog.TerrainGrid: TerrainGrid = value; break;
+                case TajsTweaksSettingsCatalog.TerrainXRay: TerrainXRay = value; break;
                 case TajsTweaksSettingsCatalog.Overclocking: Overclocking = value; break;
                 case TajsTweaksSettingsCatalog.OverclockTransportCapacityCompensation: OverclockTransportCapacityCompensation = value; break;
             }
@@ -475,6 +503,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.RecoverPeriod: RecoverPeriod = value; break;
                 case TajsTweaksSettingsCatalog.StageMineTrucksScan: StageMineTrucksScan = value; break;
                 case TajsTweaksSettingsCatalog.HudScale: HudScale = value; break;
+                case TajsTweaksSettingsCatalog.InspectorVehicleVisibleRows: InspectorVehicleVisibleRows = value; break;
                 case TajsTweaksSettingsCatalog.ResourceOverlayLabelScale: ResourceOverlayLabelScale = value; break;
                 case TajsTweaksSettingsCatalog.ResourceOverlayLabelAlpha: ResourceOverlayLabelAlpha = value; break;
                 case TajsTweaksSettingsCatalog.DesignationLimit: DesignationLimit = value; break;
@@ -585,6 +614,7 @@ namespace TajsCOI.Tweaks
             switch (key)
             {
                 case TajsTweaksSettingsCatalog.LinePlacementShortcut: LinePlacementShortcut = value; break;
+                case TajsTweaksSettingsCatalog.TerrainXRayShortcut: TerrainXRayShortcut = value; break;
                 case TajsTweaksSettingsCatalog.PinnedSortDirection: PinnedSortDirection = value; break;
                 case TajsTweaksSettingsCatalog.PinnedSortMode: PinnedSortMode = value; break;
                 case TajsTweaksSettingsCatalog.ResearchTreeLayout: ResearchTreeLayout = value; break;
@@ -601,6 +631,9 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.ShipPreloadData: ShipPreloadData = value; break;
                 case TajsTweaksSettingsCatalog.HudHidden: HudHidden = value; break;
                 case TajsTweaksSettingsCatalog.HudPositions: HudPositions = value; break;
+                case TajsTweaksSettingsCatalog.HudActionPolicy: HudActionPolicy = value; break;
+                case TajsTweaksSettingsCatalog.InspectorSectionCollapsed: InspectorSectionCollapsed = value; break;
+                case TajsTweaksSettingsCatalog.InspectorVehicleFilters: InspectorVehicleFilters = value; break;
                 case TajsTweaksSettingsCatalog.StorageOverrideData:
                     StorageOverrideData = value;
                     RebuildParsedValues();

@@ -11,6 +11,7 @@ using System.Runtime.CompilerServices;
 using Mafi;
 using Mafi.Unity.Ui.Hud;
 using TajsCOI.Common.Settings;
+using TajsCOI.Tweaks.Features.Presentation;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -227,6 +228,7 @@ namespace TajsCOI.Tweaks
             }
 
             ApplyBackgrounds(hud);
+            TweaksHudActionFeature.Apply(hud, settings, TajsTweaksRuntimeState.HudLayout);
             ApplyFullscreenVisibility();
         }
 

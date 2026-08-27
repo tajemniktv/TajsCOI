@@ -17,6 +17,12 @@ namespace TajsCOI.Common.Shortcuts
         Modal,
     }
 
+    public enum ShortcutBindingType
+    {
+        KeyCombination,
+        ModifierOnly,
+    }
+
     public enum ShortcutRegistrationStatus
     {
         Added,
@@ -44,7 +50,7 @@ namespace TajsCOI.Common.Shortcuts
         {
             if (!TryParse(serialized, out string normalized))
             {
-                throw new ArgumentException("Shortcut combination must contain a key or button.", nameof(serialized));
+                throw new ArgumentException("Shortcut combination must contain a key, button, or modifier.", nameof(serialized));
             }
 
             Serialized = normalized;
@@ -114,6 +120,13 @@ namespace TajsCOI.Common.Shortcuts
                 .OrderBy(token => ModifierOrder(token))
                 .ToArray();
             string[] keyTokens = tokens.Where(token => !modifiers.Contains(token, StringComparer.Ordinal)).ToArray();
+            // Modifier-only actions are used as editing modes (for example, hold Ctrl while
+            // dragging). Ordinary key combinations still require exactly one non-modifier key.
+            if (keyTokens.Length == 0 && modifierTokens.Length > 0)
+            {
+                normalized = string.Join("+", modifierTokens);
+                return true;
+            }
             if (keyTokens.Length != 1 || keyTokens[0].Length == 0)
             {
                 return false;
@@ -139,7 +152,9 @@ namespace TajsCOI.Common.Shortcuts
             string category,
             ShortcutCombination defaultPrimary,
             ShortcutCombination defaultSecondary,
-            ShortcutActivationContext context)
+            ShortcutActivationContext context,
+            string? description = null,
+            ShortcutBindingType bindingType = ShortcutBindingType.KeyCombination)
         {
             ActionId = RequireId(actionId, nameof(actionId));
             Label = RequireText(label, nameof(label));
@@ -147,6 +162,8 @@ namespace TajsCOI.Common.Shortcuts
             DefaultPrimary = defaultPrimary;
             DefaultSecondary = defaultSecondary;
             Context = context;
+            Description = string.IsNullOrWhiteSpace(description) ? Label : description!.Trim();
+            BindingType = bindingType;
         }
 
         public string ActionId { get; }
@@ -155,6 +172,8 @@ namespace TajsCOI.Common.Shortcuts
         public ShortcutCombination DefaultPrimary { get; }
         public ShortcutCombination DefaultSecondary { get; }
         public ShortcutActivationContext Context { get; }
+        public string Description { get; }
+        public ShortcutBindingType BindingType { get; }
 
         private static string RequireText(string value, string parameter) =>
             string.IsNullOrWhiteSpace(value)

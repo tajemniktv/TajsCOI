@@ -22,6 +22,7 @@ using Mafi.Core.SaveGame;
 using Mafi.Core.Vehicles.Commands;
 using Mafi.Core.Vehicles.Trucks;
 using Mafi.Core.World;
+using Mafi.Core.Products;
 using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Compatibility;
@@ -34,9 +35,11 @@ using TajsCOI.Common.Settings;
 using TajsCOI.Common.Shortcuts;
 using TajsCOI.Tweaks.Configuration;
 using TajsCOI.Tweaks.Features.Difficulty;
+using TajsCOI.Tweaks.Features.Cleanup;
 using TajsCOI.Tweaks.Features.EntityMetadata;
 using TajsCOI.Tweaks.Features.Overclocking;
 using TajsCOI.Tweaks.Features.Presentation;
+using TajsCOI.Tweaks.Features.Selection;
 using TajsCOI.Tweaks.Features.Storage;
 
 namespace TajsCOI.Tweaks
@@ -62,6 +65,8 @@ namespace TajsCOI.Tweaks
         private bool m_overclockingInitializationAttempted;
         private bool m_metadataSelectionInitializationAttempted;
         private EntityMetadataSelectionTool? m_metadataSelection;
+        private bool m_safeAreaCleanupInitializationAttempted;
+        private SafeAreaCleanupFeature? m_safeAreaCleanup;
         private Option<TajsWorldOperationsWindow> m_worldOperationsWindow;
         private Option<TajsFleetManagementWindow> m_fleetManagementWindow;
         private Option<TajsOverclockingWindow> m_overclockingWindow;
@@ -125,7 +130,9 @@ namespace TajsCOI.Tweaks
             TryInstall(runtime, "KeepFullEmptyMarkers", TweaksKeepFullEmptyMarkerFeature.Install);
             TryInstall(runtime, "FullscreenHud", TweaksFullscreenHudFeature.Install);
             TryInstall(runtime, "SimulationSpeedDisplay", TweaksSimulationSpeedDisplayFeature.Install);
+            TryInstall(runtime, "AdaptiveTowerInspector", AdaptiveTowerInspectorFeature.Install);
             TryInstallResolved(runtime, "HudLayout", () => TweaksHudLayoutFeature.Install(resolver, settings));
+            AdaptiveTowerInspectorFeature.BindSettings(settings);
 
             runtime.ReportCompatibility(
                 new CompatibilityReport(
@@ -174,6 +181,52 @@ namespace TajsCOI.Tweaks
                         : new ShortcutCombination("LEFTALT"),
                     ShortcutCombination.Empty,
                     ShortcutActivationContext.Tool));
+            registry.Register(
+                new ShortcutDescriptor(
+                    "TajsTweaks.TerrainXRay",
+                    "Terrain X-ray",
+                    "Terrain tools",
+                    ShortcutCombination.TryParse(TajsTweaksRuntimeState.TerrainXRayShortcut, out ShortcutCombination xray)
+                        ? xray
+                        : new ShortcutCombination("F7"),
+                    ShortcutCombination.Empty,
+                    ShortcutActivationContext.Tool));
+            registry.Register(
+                new ShortcutDescriptor(
+                    "TajsTweaks.TerrainXRay.DepthModifier",
+                    "Terrain X-ray depth modifier",
+                    "Terrain tools",
+                    new ShortcutCombination("CTRL"),
+                    ShortcutCombination.Empty,
+                    ShortcutActivationContext.Tool,
+                    bindingType: ShortcutBindingType.ModifierOnly));
+            registry.Register(
+                new ShortcutDescriptor(
+                    "TajsTweaks.TerrainXRay.RadiusModifier",
+                    "Terrain X-ray radius modifier",
+                    "Terrain tools",
+                    new ShortcutCombination("CTRL+SHIFT"),
+                    ShortcutCombination.Empty,
+                    ShortcutActivationContext.Tool,
+                    bindingType: ShortcutBindingType.ModifierOnly));
+            registry.Register(
+                new ShortcutDescriptor(
+                    "TajsTweaks.Polygon.AxisConstraint",
+                    "Polygon dominant-axis constraint",
+                    "Area tools",
+                    new ShortcutCombination("SHIFT"),
+                    ShortcutCombination.Empty,
+                    ShortcutActivationContext.Tool,
+                    bindingType: ShortcutBindingType.ModifierOnly));
+            registry.Register(
+                new ShortcutDescriptor(
+                    "TajsTweaks.Polygon.GridSnap",
+                    "Polygon grid snap",
+                    "Area tools",
+                    new ShortcutCombination("CTRL"),
+                    ShortcutCombination.Empty,
+                    ShortcutActivationContext.Tool,
+                    bindingType: ShortcutBindingType.ModifierOnly));
         }
 
         private static void RegisterDesignationIntegration(ITajsRuntime runtime, bool designationInstalled)
@@ -326,9 +379,21 @@ namespace TajsCOI.Tweaks
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.HudHidden ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.HudPositions ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.HudBackgrounds ||
-                change.Descriptor.Key == TajsTweaksSettingsCatalog.ShowHudOnFullscreenViews)
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.ShowHudOnFullscreenViews ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.HudActionPolicy ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.HudActionCollapsed ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.HudActionHoverReveal ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.HudRealWorldClock ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.HudClock24Hour)
             {
                 TweaksHudLayoutFeature.Apply(m_resolver, m_settings);
+            }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.AdaptiveTowerInspector ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.InspectorSectionCollapsed ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.InspectorVehicleFilters ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.InspectorVehicleVisibleRows)
+            {
+                AdaptiveTowerInspectorFeature.RefreshAll();
             }
             if (change.Descriptor.Key == TajsTweaksSettingsCatalog.WorldOperations ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.AutoWorldDelivery)
@@ -376,6 +441,15 @@ namespace TajsCOI.Tweaks
             {
                 TweaksTerrainGridFeature.ApplySettings();
             }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.TerrainXRay)
+            {
+                TweaksTerrainXRayFeature.ApplySettings();
+            }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.TerrainXRayShortcut &&
+                ShortcutCombination.TryParse(Convert.ToString(change.NewValue, CultureInfo.InvariantCulture), out ShortcutCombination xrayBinding))
+            {
+                m_shortcuts.TrySetBinding("TajsTweaks.TerrainXRay", xrayBinding, ShortcutCombination.Empty);
+            }
             if (change.Descriptor.Key == TajsTweaksSettingsCatalog.ResearchTreeLayout)
             {
                 ResearchTreeLayoutFeature.RefreshAll();
@@ -411,8 +485,10 @@ namespace TajsCOI.Tweaks
         {
             EnsureOverclockingFeature();
             EnsureEntityMetadataSelection();
+            EnsureSafeAreaCleanup();
             m_overclocking?.UpdateSelectionInput();
             m_metadataSelection?.UpdateInput();
+            m_safeAreaCleanup?.UpdateInput();
             if (++m_renderTick % 15 == 0)
             {
                 TweaksPinnedProductsFeature.Tick();
@@ -435,6 +511,7 @@ namespace TajsCOI.Tweaks
             // nested TryResolve call as a recursive dependency resolution.
             TryInstall(m_runtime, "StackerDesignationOverlay", harmony => TweaksStackerDesignationFeature.Install(harmony, m_resolver));
             TryInstallResolved(m_runtime, "TerrainGrid", () => TweaksTerrainGridFeature.Install(m_resolver, m_settings, m_log));
+            TryInstallResolved(m_runtime, "TerrainXRay", () => TweaksTerrainXRayFeature.Install(m_resolver, m_settings, m_log));
             TryInstallResolved(m_runtime, "EfficiencyOverlay", () => TweaksEfficiencyOverlayFeature.Install(m_resolver));
             TryInstall(m_runtime, "SteamAndExhaustStorage", harmony => TweaksSteamStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "StorageOverrides", harmony => TweaksStorageFeature.Install(harmony, m_resolver));
@@ -555,6 +632,48 @@ namespace TajsCOI.Tweaks
             }
         }
 
+        private void EnsureSafeAreaCleanup()
+        {
+            if (m_safeAreaCleanupInitializationAttempted)
+            {
+                return;
+            }
+
+            m_safeAreaCleanupInitializationAttempted = true;
+            try
+            {
+                if (!m_resolver.TryResolve(out IEntitiesManager? entities) || entities is null ||
+                    !m_resolver.TryResolve(out IInputScheduler? scheduler) || scheduler is null ||
+                    !m_resolver.TryResolve(out IProductsManager? products) || products is null)
+                {
+                    throw new InvalidOperationException(
+                        "The current scene has no entity manager, input scheduler, or products manager.");
+                }
+
+                m_safeAreaCleanup = new SafeAreaCleanupFeature(entities, scheduler, products);
+                m_runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsTweaksSettingsCatalog.ModId,
+                        "SafeAreaCleanup",
+                        CompatibilityState.Compatible,
+                        "0.8.7b entity removal, product accounting, and shared rectangle selection seams",
+                        "StartDeconstructionOfStaticEntityCmd; IProductsManager.ProductDestroyed; Transport.IsFullyConnected",
+                        "Selections retain IDs and preview metadata only and revalidate before scheduling bounded commands."));
+            }
+            catch (Exception exception)
+            {
+                m_log.Exception(exception, "Safe area cleanup is unavailable in this scene.");
+                m_runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsTweaksSettingsCatalog.ModId,
+                        "SafeAreaCleanup",
+                        CompatibilityState.Disabled,
+                        "Gameplay-scene entity, input, and products managers",
+                        exception.GetType().Name,
+                        "No cleanup command was installed; vanilla area removal remains active."));
+            }
+        }
+
         private void OnTerminate()
         {
             m_settings.Changed -= OnSettingChanged;
@@ -564,15 +683,19 @@ namespace TajsCOI.Tweaks
             m_infiniteGroundwater.Dispose();
             m_overclocking?.Dispose();
             m_metadataSelection?.Deactivate();
+            m_safeAreaCleanup?.Deactivate();
             m_difficulty?.Dispose();
             TweaksResourceDepositFeature.Dispose();
             TweaksStackerDesignationFeature.Dispose();
             TweaksTerrainGridFeature.Dispose();
+            TweaksTerrainXRayFeature.Dispose();
             TweaksEfficiencyOverlayFeature.Dispose();
             TweaksStuckTruckRecoveryFeature.ClearDestinations();
             TweaksKeepFullEmptyMarkerFeature.Reset();
             TajsStorageAdvancedFeature.Reset();
             TweaksHudLayoutFeature.ClearFullscreenState();
+            TweaksHudActionFeature.ResetAll();
+            AdaptiveTowerInspectorFeature.Reset();
             CloseWorldOperationsWindow();
             CloseFleetManagementWindow();
             CloseOverclockingWindow();
@@ -891,6 +1014,98 @@ namespace TajsCOI.Tweaks
             customCommandName: "tajs_metadata_group_pick_status")]
         public string MetadataGroupPickStatus() =>
             m_metadataSelection?.SelectionStatus ?? "Metadata rectangle selection is unavailable in this scene.";
+
+        [ConsoleCommand(
+            documentation: "Starts a scene-only safe-area rectangle picker for disconnected transports or product buffers.",
+            customCommandName: "tajs_safe_area_pick")]
+        public string SafeAreaPick(string mode)
+        {
+            if (m_safeAreaCleanup is null)
+            {
+                return "Safe area cleanup is unavailable in this scene.";
+            }
+
+            SafeAreaCleanupMode selectedMode;
+            if (string.Equals(mode, "transport", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(mode, "disconnected-transport", StringComparison.OrdinalIgnoreCase))
+            {
+                selectedMode = SafeAreaCleanupMode.DisconnectedTransport;
+            }
+            else if (string.Equals(mode, "products", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(mode, "product", StringComparison.OrdinalIgnoreCase))
+            {
+                selectedMode = SafeAreaCleanupMode.Products;
+            }
+            else
+            {
+                return "Usage: tajs_safe_area_pick <transport|products>";
+            }
+
+            m_metadataSelection?.Deactivate();
+            m_overclocking?.CancelSelection();
+            return m_safeAreaCleanup.Activate(selectedMode);
+        }
+
+        [ConsoleCommand(
+            documentation: "Builds a bounded tile-rectangle safe-area preview without changing the world.",
+            customCommandName: "tajs_safe_area_preview")]
+        public string SafeAreaPreview(string mode, string minX, string minY, string maxX, string maxY)
+        {
+            if (m_safeAreaCleanup is null || !int.TryParse(minX, out int parsedMinX) ||
+                !int.TryParse(minY, out int parsedMinY) || !int.TryParse(maxX, out int parsedMaxX) ||
+                !int.TryParse(maxY, out int parsedMaxY))
+            {
+                return "Usage: tajs_safe_area_preview <transport|products> <min-x> <min-y> <max-x> <max-y>";
+            }
+
+            string pickResult = SafeAreaPick(mode);
+            if (pickResult.StartsWith("Usage:", StringComparison.Ordinal) ||
+                pickResult.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return pickResult;
+            }
+
+            return m_safeAreaCleanup.BuildAreaPreview(
+                new SceneAreaBounds(parsedMinX, parsedMinY, parsedMaxX, parsedMaxY));
+        }
+
+        [ConsoleCommand(
+            documentation: "Shows the current safe-area preview; it never changes the world.",
+            customCommandName: "tajs_safe_area_status")]
+        public string SafeAreaStatus() =>
+            m_safeAreaCleanup?.Status() ?? "Safe area cleanup is unavailable in this scene.";
+
+        [ConsoleCommand(
+            documentation: "Cancels the scene-only safe-area preview and any pending cleanup order.",
+            customCommandName: "tajs_safe_area_cancel")]
+        public string SafeAreaCancel()
+        {
+            if (m_safeAreaCleanup is null)
+            {
+                return "Safe area cleanup is unavailable in this scene.";
+            }
+
+            m_safeAreaCleanup.Deactivate();
+            return "Safe area cleanup cancelled.";
+        }
+
+        [ConsoleCommand(
+            documentation: "Commits the reviewed safe-area preview through bounded native commands.",
+            customCommandName: "tajs_safe_area_commit")]
+        public string SafeAreaCommit(string? quick = null, string? confirmation = null, string? policy = null)
+        {
+            if (m_safeAreaCleanup is null)
+            {
+                return "Safe area cleanup is unavailable in this scene.";
+            }
+            if (quick is not null && !bool.TryParse(quick, out _))
+            {
+                return "Usage: tajs_safe_area_commit [true|false] CONFIRM [ALLOW-QUICK|NORMAL]";
+            }
+
+            bool parsedQuick = quick is not null && bool.Parse(quick);
+            return m_safeAreaCleanup.Commit(parsedQuick, confirmation, policy);
+        }
 
         [ConsoleCommand(
             documentation: "Highlights all supported members of an overclock group in the world.",

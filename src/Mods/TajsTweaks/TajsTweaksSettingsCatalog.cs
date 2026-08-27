@@ -94,6 +94,16 @@ namespace TajsCOI.Tweaks
         internal const string HudPositions = "hud_positions";
         internal const string HudBackgrounds = "hud_backgrounds";
         internal const string ShowHudOnFullscreenViews = "show_hud_on_fullscreen_views";
+        internal const string HudActionPolicy = "hud_action_policy";
+        internal const string HudActionCollapsed = "hud_action_collapsed";
+        internal const string HudActionHoverReveal = "hud_action_hover_reveal";
+        internal const string HudRealWorldClock = "hud_real_world_clock";
+        internal const string HudClock24Hour = "hud_clock_24_hour";
+
+        internal const string AdaptiveTowerInspector = "adaptive_tower_inspector";
+        internal const string InspectorSectionCollapsed = "inspector_section_collapsed";
+        internal const string InspectorVehicleFilters = "inspector_vehicle_filters";
+        internal const string InspectorVehicleVisibleRows = "inspector_vehicle_visible_rows";
 
         internal const string StorageOverrides = "storage_overrides";
         internal const string StorageInspectorControls = "storage_inspector_controls";
@@ -113,6 +123,8 @@ namespace TajsCOI.Tweaks
         internal const string ElectricityComputingTotals = "electricity_computing_totals";
         internal const string StackerDesignationOverlay = "stacker_designation_overlay";
         internal const string TerrainGrid = "terrain_grid";
+        internal const string TerrainXRay = "terrain_xray";
+        internal const string TerrainXRayShortcut = "terrain_xray_shortcut";
         internal const string EfficiencyOverlay = "efficiency_overlay";
         internal const string EfficiencyOverlayMode = "efficiency_overlay_mode";
         internal const string EfficiencyOverlayBuildings = "efficiency_overlay_buildings";
@@ -1074,6 +1086,107 @@ namespace TajsCOI.Tweaks
                 "HUD",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced),
+            SettingDescriptor.String(
+                ModId,
+                DisplayName,
+                HudActionPolicy,
+                "HUD action policy",
+                "Stable action IDs with optional order, visibility, and collapsed-mode preferences.",
+                string.Empty,
+                "HUD",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: HudLayout),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                HudActionCollapsed,
+                "Collapse status actions",
+                "Shows only core status/calendar actions until the bar is revealed.",
+                false,
+                "HUD",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: HudLayout),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                HudActionHoverReveal,
+                "Reveal actions on hover",
+                "Temporarily reveals collapsed status/calendar actions while the bar is hovered.",
+                true,
+                "HUD",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: HudLayout),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                HudRealWorldClock,
+                "Real-world HUD clock",
+                "Adds a presentation-only local clock to the calendar bar; it never changes game time.",
+                false,
+                "HUD",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: HudLayout),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                HudClock24Hour,
+                "24-hour HUD clock",
+                "Formats the optional real-world clock using a 24-hour display.",
+                true,
+                "HUD",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: HudRealWorldClock),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                AdaptiveTowerInspector,
+                "Adaptive tower inspectors",
+                "Makes mine and forestry inspector sections collapsible and bounds vehicle assignment lists.",
+                false,
+                "Presentation",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.String(
+                ModId,
+                DisplayName,
+                InspectorSectionCollapsed,
+                "Inspector collapsed sections",
+                "Global section IDs whose inspector bodies should start collapsed.",
+                string.Empty,
+                "Presentation",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: AdaptiveTowerInspector),
+            SettingDescriptor.String(
+                ModId,
+                DisplayName,
+                InspectorVehicleFilters,
+                "Inspector vehicle filters",
+                "Comma-separated vehicle classes shown in tower assignment sections.",
+                "excavator,truck,tree_planter,tree_harvester",
+                "Presentation",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: AdaptiveTowerInspector),
+            SettingDescriptor.Integer(
+                ModId,
+                DisplayName,
+                InspectorVehicleVisibleRows,
+                "Inspector vehicle rows",
+                "Maximum visible rows before a tower vehicle assignment list scrolls.",
+                8,
+                3,
+                24,
+                1,
+                "Presentation",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced,
+                componentRequirement: AdaptiveTowerInspector),
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,
@@ -1247,6 +1360,26 @@ namespace TajsCOI.Tweaks
                 "Terrain grid",
                 "Keeps the game's native terrain grid visible through the dedicated toolbar toggle. The preference is remembered across gameplay-scene recreation.",
                 false,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                TerrainXRay,
+                "Terrain X-ray",
+                "Shows a bounded underground terrain section around the cursor without changing terrain simulation data.",
+                false,
+                "Overlays",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.String(
+                ModId,
+                DisplayName,
+                TerrainXRayShortcut,
+                "Terrain X-ray shortcut",
+                "Primary shortcut for the terrain X-ray tool.",
+                "F7",
                 "Overlays",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced),

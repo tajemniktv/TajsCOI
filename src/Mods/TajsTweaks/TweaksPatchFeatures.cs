@@ -32,6 +32,7 @@ using Mafi.Unity.Camera;
 using Mafi.Unity.InputControl;
 using Mafi.Unity.Ui.Controllers.LayoutEntityPlacing;
 using Mafi.Unity.Ui.Hud;
+using TajsCOI.Tweaks.Features.Selection;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -675,6 +676,10 @@ namespace TajsCOI.Tweaks
 
         private static void InstallPolygonAreaSupport(Harmony harmony)
         {
+            // The input seam is shared by mine and forestry area editors. Keep the
+            // coordinate patch independent from the optional designation edge-size
+            // override below so either feature can fail open on a changed game build.
+            PolygonConstraintFeature.Install(harmony);
             var polygonState = Type.GetType("Mafi.Unity.Ui.Controllers.PolygonEditState, Mafi.Unity", false);
             MethodInfo? initialize = polygonState is null ? null : AccessTools.Method(polygonState, "Initialize");
             PropertyInfo? maxEdgeSize = polygonState?.GetProperty(
