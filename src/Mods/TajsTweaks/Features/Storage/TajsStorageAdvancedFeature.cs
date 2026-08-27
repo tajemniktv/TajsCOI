@@ -10,16 +10,17 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using HarmonyLib;
 using Mafi;
-using Mafi.Core;
 using Mafi.Core.Buildings.Storages;
 using Mafi.Core.Entities;
 using Mafi.Core.Input;
 using Mafi.Core.Products;
 using Mafi.Core.Prototypes;
+using Mafi.Core.SaveGame;
 using Mafi.Localization;
 using Mafi.Unity.Ui.Library;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
+using TajsCOI.Tweaks.Configuration;
 using UnityEngine.UIElements;
 using UiButton = Mafi.Unity.UiToolkit.Library.Button;
 using UiColumn = Mafi.Unity.UiToolkit.Library.Column;
@@ -140,9 +141,18 @@ namespace TajsCOI.Tweaks.Features.Storage
 
         internal static void Install(Harmony harmony, DependencyResolver resolver)
         {
+            if (resolver.TryResolve(out ISaveManager saveManager))
+            {
+                TajsStorageAdvancedState.LoadForSave(saveManager.GameName);
+            }
+
             resolver.TryResolve(out s_inputScheduler);
             resolver.TryResolve(out s_entities);
             resolver.TryResolve(out s_protosDb);
+            if (TajsTweaksRuntimeState.StorageInspectorControls && s_entities is not null)
+            {
+                ApplyLoadedCapacities(s_entities);
+            }
 
             if (!s_patchRegistered)
             {
@@ -164,9 +174,24 @@ namespace TajsCOI.Tweaks.Features.Storage
             }
 
             TajsStorageAdvancedState.Clear();
+            TajsStorageAdvancedState.UnbindSave();
             s_inputScheduler = null;
             s_entities = null;
             s_protosDb = null;
+        }
+
+        internal static void ApplySettings(DependencyResolver resolver)
+        {
+            if (!TajsTweaksRuntimeState.StorageInspectorControls)
+            {
+                return;
+            }
+
+            resolver.TryResolve(out s_entities);
+            if (s_entities is not null)
+            {
+                ApplyLoadedCapacities(s_entities);
+            }
         }
 
         private static void PatchStorageProductSupport(Harmony harmony)
@@ -309,6 +334,11 @@ namespace TajsCOI.Tweaks.Features.Storage
                 return;
             }
 
+            if (TajsConfigurationPipeline.TryCapture(__instance, data))
+            {
+                return;
+            }
+
             // Always emit the explicit state. PreserveUnselectedFields overlays the target
             // value when product/allowed-product transfer is not selected.
             data.SetBool(
@@ -326,6 +356,11 @@ namespace TajsCOI.Tweaks.Features.Storage
         {
             if (!TajsTweaksRuntimeState.StorageInspectorControls || __instance is null || data is null ||
                 TajsStorageAdvancedConfiguration.IsRestricted(__instance))
+            {
+                return;
+            }
+
+            if (TajsConfigurationPipeline.TryApply(__instance, data))
             {
                 return;
             }
@@ -349,7 +384,7 @@ namespace TajsCOI.Tweaks.Features.Storage
                 }
                 else if (capacity.Value == 0)
                 {
-                    TajsStorageAdvancedConfiguration.ClearCapacityOverride(__instance);
+                    TajsStorageAdvancedConfiguration.TryClearCapacityOverride(__instance, out _);
                 }
             }
         }
@@ -357,7 +392,8 @@ namespace TajsCOI.Tweaks.Features.Storage
         private static void ProductAssignmentPostfix(StorageBase __instance, ProductProto product, bool __result)
         {
             if (!__result || !TajsTweaksRuntimeState.StorageInspectorControls ||
-                __instance is not CoiStorage storage || product is null)
+                __instance is not CoiStorage storage || product is null ||
+                TajsStorageAdvancedConfiguration.IsRestricted(storage))
             {
                 return;
             }
@@ -371,7 +407,8 @@ namespace TajsCOI.Tweaks.Features.Storage
 
         private static void ProductReplacedPostfix(StorageBase __instance, ProductProto product)
         {
-            if (!TajsTweaksRuntimeState.StorageInspectorControls || __instance is not CoiStorage storage || product is null)
+            if (!TajsTweaksRuntimeState.StorageInspectorControls || __instance is not CoiStorage storage ||
+                product is null || TajsStorageAdvancedConfiguration.IsRestricted(storage))
             {
                 return;
             }
@@ -380,6 +417,30 @@ namespace TajsCOI.Tweaks.Features.Storage
             if (capacity.HasValue)
             {
                 TajsStorageAdvancedConfiguration.TryApplyCapacity(storage, capacity.Value, out _);
+            }
+        }
+
+        private static void ApplyLoadedCapacities(IEntitiesManager entities)
+        {
+            try
+            {
+                foreach (CoiStorage storage in entities.GetAllEntitiesOfType<CoiStorage>())
+                {
+                    if (storage is null)
+                    {
+                        continue;
+                    }
+
+                    int? capacity = TajsStorageAdvancedState.GetCapacityOverride(storage.Id.Value);
+                    if (capacity.HasValue && !TajsStorageAdvancedConfiguration.IsRestricted(storage))
+                    {
+                        TajsStorageAdvancedConfiguration.TryApplyCapacity(storage, capacity.Value, out _, remember: false);
+                    }
+                }
+            }
+            catch
+            {
+                // Persistence is optional; one malformed entity must not affect the scene.
             }
         }
 
@@ -464,6 +525,7 @@ namespace TajsCOI.Tweaks.Features.Storage
             AddFieldChoice(fieldColumn, fieldChoices, StorageTransferFields.TruckPolicy, "Truck policy");
             AddFieldChoice(fieldColumn, fieldChoices, StorageTransferFields.Alerts, "Alert thresholds");
             AddFieldChoice(fieldColumn, fieldChoices, StorageTransferFields.KeepFullEmpty, "Keep-full/keep-empty mode");
+            AddFieldChoice(fieldColumn, fieldChoices, StorageTransferFields.CapacityOverride, "Capacity override");
 
             UiTextField importUntil = CreatePercentField("Import until %");
             UiTextField exportFrom = CreatePercentField("Export from %");
@@ -591,7 +653,7 @@ namespace TajsCOI.Tweaks.Features.Storage
         {
             if (!TryGetStorage(state.Inspector, out CoiStorage storage))
             {
-            state.Panel.RootElement.style.display = new StyleEnum<DisplayStyle>(DisplayStyle.None);
+                state.Panel.RootElement.style.display = new StyleEnum<DisplayStyle>(DisplayStyle.None);
                 return;
             }
 
@@ -618,12 +680,13 @@ namespace TajsCOI.Tweaks.Features.Storage
                 state.ExportFrom.Text(storage.ExportFromPercent.ToIntPercentRounded().ToString());
                 state.TransportFrom.Text(storage.TransportFromPercent.ToIntPercentRounded().ToString());
                 state.TransportUntil.Text(storage.TransportUntilPercent.ToIntPercentRounded().ToString());
+            }
+
+            if (!state.DirtyCapacity)
+            {
                 int capacity = TajsStorageAdvancedState.GetCapacityOverride(storage.Id.Value) ??
                                (storage.Capacity.IsPositive ? storage.Capacity.Value : storage.Prototype.Capacity.Value);
-                if (!state.DirtyCapacity)
-                {
-                    state.Capacity.Text(capacity.ToString());
-                }
+                state.Capacity.Text(capacity.ToString());
             }
 
             state.Status.Value(Loc("Storage " + storage.Id.Value + " supports " + storage.Prototype.ProductType!.Value + "."));
@@ -781,7 +844,7 @@ namespace TajsCOI.Tweaks.Features.Storage
             int compatible = candidates.Count(x => x.Compatible);
             int skipped = candidates.Count - compatible;
             state.PreviewSourceId = source.Id.Value;
-            state.PreviewFingerprint = Fingerprint(source.Id.Value, fields, candidates);
+            state.PreviewFingerprint = Fingerprint(source, fields, candidates);
             state.PreviewStatus.Value(Loc("Preview: " + compatible + " compatible storage(s), " + skipped + " skipped. Fields: " + TajsStorageAdvancedConfiguration.DescribeFields(fields) + "."));
             SetStatus(state, skipped == 0 ? "Preview ready." : "Preview ready; skipped entities will be reported.", important: skipped != 0);
         }
@@ -802,7 +865,7 @@ namespace TajsCOI.Tweaks.Features.Storage
                 return;
             }
             List<StorageTransferCandidate> candidates = BuildCandidates(source, storages);
-            string fingerprint = Fingerprint(source.Id.Value, fields, candidates);
+            string fingerprint = Fingerprint(source, fields, candidates);
             if (state.PreviewSourceId != source.Id.Value || state.PreviewFingerprint != fingerprint)
             {
                 PreviewConfiguration(state);
@@ -832,8 +895,64 @@ namespace TajsCOI.Tweaks.Features.Storage
             return result;
         }
 
-        private static string Fingerprint(int sourceId, StorageTransferFields fields, IEnumerable<StorageTransferCandidate> candidates) =>
-            sourceId + ":" + (int)fields + ":" + string.Join(",", candidates.Select(x => x.EntityId + ":" + x.Compatible));
+        private static string Fingerprint(
+            CoiStorage source,
+            StorageTransferFields fields,
+            IEnumerable<StorageTransferCandidate> candidates)
+        {
+            var sourceValues = new List<string>();
+            if ((fields & StorageTransferFields.ProductAssignment) != 0)
+            {
+                sourceValues.Add(source.StoredProduct.HasValue ? source.StoredProduct.Value.Id.Value : "-");
+                sourceValues.Add(TajsStorageAdvancedState.IsAllowAll(source.Id.Value) ? "1" : "0");
+            }
+
+            if ((fields & StorageTransferFields.LogisticsThresholds) != 0)
+            {
+                sourceValues.Add(source.ImportUntilPercent.RawValue.ToString());
+                sourceValues.Add(source.ExportFromPercent.RawValue.ToString());
+                sourceValues.Add(source.TransportFromPercent.RawValue.ToString());
+                sourceValues.Add(source.TransportUntilPercent.RawValue.ToString());
+                sourceValues.Add(source.ImportPriority.ToString());
+                sourceValues.Add(source.ExportPriority.ToString());
+                sourceValues.Add(source.GeneralPriority.ToString());
+            }
+
+            if ((fields & StorageTransferFields.ImportExportEnablement) != 0)
+            {
+                sourceValues.Add(source.IsLogisticsInputDisabled ? "1" : "0");
+                sourceValues.Add(source.IsLogisticsOutputDisabled ? "1" : "0");
+                sourceValues.Add(source.AllowNonAssignedOutput ? "1" : "0");
+            }
+
+            if ((fields & StorageTransferFields.TruckPolicy) != 0)
+            {
+                sourceValues.Add(TajsStorageAdvancedConfiguration.IsEnforcingCustomVehicles(source) ? "1" : "0");
+                sourceValues.Add(string.Join(",", source.AllowedTruckGroups.Select(group => group.Id.Value).OrderBy(id => id)));
+                sourceValues.Add(string.Join(",", source.AllVehicles.Select(vehicle => vehicle.Prototype.Id.Value).OrderBy(id => id)));
+            }
+
+            if ((fields & StorageTransferFields.Alerts) != 0)
+            {
+                sourceValues.Add(source.AlertWhenAboveEnabled ? "1" : "0");
+                sourceValues.Add(source.AlertWhenAbove.RawValue.ToString());
+                sourceValues.Add(source.AlertWhenBelowEnabled ? "1" : "0");
+                sourceValues.Add(source.AlertWhenBelow.RawValue.ToString());
+            }
+
+            if ((fields & StorageTransferFields.KeepFullEmpty) != 0)
+            {
+                sourceValues.Add(source.CheatMode.ToString());
+            }
+
+            if ((fields & StorageTransferFields.CapacityOverride) != 0)
+            {
+                sourceValues.Add((TajsStorageAdvancedState.GetCapacityOverride(source.Id.Value) ?? 0).ToString());
+            }
+
+            return source.Id.Value + ":" + (int)fields + ":" + string.Join("|", sourceValues) + ":" +
+                   string.Join(",", candidates.Select(x => x.EntityId + ":" + x.Compatible));
+        }
 
         private static void SetStatus(InspectorState state, string text, bool important)
         {

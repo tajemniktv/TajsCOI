@@ -4,6 +4,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -56,6 +58,7 @@ namespace TajsCOI.Tweaks.Features.Storage
         internal const string AllowAllProductsKey = "TajsStorage.AllowAllProducts";
         internal const string CapacityOverrideKey = "TajsStorage.InstanceCapacity";
         private static MethodInfo? s_forceCapacityMethod;
+        private static FieldInfo? s_enforcingVehiclesField;
 
         internal static bool IsRestricted(CoiStorage storage) =>
             storage is NuclearWasteStorage ||
@@ -145,7 +148,7 @@ namespace TajsCOI.Tweaks.Features.Storage
             return true;
         }
 
-        internal static bool TryApplyCapacity(CoiStorage target, int capacity, out string reason)
+        internal static bool TryApplyCapacity(CoiStorage target, int capacity, out string reason, bool remember = true)
         {
             if (!CanTransferCapacity(target, capacity, out reason))
             {
@@ -158,14 +161,20 @@ namespace TajsCOI.Tweaks.Features.Storage
                 // it from the TryAssignProduct postfix when the first compatible product arrives.
                 if (!target.StoredProduct.HasValue)
                 {
-                    TajsStorageAdvancedState.SetCapacityOverride(target.Id.Value, capacity);
+                    if (remember)
+                    {
+                        TajsStorageAdvancedState.SetCapacityOverride(target.Id.Value, capacity);
+                    }
                     return true;
                 }
 
-                // StorageBase keeps this operation internal to the game. Resolve the exact
-                // 0.8.7b seam once and fail open if a future game removes or changes it.
+                // StorageBase keeps this operation protected. Resolve the exact 0.8.7b seam
+                // once; unlike the cheat-only helper this path also updates product statistics.
                 GetForceCapacityMethod()!.Invoke(target, new object[] { new Quantity(capacity) });
-                TajsStorageAdvancedState.SetCapacityOverride(target.Id.Value, capacity);
+                if (remember)
+                {
+                    TajsStorageAdvancedState.SetCapacityOverride(target.Id.Value, capacity);
+                }
                 return true;
             }
             catch (Exception exception)
@@ -175,26 +184,58 @@ namespace TajsCOI.Tweaks.Features.Storage
             }
         }
 
-        internal static void ClearCapacityOverride(CoiStorage target)
+        internal static bool TryClearCapacityOverride(CoiStorage target, out string reason)
         {
-            TajsStorageAdvancedState.ClearCapacityOverride(target.Id.Value);
-            if (target.StoredProduct.HasValue)
+            if (!CanClearCapacityOverride(target, out reason))
             {
-                try
-                {
-                    GetForceCapacityMethod()?.Invoke(target, new object[] { target.Prototype.Capacity });
-                }
-                catch
-                {
-                    // Reset is best effort; the native capacity remains authoritative.
-                }
+                return false;
             }
+
+            try
+            {
+                if (target.StoredProduct.HasValue)
+                {
+                    GetForceCapacityMethod()!.Invoke(target, new object[] { target.Prototype.Capacity });
+                }
+                TajsStorageAdvancedState.ClearCapacityOverride(target.Id.Value);
+                reason = string.Empty;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                reason = "capacity reset failed: " + exception.GetType().Name;
+                return false;
+            }
+        }
+
+        internal static bool CanClearCapacityOverride(CoiStorage target, out string reason)
+        {
+            if (target is null || target.IsDestroyed)
+            {
+                reason = "storage is missing or destroyed";
+                return false;
+            }
+
+            if (target.CurrentQuantity.Value > target.Prototype.Capacity.Value)
+            {
+                reason = "destination contains more product than its native capacity";
+                return false;
+            }
+
+            if (target.StoredProduct.HasValue && GetForceCapacityMethod() is null)
+            {
+                reason = "the game capacity setter is unavailable";
+                return false;
+            }
+
+            reason = string.Empty;
+            return true;
         }
 
         private static MethodInfo? GetForceCapacityMethod() =>
             s_forceCapacityMethod ??= AccessTools.Method(
                 typeof(StorageBase),
-                "Cheat_ForceNewCapacityTo",
+                "ForceNewCapacityTo",
                 new[] { typeof(Quantity) });
 
         internal static IEnumerable<ProductProto> CompatibleProducts(CoiStorage storage, ProtosDb protosDb)
@@ -218,6 +259,12 @@ namespace TajsCOI.Tweaks.Features.Storage
             !product.IsExcludedFromStats &&
             product != ProductProto.Phantom &&
             !product.Id.Value.StartsWith("ParkVehicle_", StringComparison.Ordinal);
+
+        internal static bool IsEnforcingCustomVehicles(CoiStorage storage)
+        {
+            s_enforcingVehiclesField ??= AccessTools.Field(typeof(CoiStorage), "m_isEnforcingCustomVehicles");
+            return s_enforcingVehiclesField?.GetValue(storage) is bool value && value;
+        }
 
         internal static void RemoveUnselectedFields(EntityConfigData data, StorageTransferFields fields)
         {
@@ -279,6 +326,30 @@ namespace TajsCOI.Tweaks.Features.Storage
             EntityConfigData destination,
             StorageTransferFields fields)
         {
+            // EntitiesCloneConfigHelper also carries generic entity state. Storage transfers
+            // must not accidentally pause/unpause, rename, reprioritize, rewire, or change
+            // power policy simply because the native helper includes those fields.
+            data.IsPaused = destination.IsPaused;
+            data.IsElectricitySurplusGenerator = destination.IsElectricitySurplusGenerator;
+            data.IsElectricitySurplusConsumer = destination.IsElectricitySurplusConsumer;
+            data.ElectricityGenerationPriority = destination.ElectricityGenerationPriority;
+            data.CustomTitle = destination.CustomTitle;
+            data.AssignedInputs = destination.AssignedInputs;
+            data.AssignedOutputs = destination.AssignedOutputs;
+            data.IsConstructionPaused = destination.IsConstructionPaused;
+            data.ConstructionPriorityOverride = destination.ConstructionPriorityOverride;
+            data.LinkedEntities = destination.LinkedEntities;
+
+            if ((fields & StorageTransferFields.LogisticsThresholds) == 0)
+            {
+                data.GeneralPriority = destination.GeneralPriority;
+            }
+
+            if ((fields & StorageTransferFields.ImportExportEnablement) == 0)
+            {
+                data.AllowNonAssignedOutput = destination.AllowNonAssignedOutput;
+            }
+
             if ((fields & StorageTransferFields.ProductAssignment) == 0)
             {
                 data.SetStorageStoredProduct(destination.GetStorageStoredProduct());
@@ -341,16 +412,177 @@ namespace TajsCOI.Tweaks.Features.Storage
             if ((fields & StorageTransferFields.CapacityOverride) != 0) names.Add("capacity override");
             return names.Count == 0 ? "nothing" : string.Join(", ", names);
         }
+
+        /// <summary>
+        ///     Returns only the extension-owned values that must travel alongside the native
+        ///     EntityConfigData copy. Native product/logistics fields remain owned by the game.
+        /// </summary>
+        internal static IReadOnlyDictionary<string, object> ReadBlueprintValues(object runtimeEntity)
+        {
+            if (!(runtimeEntity is CoiStorage storage) || storage.IsDestroyed)
+            {
+                return new Dictionary<string, object>(StringComparer.Ordinal);
+            }
+
+            var values = new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                [AllowAllProductsKey] = TajsStorageAdvancedState.IsAllowAll(storage.Id.Value),
+            };
+            int? capacity = TajsStorageAdvancedState.GetCapacityOverride(storage.Id.Value);
+            if (capacity.HasValue)
+            {
+                values[CapacityOverrideKey] = capacity.Value;
+            }
+
+            return values;
+        }
+
+        internal static bool ApplyBlueprintValues(
+            object runtimeEntity,
+            IReadOnlyDictionary<string, object> values)
+        {
+            if (!(runtimeEntity is CoiStorage storage) || storage.IsDestroyed || values is null)
+            {
+                return false;
+            }
+
+            bool? allowAll = null;
+            if (values.TryGetValue(AllowAllProductsKey, out object? allowAllRaw))
+            {
+                if (!(allowAllRaw is bool parsedAllowAll))
+                {
+                    return false;
+                }
+                allowAll = parsedAllowAll;
+            }
+
+            int? capacity = null;
+            if (values.TryGetValue(CapacityOverrideKey, out object? capacityRaw))
+            {
+                try
+                {
+                    capacity = Convert.ToInt32(capacityRaw, CultureInfo.InvariantCulture);
+                }
+                catch (Exception exception) when (exception is FormatException || exception is InvalidCastException || exception is OverflowException)
+                {
+                    return false;
+                }
+            }
+
+            if (allowAll.HasValue)
+            {
+                if (allowAll.Value)
+                {
+                    TajsStorageAdvancedState.SetAllowAll(storage.Id.Value);
+                }
+                else
+                {
+                    TajsStorageAdvancedState.ClearAllowAll(storage.Id.Value);
+                }
+            }
+
+            if (capacity.HasValue && !TryApplyCapacity(storage, capacity.Value, out _))
+            {
+                return false;
+            }
+
+            return true;
+        }
     }
 
     internal static class TajsStorageAdvancedState
     {
+        private const string StateHeader = "TajsTweaksStorageAdvancedV1";
         private static readonly object s_gate = new();
         private static readonly HashSet<int> s_allowAllProducts = new();
         private static readonly Dictionary<int, int> s_capacityOverrides = new();
         private static int s_lastApplied;
         private static int s_lastSkipped;
         private static string s_lastReport = string.Empty;
+        private static string? s_stateFilePath;
+
+        internal static void LoadForSave(string? saveName)
+        {
+            string safeName = SanitizeSaveName(saveName);
+            string directory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Captain of Industry",
+                "TajsTweaks",
+                "StorageAdvanced",
+                safeName.Length == 0 ? "current" : safeName);
+            string path = Path.Combine(directory, "state.txt");
+
+            lock (s_gate)
+            {
+                s_allowAllProducts.Clear();
+                s_capacityOverrides.Clear();
+                s_lastApplied = 0;
+                s_lastSkipped = 0;
+                s_lastReport = string.Empty;
+                s_stateFilePath = path;
+            }
+
+            try
+            {
+                if (!File.Exists(path))
+                {
+                    return;
+                }
+
+                string[] lines = File.ReadAllLines(path);
+                if (lines.Length == 0 || lines[0] != StateHeader)
+                {
+                    return;
+                }
+
+                for (int lineIndex = 1; lineIndex < lines.Length; lineIndex++)
+                {
+                    string line = lines[lineIndex];
+                    string[] parts = line.Split('\t');
+                    if (parts.Length < 2 || !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int entityId) || entityId < 0)
+                    {
+                        continue;
+                    }
+
+                    lock (s_gate)
+                    {
+                        if (parts[0] == "allow")
+                        {
+                            s_allowAllProducts.Add(entityId);
+                        }
+                        else if (parts[0] == "capacity" &&
+                                 parts.Length >= 3 &&
+                                 int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int capacity) &&
+                                 capacity > 0)
+                        {
+                            s_capacityOverrides[entityId] = capacity;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Optional metadata is fail-open. Native storage state remains authoritative.
+                lock (s_gate)
+                {
+                    s_allowAllProducts.Clear();
+                    s_capacityOverrides.Clear();
+                }
+            }
+        }
+
+        internal static void UnbindSave()
+        {
+            lock (s_gate)
+            {
+                s_stateFilePath = null;
+                s_allowAllProducts.Clear();
+                s_capacityOverrides.Clear();
+                s_lastApplied = 0;
+                s_lastSkipped = 0;
+                s_lastReport = string.Empty;
+            }
+        }
 
         internal static bool IsAllowAll(int entityId)
         {
@@ -362,17 +594,27 @@ namespace TajsCOI.Tweaks.Features.Storage
 
         internal static void SetAllowAll(int entityId)
         {
+            bool changed;
             lock (s_gate)
             {
-                s_allowAllProducts.Add(entityId);
+                changed = s_allowAllProducts.Add(entityId);
+            }
+            if (changed)
+            {
+                Persist();
             }
         }
 
         internal static void ClearAllowAll(int entityId)
         {
+            bool changed;
             lock (s_gate)
             {
-                s_allowAllProducts.Remove(entityId);
+                changed = s_allowAllProducts.Remove(entityId);
+            }
+            if (changed)
+            {
+                Persist();
             }
         }
 
@@ -386,17 +628,28 @@ namespace TajsCOI.Tweaks.Features.Storage
 
         internal static void SetCapacityOverride(int entityId, int capacity)
         {
+            bool changed;
             lock (s_gate)
             {
+                changed = !s_capacityOverrides.TryGetValue(entityId, out int previous) || previous != capacity;
                 s_capacityOverrides[entityId] = capacity;
+            }
+            if (changed)
+            {
+                Persist();
             }
         }
 
         internal static void ClearCapacityOverride(int entityId)
         {
+            bool changed;
             lock (s_gate)
             {
-                s_capacityOverrides.Remove(entityId);
+                changed = s_capacityOverrides.Remove(entityId);
+            }
+            if (changed)
+            {
+                Persist();
             }
         }
 
@@ -444,6 +697,55 @@ namespace TajsCOI.Tweaks.Features.Storage
                     return (s_lastApplied, s_lastSkipped);
                 }
             }
+        }
+
+        private static void Persist()
+        {
+            string? path;
+            string[] lines;
+            lock (s_gate)
+            {
+                path = s_stateFilePath;
+                var entries = new List<string>(1 + s_allowAllProducts.Count + s_capacityOverrides.Count) { StateHeader };
+                entries.AddRange(
+                    s_allowAllProducts.Select(id =>
+                        "allow\t" + id.ToString(CultureInfo.InvariantCulture)));
+                entries.AddRange(
+                    s_capacityOverrides.Select(pair =>
+                        "capacity\t" + pair.Key.ToString(CultureInfo.InvariantCulture) + "\t" +
+                        pair.Value.ToString(CultureInfo.InvariantCulture)));
+                lines = entries.ToArray();
+            }
+
+            if (string.IsNullOrEmpty(path))
+            {
+                return;
+            }
+
+            try
+            {
+                string? directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+                File.WriteAllLines(path, lines);
+            }
+            catch
+            {
+                // An unwritable optional sidecar must not affect native gameplay state.
+            }
+        }
+
+        private static string SanitizeSaveName(string? saveName)
+        {
+            string value = (saveName ?? string.Empty).Trim();
+            foreach (char invalid in Path.GetInvalidFileNameChars())
+            {
+                value = value.Replace(invalid, '_');
+            }
+
+            return value.Length > 96 ? value.Substring(0, 96) : value;
         }
     }
 }
