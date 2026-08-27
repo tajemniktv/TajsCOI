@@ -41,6 +41,7 @@ using TajsCOI.Tweaks.Features.Overclocking;
 using TajsCOI.Tweaks.Features.Presentation;
 using TajsCOI.Tweaks.Features.Selection;
 using TajsCOI.Tweaks.Features.Storage;
+using TajsCOI.Tweaks.Features.TransportNetwork;
 
 namespace TajsCOI.Tweaks
 {
@@ -67,6 +68,7 @@ namespace TajsCOI.Tweaks
         private EntityMetadataSelectionTool? m_metadataSelection;
         private bool m_safeAreaCleanupInitializationAttempted;
         private SafeAreaCleanupFeature? m_safeAreaCleanup;
+        private TransportNetworkVisualizerController? m_transportNetworkVisualizer;
         private Option<TajsWorldOperationsWindow> m_worldOperationsWindow;
         private Option<TajsFleetManagementWindow> m_fleetManagementWindow;
         private Option<TajsOverclockingWindow> m_overclockingWindow;
@@ -513,6 +515,7 @@ namespace TajsCOI.Tweaks
             TryInstallResolved(m_runtime, "TerrainGrid", () => TweaksTerrainGridFeature.Install(m_resolver, m_settings, m_log));
             TryInstallResolved(m_runtime, "TerrainXRay", () => TweaksTerrainXRayFeature.Install(m_resolver, m_settings, m_log));
             TryInstallResolved(m_runtime, "EfficiencyOverlay", () => TweaksEfficiencyOverlayFeature.Install(m_resolver));
+            TryInstallResolved(m_runtime, TransportNetworkVisualizerFeature.ComponentId, InitializeTransportNetworkVisualizer);
             TryInstall(m_runtime, "SteamAndExhaustStorage", harmony => TweaksSteamStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "StorageOverrides", harmony => TweaksStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "StorageInspectorControls", harmony => TajsStorageAdvancedFeature.Install(harmony, m_resolver));
@@ -674,6 +677,24 @@ namespace TajsCOI.Tweaks
             }
         }
 
+        private void InitializeTransportNetworkVisualizer()
+        {
+            if (m_transportNetworkVisualizer is not null)
+            {
+                return;
+            }
+
+            m_transportNetworkVisualizer = TransportNetworkVisualizerFeature.Install(m_resolver, m_log);
+            m_runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    TajsTweaksSettingsCatalog.ModId,
+                    TransportNetworkVisualizerFeature.ComponentId,
+                    CompatibilityState.Compatible,
+                    "Native IEntityWithPorts connectivity for transports, sorters, zippers, lifts, and endpoints",
+                    "CursorPickingManager; EntitiesRenderingManager; IoPortsRenderer.HighlightPorts",
+                    "Selection traverses only connected ports with a bounded visited-ID set; optional adapters fail open."));
+        }
+
         private void OnTerminate()
         {
             m_settings.Changed -= OnSettingChanged;
@@ -684,6 +705,8 @@ namespace TajsCOI.Tweaks
             m_overclocking?.Dispose();
             m_metadataSelection?.Deactivate();
             m_safeAreaCleanup?.Deactivate();
+            m_transportNetworkVisualizer?.Dispose();
+            m_transportNetworkVisualizer = null;
             m_difficulty?.Dispose();
             TweaksResourceDepositFeature.Dispose();
             TweaksStackerDesignationFeature.Dispose();
@@ -1266,6 +1289,39 @@ namespace TajsCOI.Tweaks
             int? min = minimum is null ? null : parsedMinimum;
             int? max = maximum is null ? null : parsedMaximum;
             return m_overclocking.QueueSetGroupAuto(parsedGroup, parsedEnabled, min, max, out string message) ? message : "Not queued: " + message;
+        }
+
+        [ConsoleCommand(
+            documentation: "Activates, clears, or exits the interactive transport-network visualizer toolbar tool.",
+            customCommandName: "tajs_transport_network")]
+        public string TransportNetworkTool(string? operation = null)
+        {
+            if (m_transportNetworkVisualizer is null)
+            {
+                return "Transport network visualizer is unavailable in this scene.";
+            }
+
+            string normalized = (operation ?? "activate").Trim().ToLowerInvariant();
+            switch (normalized)
+            {
+                case "activate":
+                case "start":
+                    m_transportNetworkVisualizer.Activate();
+                    return "Transport network visualizer active. Click a transport, connector, or endpoint; Escape/right-click exits.";
+                case "clear":
+                    m_transportNetworkVisualizer.ClearSelection();
+                    return "Transport network highlights cleared.";
+                case "exit":
+                case "stop":
+                    m_transportNetworkVisualizer.Deactivate();
+                    return "Transport network visualizer exited.";
+                case "status":
+                    return string.IsNullOrEmpty(m_transportNetworkVisualizer.SelectionStatus)
+                        ? "Transport network visualizer has no selection."
+                        : m_transportNetworkVisualizer.SelectionStatus;
+                default:
+                    return "Usage: tajs_transport_network <activate|clear|exit|status>";
+            }
         }
 
         [ConsoleCommand(
