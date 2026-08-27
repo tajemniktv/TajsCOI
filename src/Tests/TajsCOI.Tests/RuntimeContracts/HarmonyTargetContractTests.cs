@@ -3,6 +3,7 @@
 // All Rights Reserved.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -29,6 +30,7 @@ using Mafi.Core.Vehicles.Trucks;
 using Mafi.Core.Vehicles.Trucks.JobProviders;
 using Mafi.Serialization;
 using Mafi.Unity.InputControl;
+using TajsCOI.Performance.Features.LazyResourceVisualization;
 using TajsCOI.Profiler.Probes.Dumping;
 using Xunit;
 using Assert = Xunit.Assert;
@@ -53,6 +55,14 @@ namespace TajsCOI.Tests.RuntimeContracts
             }
 
             Assert.DoesNotContain("<COI_ROOT unset>", GameAssemblyContext.Describe(), StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void DifficultyFeatureDoesNotDeclareASecondWindowImplementation()
+        {
+            Assert.Null(
+                typeof(TajsCOI.Tweaks.Features.Difficulty.TajsDifficultyFeature).Assembly.GetType(
+                    "TajsCOI.Tweaks.Features.Difficulty.TajsDifficultyWindow"));
         }
 
         [Fact]
@@ -234,6 +244,70 @@ namespace TajsCOI.Tests.RuntimeContracts
                 typeof(void),
                 isStatic: false,
                 typeof(GameTime));
+        }
+
+        [Fact]
+        public void LazyResourceVisualizationTargetsMatchExact087bContracts()
+        {
+            Type renderer = RuntimeContractAssertions.RequireType(
+                RuntimeContractAssertions.RequireAssembly("Mafi.Unity"),
+                "Mafi.Unity.InputControl.ResVis.ResVisBarsRenderer");
+            Type? activator = renderer.GetNestedType("Activator", BindingFlags.Public | BindingFlags.NonPublic);
+            Assert.NotNull(activator);
+
+            MethodInfo initState = RuntimeContractAssertions.RequireMethod(
+                renderer,
+                "initState",
+                typeof(void),
+                isStatic: false);
+            MethodInfo forceSetActive = RuntimeContractAssertions.RequireMethod(
+                renderer,
+                "ForceSetActive",
+                typeof(void),
+                isStatic: false,
+                typeof(bool));
+            FieldInfo rendererField = RuntimeContractAssertions.RequireField(
+                activator!,
+                "Renderer",
+                renderer,
+                isStatic: false);
+            Assert.True(rendererField.IsInitOnly);
+
+            MethodInfo show = RuntimeContractAssertions.RequireMethod(
+                activator!,
+                "Show",
+                typeof(void),
+                isStatic: false,
+                typeof(ProductProto));
+            Type productSequence = typeof(IEnumerable<>).MakeGenericType(typeof(ProductProto));
+            Type productArray = typeof(ImmutableArray<>).MakeGenericType(typeof(ProductProto));
+            MethodInfo showExactlySequence = RuntimeContractAssertions.RequireMethod(
+                activator!,
+                "ShowExactly",
+                typeof(void),
+                isStatic: false,
+                productSequence);
+            MethodInfo showExactlyArray = RuntimeContractAssertions.RequireMethod(
+                activator!,
+                "ShowExactly",
+                typeof(void),
+                isStatic: false,
+                productArray);
+            MethodInfo showAll = RuntimeContractAssertions.RequireMethod(
+                activator!,
+                "ShowAll",
+                typeof(void),
+                isStatic: false);
+
+            LazyResourceVisualizationFeature.TargetSet? targets = LazyResourceVisualizationFeature.FindTargets();
+            Assert.NotNull(targets);
+            Assert.Same(initState, targets!.InitState);
+            Assert.Same(forceSetActive, targets.ForceSetActive);
+            Assert.Same(rendererField, targets.RendererField);
+            Assert.Same(show, targets.Show);
+            Assert.Equal(new[] { showExactlySequence, showExactlyArray }, targets.ShowExactly);
+            Assert.Same(showAll, targets.ShowAll);
+            Assert.Equal(4, targets.Activators.Count);
         }
 
         [Fact]
