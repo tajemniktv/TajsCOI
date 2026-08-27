@@ -14,6 +14,7 @@ using Mafi.Core.Game;
 using Mafi.Core.GameLoop;
 using Mafi.Core.SaveGame;
 using Mafi.Core.Console;
+using Mafi.Core.Entities;
 using TajsCOI.Common.Metadata;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
@@ -27,6 +28,7 @@ namespace TajsCOI.Core.Metadata
     {
         internal const string ComponentId = "EntityMetadata";
         private readonly object m_gate = new();
+        private readonly List<PendingRemoval> m_pendingRemovals = new();
         private readonly ISaveManager m_saveManager;
         private readonly ITajsLogger m_log;
         private readonly EntityMetadataStateStore m_store;
@@ -34,10 +36,15 @@ namespace TajsCOI.Core.Metadata
 
         public TajsEntityMetadataService(
             DependencyResolver resolver,
+            IEntitiesManager entitiesManager,
             ISaveManager saveManager,
             IGameLoopEvents gameLoop,
             ITajsRuntime runtime)
         {
+            if (entitiesManager is null)
+            {
+                throw new ArgumentNullException(nameof(entitiesManager));
+            }
             m_saveManager = saveManager ?? throw new ArgumentNullException(nameof(saveManager));
             if (runtime is null)
             {
@@ -53,6 +60,8 @@ namespace TajsCOI.Core.Metadata
             string? identity = TryGetLoadedIdentity(resolver, saveManager.GameName);
             m_store.Load(identity);
             m_saveManager.OnSaveDone += OnSaveDone;
+            entitiesManager.EntityRemovedFull.AddNonSaveable(this, OnEntityRemoved);
+            gameLoop.SyncUpdate.AddNonSaveable(this, OnSyncUpdate);
             gameLoop.Terminate.AddNonSaveable(this, OnTerminate);
             runtime.RegisterComponent(
                 new RuntimeComponentDescriptor(
@@ -364,12 +373,105 @@ namespace TajsCOI.Core.Metadata
             m_saveManager.OnSaveDone -= OnSaveDone;
             lock (m_gate)
             {
+                m_pendingRemovals.Clear();
                 m_store.Save();
                 m_store.Unbind();
             }
         }
 
         private void OnTerminate() => Dispose();
+
+        private void OnEntityRemoved(IEntity entity, EntityRemoveReason _)
+        {
+            if (m_disposed || entity is null)
+            {
+                return;
+            }
+
+            if (!TryCreateEntityIdentity(entity, out EntityMetadataIdentity identity))
+            {
+                return;
+            }
+
+            bool pruneImmediately = false;
+            lock (m_gate)
+            {
+                if (entity.IsDestroyed)
+                {
+                    pruneImmediately = true;
+                }
+                else
+                {
+                    // EntityRemovedFull is raised before the native destroy callback. Defer the
+                    // decision until sync, and discard non-destroy removals after two observations.
+                    // This prevents partial/reload queries from deleting metadata accidentally.
+                    m_pendingRemovals.Add(new PendingRemoval(entity, identity));
+                }
+            }
+
+            if (pruneImmediately)
+            {
+                PruneConfirmed(new[] { identity });
+            }
+        }
+
+        private void OnSyncUpdate(GameTime _)
+        {
+            if (m_disposed)
+            {
+                return;
+            }
+
+            List<EntityMetadataIdentity>? confirmed = null;
+            lock (m_gate)
+            {
+                for (int i = m_pendingRemovals.Count - 1; i >= 0; i--)
+                {
+                    PendingRemoval pending = m_pendingRemovals[i];
+                    if (pending.Entity.IsDestroyed)
+                    {
+                        (confirmed ??= new List<EntityMetadataIdentity>()).Add(pending.Identity);
+                        m_pendingRemovals.RemoveAt(i);
+                    }
+                    else if (++pending.Observations >= 2)
+                    {
+                        m_pendingRemovals.RemoveAt(i);
+                    }
+                }
+            }
+
+            if (confirmed is not null)
+            {
+                PruneConfirmed(confirmed);
+            }
+        }
+
+        private static bool TryCreateEntityIdentity(IEntity entity, out EntityMetadataIdentity identity)
+        {
+            try
+            {
+                identity = new EntityMetadataIdentity(entity.Id.Value, "proto:" + entity.Prototype.Id.Value);
+                return true;
+            }
+            catch
+            {
+                identity = default;
+                return false;
+            }
+        }
+
+        private sealed class PendingRemoval
+        {
+            internal PendingRemoval(IEntity entity, EntityMetadataIdentity identity)
+            {
+                Entity = entity;
+                Identity = identity;
+            }
+
+            internal IEntity Entity { get; }
+            internal EntityMetadataIdentity Identity { get; }
+            internal int Observations { get; set; }
+        }
 
         private void OnSaveDone(SaveResult result)
         {
