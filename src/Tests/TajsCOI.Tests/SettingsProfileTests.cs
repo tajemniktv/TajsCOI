@@ -98,6 +98,25 @@ namespace TajsCOI.Tests
             }
         }
 
+        [Fact]
+        public void ProfileValuesAreRestrictedToJsonPrimitives()
+        {
+            Assert.Throws<ArgumentException>(() => new SettingsProfile(
+                1,
+                "test",
+                "invalid",
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                new Dictionary<string, object> { ["ProfileMod.setting"] = new object() }));
+            Assert.Throws<ArgumentException>(() => new SettingsProfile(
+                1,
+                "test",
+                "invalid",
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                new Dictionary<string, object> { [string.Empty] = true }));
+        }
+
         private static SettingsProfilePreviewState State(SettingsProfilePreview preview, string stableId) =>
             preview.Entries.Single(entry => entry.StableId == stableId).State;
 

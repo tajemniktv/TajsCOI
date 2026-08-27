@@ -27,8 +27,26 @@ namespace TajsCOI.Common.Profiles
             Name = Require(name, nameof(name));
             Categories = Copy(categories);
             Modules = Copy(modules);
-            Values = (values ?? throw new ArgumentNullException(nameof(values)))
-                .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
+            if (values is null)
+            {
+                throw new ArgumentNullException(nameof(values));
+            }
+
+            foreach (KeyValuePair<string, object> item in values)
+            {
+                if (string.IsNullOrWhiteSpace(item.Key))
+                {
+                    throw new ArgumentException("Profile setting IDs cannot be empty.", nameof(values));
+                }
+                if (!IsPrimitive(item.Value))
+                {
+                    throw new ArgumentException(
+                        "Profile values must be JSON primitives.",
+                        nameof(values));
+                }
+            }
+
+            Values = values.ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
         }
 
         public int Schema { get; }
@@ -50,6 +68,11 @@ namespace TajsCOI.Common.Profiles
             string.IsNullOrWhiteSpace(value)
                 ? throw new ArgumentException("Profile text cannot be empty.", parameter)
                 : value.Trim();
+
+        private static bool IsPrimitive(object? value) =>
+            value is null || value is string || value is bool || value is byte || value is sbyte ||
+            value is short || value is ushort || value is int || value is uint || value is long ||
+            value is ulong || value is float || value is double || value is decimal;
     }
 
     public enum SettingsProfilePreviewState
