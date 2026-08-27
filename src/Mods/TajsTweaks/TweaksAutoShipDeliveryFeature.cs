@@ -14,6 +14,7 @@ using Mafi.Core.Entities;
 using Mafi.Core.Entities.Static;
 using Mafi.Core.World;
 using Mafi.Core.World.Entities;
+using TajsCOI.Tweaks.Features.World;
 
 namespace TajsCOI.Tweaks
 {
@@ -32,6 +33,8 @@ namespace TajsCOI.Tweaks
         }
 
         private static readonly Dictionary<int, ShipState> s_states = new();
+        private static readonly WorldShipOrderArbiter s_orderArbiter = WorldShipOrderArbiter.Shared;
+        private static int s_simTick;
         private static WeakReference<DependencyResolver>? s_resolver;
         private static WeakReference<WorldMapManager>? s_worldMap;
         private static WeakReference<TravelingFleetManager>? s_fleet;
@@ -57,12 +60,18 @@ namespace TajsCOI.Tweaks
             {
                 s_states.Clear();
             }
+            s_orderArbiter.Clear();
+            s_simTick = 0;
             s_worldMap = null;
             s_fleet = null;
         }
 
         private static void SimUpdatePostfix(Shipyard? __instance)
         {
+            if (++s_simTick % 10 != 0)
+            {
+                return;
+            }
             if (__instance is null || !TajsTweaksRuntimeState.WorldOperations || !TajsTweaksRuntimeState.AutoWorldDelivery ||
                 !TryResolveDependencies(out WorldMapManager? worldMap, out TravelingFleetManager? fleet) || worldMap is null || fleet is null)
             {
@@ -74,6 +83,8 @@ namespace TajsCOI.Tweaks
                 ShipState state = GetState(__instance.Id.Value);
                 if (__instance.AssignedShip.IsNone)
                 {
+                    s_orderArbiter.Release(__instance.Id.Value, WorldShipOrderOwner.AutoDelivery);
+                    s_orderArbiter.Release(__instance.Id.Value, WorldShipOrderOwner.AutoReturn);
                     state.CargoWasLoading = false;
                     state.ShipSent = false;
                     state.SentToLocation = null;
@@ -84,15 +95,32 @@ namespace TajsCOI.Tweaks
                 if (!ship.IsDocked)
                 {
                     state.CargoWasLoading = false;
+                    // A path that did not originate from this helper is a manual/native order.
+                    // Manual ownership is sticky until the ship is docked again.
+                    if (!state.ShipSent && ship.HasWorldMapPath &&
+                        s_orderArbiter.GetOwner(ship.Id.Value) == WorldShipOrderOwner.None)
+                    {
+                        s_orderArbiter.SetManualOrder(ship.Id.Value, true);
+                        return;
+                    }
                     if (state.SentToLocation.HasValue && !ship.HasWorldMapPath && ship.CurrentLocationId.HasValue &&
                         ship.CurrentLocationId.Value == state.SentToLocation.Value && s_sendShipHomeMethod is not null)
                     {
                         state.SentToLocation = null;
                         state.ShipSent = false;
-                        s_sendShipHomeMethod.Invoke(ship, null);
+                        if (s_orderArbiter.TryClaim(ship.Id.Value, WorldShipOrderOwner.AutoReturn))
+                        {
+                            s_sendShipHomeMethod.Invoke(ship, null);
+                        }
                     }
                     return;
                 }
+
+                if (s_orderArbiter.ManualOrderActive(ship.Id.Value))
+                {
+                    s_orderArbiter.SetManualOrder(ship.Id.Value, false);
+                }
+                s_orderArbiter.Release(ship.Id.Value, WorldShipOrderOwner.AutoReturn);
 
                 // Repairing and manual/other modification orders always win over this helper.
                 if (state.ShipSent || !ship.CanOperate || __instance.IsRepairing ||
@@ -103,6 +131,10 @@ namespace TajsCOI.Tweaks
 
                 if (__instance.WorldEntityToConstruct.HasValue)
                 {
+                    if (!s_orderArbiter.TryClaim(ship.Id.Value, WorldShipOrderOwner.AutoDelivery))
+                    {
+                        return;
+                    }
                     if (!state.CargoWasLoading)
                     {
                         state.CargoWasLoading = true;
@@ -121,6 +153,11 @@ namespace TajsCOI.Tweaks
                 IWorldMapRepairableEntity? next = worldMap.EntitiesUnderConstruction
                     .FirstOrDefault(x => x is not null && x.NeedsProductsForConstruction);
                 if (next is null)
+                {
+                    return;
+                }
+
+                if (!s_orderArbiter.TryClaim(ship.Id.Value, WorldShipOrderOwner.AutoDelivery))
                 {
                     return;
                 }

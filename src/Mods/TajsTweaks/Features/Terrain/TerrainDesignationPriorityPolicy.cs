@@ -3,6 +3,9 @@
 // All Rights Reserved.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using Mafi.Core.Terrain.Designation;
 
 namespace TajsCOI.Tweaks.Features.Terrain
 {
@@ -41,6 +44,69 @@ namespace TajsCOI.Tweaks.Features.Terrain
                 return current;
             }
             return anyEligible ? preferred : TerrainWorkClass.Unknown;
+        }
+
+        internal static TerrainWorkClass Classify(TerrainDesignation designation)
+        {
+            string id = designation?.Prototype?.Id.Value ?? string.Empty;
+            if (id.IndexOf("level", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("flatten", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return TerrainWorkClass.Leveling;
+            }
+            if (id.IndexOf("min", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("dig", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return TerrainWorkClass.Digging;
+            }
+            if (id.IndexOf("dump", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("fill", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return TerrainWorkClass.Filling;
+            }
+            return TerrainWorkClass.Other;
+        }
+
+        /// <summary>
+        ///     Materializes the native ready cache once, retaining native eligibility and scoring
+        ///     for the selected class. No second enumeration of the caller's cache is performed.
+        /// </summary>
+        internal static IReadOnlyList<TerrainDesignation> Prefer(
+            IEnumerable<TerrainDesignation> designations,
+            TerrainWorkClass preferred)
+        {
+            TerrainDesignation[] all = (designations ?? Enumerable.Empty<TerrainDesignation>()).ToArray();
+            if (preferred == TerrainWorkClass.Unknown || all.Length == 0)
+            {
+                return all;
+            }
+
+            var matching = new List<TerrainDesignation>(all.Length);
+            foreach (TerrainDesignation designation in all)
+            {
+                if (designation is not null && Classify(designation) == preferred)
+                {
+                    matching.Add(designation);
+                }
+            }
+            return matching.Count == 0 ? all : matching;
+        }
+
+        internal static TerrainWorkClass Parse(string? value)
+        {
+            if (string.Equals(value, "leveling_first", StringComparison.OrdinalIgnoreCase))
+            {
+                return TerrainWorkClass.Leveling;
+            }
+            if (string.Equals(value, "digging_first", StringComparison.OrdinalIgnoreCase))
+            {
+                return TerrainWorkClass.Digging;
+            }
+            if (string.Equals(value, "filling_first", StringComparison.OrdinalIgnoreCase))
+            {
+                return TerrainWorkClass.Filling;
+            }
+            return TerrainWorkClass.Unknown;
         }
     }
 }

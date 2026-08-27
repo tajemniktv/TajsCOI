@@ -21,6 +21,7 @@ using Mafi.Unity.Ui.Library;
 using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
+using Mafi.Unity.Ui.World;
 using TajsCOI.Common.Metadata;
 using TajsCOI.Tweaks.Features.World;
 using UnityEngine;
@@ -42,6 +43,7 @@ namespace TajsCOI.Tweaks
         private readonly IInputScheduler m_inputScheduler;
         private readonly IProductsManager m_productsManager;
         private readonly IEntityMetadataLookup m_metadata;
+        private readonly WorldMapWindow.Controller m_worldMapController;
         private readonly ScrollColumn m_repairsScroll;
         private readonly ScrollColumn m_minesScroll;
         private readonly ScrollColumn m_settlementsScroll;
@@ -75,6 +77,7 @@ namespace TajsCOI.Tweaks
             IInputScheduler inputScheduler,
             IProductsManager productsManager,
             IEntityMetadataLookup metadata,
+            WorldMapWindow.Controller worldMapController,
             UiRoot uiRoot)
             : base("World operations".AsLoc())
         {
@@ -82,6 +85,7 @@ namespace TajsCOI.Tweaks
             m_inputScheduler = inputScheduler;
             m_productsManager = productsManager;
             m_metadata = metadata ?? throw new System.ArgumentNullException(nameof(metadata));
+            m_worldMapController = worldMapController ?? throw new System.ArgumentNullException(nameof(worldMapController));
 
             WindowSize(new Px(900f), new Px(620f));
             Panel panel = new Panel().BodyGap(new Px(4f));
@@ -309,22 +313,7 @@ namespace TajsCOI.Tweaks
                 {
                     return;
                 }
-                // Keep the map-view controller authoritative. The exact controller is Unity-side
-                // and intentionally discovered by a narrow, optional reflection seam.
-                foreach (MethodInfo method in m_worldMap.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-                {
-                    if (method.Name.IndexOf("Focus", StringComparison.OrdinalIgnoreCase) < 0 &&
-                        method.Name.IndexOf("Select", StringComparison.OrdinalIgnoreCase) < 0)
-                    {
-                        continue;
-                    }
-                    ParameterInfo[] parameters = method.GetParameters();
-                    if (parameters.Length == 1 && parameters[0].ParameterType.IsInstanceOfType(location))
-                    {
-                        method.Invoke(m_worldMap, new object[] { location });
-                        return;
-                    }
-                }
+                m_worldMapController.OpenAndCenterOnLocation(location);
             }
             catch
             {

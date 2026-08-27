@@ -53,6 +53,7 @@ namespace TajsCOI.Tweaks
         private readonly TextField m_source;
         private readonly TextField m_target;
         private readonly TextField m_count;
+        private readonly TextField m_policy;
         private readonly IVisualElementScheduledItem? m_refreshSchedule;
         private float m_lastActivityTime;
         private float m_nextRefreshTime;
@@ -99,12 +100,15 @@ namespace TajsCOI.Tweaks
             m_source = new TextField().Placeholder("Source prototype ID".AsLoc()).MaxWidth(new Px(180f));
             m_target = new TextField().Placeholder("Replacement prototype ID".AsLoc()).MaxWidth(new Px(210f));
             m_count = new TextField().Text("1").MaxWidth(new Px(90f));
+            m_policy = new TextField().Text("unassigned-first").Placeholder("Filter: any/assigned/unassigned-first".AsLoc()).MaxWidth(new Px(220f));
             m_source.OnEditEnd(_ => MarkActivity());
             m_target.OnEditEnd(_ => MarkActivity());
             m_count.OnEditEnd(_ => MarkActivity());
+            m_policy.OnEditEnd(_ => MarkActivity());
             header.Add(m_source);
             header.Add(m_target);
             header.Add(m_count);
+            header.Add(m_policy);
             header.Add(
                 MakeButton(
                     "Order",
@@ -118,14 +122,14 @@ namespace TajsCOI.Tweaks
                     () => ConfirmAndRun(
                         "scrap",
                         () =>
-                            m_host.FleetScrapType(m_source.GetText(), m_count.GetText(), "CONFIRM"))));
+                            m_host.FleetScrapType(m_source.GetText(), m_count.GetText(), "CONFIRM", m_policy.GetText()))));
             header.Add(
                 MakeButton(
                     "Replace",
                     () => ConfirmAndRun(
                         "replace",
                         () =>
-                            m_host.FleetReplaceType(m_source.GetText(), m_target.GetText(), m_count.GetText(), "CONFIRM"))));
+                            m_host.FleetReplaceType(m_source.GetText(), m_target.GetText(), m_count.GetText(), "CONFIRM", m_policy.GetText()))));
             header.Add(MakeButton("Refresh", ManualRefresh));
             panel.Add(header);
 
@@ -315,7 +319,7 @@ namespace TajsCOI.Tweaks
                 "Replace",
                 () => ConfirmAndRun(
                     "replace:" + group.PrototypeId,
-                    () => m_host.FleetReplaceType(group.PrototypeId, m_target.GetText(), GetBatchText(group), "CONFIRM")));
+                    () => m_host.FleetReplaceType(group.PrototypeId, m_target.GetText(), GetBatchText(group), "CONFIRM", m_policy.GetText())));
             row.Add(replace);
             ButtonText cancelScrap = MakeButton(
                 "Cancel scrap",

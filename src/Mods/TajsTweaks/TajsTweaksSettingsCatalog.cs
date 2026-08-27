@@ -43,6 +43,8 @@ namespace TajsCOI.Tweaks
         internal const string MachineSoundRange = "machine_sound_range";
         internal const string TrainSoundVolume = "train_sound_volume";
         internal const string TrainSoundRange = "train_sound_range";
+        internal const string TrainTuningProfile = "train_tuning_profile";
+        internal const string LocomotiveNumbering = "locomotive_numbering";
 
         internal const string DefaultsUnit = "defaults_unit";
         internal const string DefaultsLoose = "defaults_loose";
@@ -76,9 +78,13 @@ namespace TajsCOI.Tweaks
 
         internal const string WorldOperations = "world_operations";
         internal const string AutoWorldDelivery = "auto_world_delivery";
+        internal const string AutoExploration = "auto_exploration";
         internal const string WorldVisibilityHiddenCategories = "world_visibility_hidden_categories";
         internal const string ShipPreload = "ship_preload";
         internal const string ShipPreloadData = "ship_preload_data";
+        internal const string ShipyardOutputTransport = "shipyard_output_transport";
+        internal const string ShipUnloadPolicy = "ship_unload_policy";
+        internal const string TerrainDesignationPriority = "terrain_designation_priority";
 
         internal const string RecoverTrucks = "recover_stuck_trucks";
         internal const string RecoverPeriod = "recover_stuck_trucks_period_seconds";
@@ -216,6 +222,34 @@ namespace TajsCOI.Tweaks
         private static readonly IReadOnlyList<SettingChoice> s_parkingHqOffloadModes = new[]
         {
             new SettingChoice("vanilla", "Vanilla / provider default"), new SettingChoice("enabled", "Enabled"), new SettingChoice("disabled", "Disabled"),
+        };
+
+        private static readonly IReadOnlyList<SettingChoice> s_shipUnloadPolicies = new[]
+        {
+            new SettingChoice("vanilla", "Vanilla order"),
+            new SettingChoice("smallest_stack_first", "Smallest stack first"),
+        };
+
+        private static readonly IReadOnlyList<SettingChoice> s_terrainDesignationPriorities = new[]
+        {
+            new SettingChoice("vanilla", "Vanilla scorer"),
+            new SettingChoice("leveling_first", "Leveling first"),
+            new SettingChoice("digging_first", "Digging first"),
+            new SettingChoice("filling_first", "Filling first"),
+        };
+
+        private static readonly IReadOnlyList<SettingChoice> s_trainTuningProfiles = new[]
+        {
+            new SettingChoice("vanilla", "Vanilla"),
+            new SettingChoice("efficient", "Efficient fuel"),
+            new SettingChoice("power", "Climbing power"),
+        };
+
+        private static readonly IReadOnlyList<SettingChoice> s_locomotiveNumbering = new[]
+        {
+            new SettingChoice("vanilla", "Native numbering"),
+            new SettingChoice("sequential", "Sequential"),
+            new SettingChoice("random", "Seeded random"),
         };
 
         private static readonly IReadOnlyList<SettingChoice> s_bridgeScaleModes = new[]
@@ -581,6 +615,28 @@ namespace TajsCOI.Tweaks
             SettingDescriptor.Choice(
                 ModId,
                 DisplayName,
+                TrainTuningProfile,
+                "Train tuning profile",
+                "Replaces the native train slope, fuel, and pollution property values as one profile; vanilla removes the modifier.",
+                "vanilla",
+                s_trainTuningProfiles,
+                "Trains",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Choice(
+                ModId,
+                DisplayName,
+                LocomotiveNumbering,
+                "Locomotive numbering",
+                "Assigns deterministic process-local numbers to newly created locomotives; native saved numbers remain authoritative on load.",
+                "vanilla",
+                s_locomotiveNumbering,
+                "Trains",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Choice(
+                ModId,
+                DisplayName,
                 DefaultsUnit,
                 "Unit storage defaults",
                 "Default logistics rule for newly placed unit storages when no explicit config exists.",
@@ -902,6 +958,17 @@ namespace TajsCOI.Tweaks
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,
+                AutoExploration,
+                "Automatic exploration dispatch",
+                "Dispatches the native fleet command to the nearest reachable unexplored location when the fleet is idle at home.",
+                false,
+                "World map",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental,
+                componentRequirement: WorldOperations),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
                 ShipPreload,
                 "Ship cargo preload",
                 "Keeps configured ship cargo preload data available to the normal shipyard flow; no cargo is spawned directly.",
@@ -921,6 +988,41 @@ namespace TajsCOI.Tweaks
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced,
                 componentRequirement: ShipPreload),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                ShipyardOutputTransport,
+                "Shipyard output transport unloading",
+                "Moves only surplus ship cargo through connected compatible output ports. Disabled by default while the first release is validated.",
+                false,
+                "World map",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental,
+                componentRequirement: WorldOperations),
+            SettingDescriptor.Choice(
+                ModId,
+                DisplayName,
+                ShipUnloadPolicy,
+                "Ship unload policy",
+                "Keeps vanilla cargo-buffer order by default; optionally selects the smallest eligible positive stack.",
+                "vanilla",
+                s_shipUnloadPolicies,
+                "World map",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental,
+                componentRequirement: WorldOperations),
+            SettingDescriptor.Choice(
+                ModId,
+                DisplayName,
+                TerrainDesignationPriority,
+                "Terrain designation priority",
+                "Prefers one ready terrain work class while retaining the native eligibility and scorer within that class.",
+                "vanilla",
+                s_terrainDesignationPriorities,
+                "Terrain",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental,
+                componentRequirement: DesignationControls),
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,

@@ -19,6 +19,7 @@ namespace TajsCOI.Tweaks.Features.World
     /// <summary>Small process-scoped arbiter. It stores IDs/owners only, never resolver objects.</summary>
     internal sealed class WorldShipOrderArbiter
     {
+        internal static WorldShipOrderArbiter Shared { get; } = new();
         private readonly object m_gate = new();
         private readonly Dictionary<int, WorldShipOrderOwner> m_claims = new();
 

@@ -81,7 +81,10 @@ namespace TajsCOI.Tweaks.Features.Fleet
             if (filter.ZoneId.HasValue) query = query.Where(vehicle => vehicle.ZoneId == filter.ZoneId);
             if (filter.AssigneeId.HasValue) query = query.Where(vehicle => vehicle.AssigneeId == filter.AssigneeId);
             if (nativeCompatible is not null) query = query.Where(nativeCompatible);
-            return query.OrderBy(vehicle => vehicle.Id).Take(filter.MaxCount).Select(vehicle => vehicle.Id).ToArray();
+            query = string.Equals(filter.AssignmentState, "unassigned-first", StringComparison.OrdinalIgnoreCase)
+                ? query.OrderBy(vehicle => vehicle.Assigned ? 1 : 0).ThenBy(vehicle => vehicle.Id)
+                : query.OrderBy(vehicle => vehicle.Id);
+            return query.Take(filter.MaxCount).Select(vehicle => vehicle.Id).ToArray();
         }
     }
 }

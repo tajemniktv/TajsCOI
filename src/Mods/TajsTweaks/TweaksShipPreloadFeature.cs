@@ -16,6 +16,7 @@ using Mafi.Core.Products;
 using Mafi.Core.Prototypes;
 using Mafi.Core.Vehicles;
 using TajsCOI.Common.Settings;
+using TajsCOI.Tweaks.Features.Ships;
 
 namespace TajsCOI.Tweaks
 {
@@ -180,6 +181,25 @@ namespace TajsCOI.Tweaks
             shipyard is not null && product is not null &&
             s_targets.TryGetValue(shipyard.Id.Value, out Dictionary<string, int>? targets) &&
             targets.ContainsKey(product.Id.Value);
+
+        /// <summary>
+        ///     Single authoritative reserved-cargo query shared by preload and output transport.
+        ///     Only product IDs and requested quantities cross the feature boundary.
+        /// </summary>
+        internal static IReadOnlyList<ReservedCargo> ReadReservedCargo(Shipyard? shipyard)
+        {
+            if (shipyard is null || !s_targets.TryGetValue(shipyard.Id.Value, out Dictionary<string, int>? targets))
+            {
+                return Array.Empty<ReservedCargo>();
+            }
+            return targets
+                .OrderBy(item => item.Key, StringComparer.Ordinal)
+                .Select(item => new ReservedCargo(item.Key, item.Value))
+                .ToArray();
+        }
+
+        internal static bool IsProductReserved(Shipyard? shipyard, ProductProto? product) =>
+            HasReservation(shipyard, product);
 
         internal static int GetReservedFor(IProductBuffer buffer)
         {
@@ -425,7 +445,7 @@ namespace TajsCOI.Tweaks
                    type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(value);
         }
 
-        private static IEnumerable<IProductBuffer> GetCargoBuffers(Shipyard shipyard)
+        internal static IEnumerable<IProductBuffer> GetCargoBuffers(Shipyard shipyard)
         {
             if (s_cargoField?.GetValue(shipyard) is not object cargo)
             {

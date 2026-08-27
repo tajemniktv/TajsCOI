@@ -38,11 +38,16 @@ using TajsCOI.Tweaks.Configuration;
 using TajsCOI.Tweaks.Features.Difficulty;
 using TajsCOI.Tweaks.Features.Cleanup;
 using TajsCOI.Tweaks.Features.EntityMetadata;
+using TajsCOI.Tweaks.Features.Fleet;
+using TajsCOI.Tweaks.Features.MapEditor;
 using TajsCOI.Tweaks.Features.Overclocking;
 using TajsCOI.Tweaks.Features.Presentation;
+using TajsCOI.Tweaks.Features.Research;
+using TajsCOI.Tweaks.Features.Trains;
 using TajsCOI.Tweaks.Features.Selection;
 using TajsCOI.Tweaks.Features.Storage;
 using TajsCOI.Tweaks.Features.TransportNetwork;
+using TajsCOI.Tweaks.Features.Terrain;
 using TajsCOI.Tweaks.Features.World;
 
 namespace TajsCOI.Tweaks
@@ -77,6 +82,7 @@ namespace TajsCOI.Tweaks
         private TransportNetworkVisualizerController? m_transportNetworkVisualizer;
         private Option<TajsWorldOperationsWindow> m_worldOperationsWindow;
         private Option<TajsFleetManagementWindow> m_fleetManagementWindow;
+        private Option<TajsResearchQueueWindow> m_researchQueueWindow;
         private Option<TajsOverclockingWindow> m_overclockingWindow;
         private int m_renderTick;
 
@@ -120,7 +126,13 @@ namespace TajsCOI.Tweaks
             TryInstallResolved(runtime, "InfiniteGroundwater", m_infiniteGroundwater.Install);
             TryInstallResolved(runtime, "EntityMetadataInspector", InstallEntityMetadataInspector);
             TryInstall(runtime, "ShipCargoPreload", harmony => TweaksShipPreloadFeature.Install(harmony, resolver, settings));
+            TryInstall(runtime, "ShipyardOutputTransport", ShipyardOutputTransportFeature.Install);
+            TryInstall(runtime, "ShipUnloadPolicy", ShipUnloadPolicyFeature.Install);
+            TryInstall(runtime, "TerrainDesignationPriority", TerrainDesignationPriorityFeature.Install);
+            TryInstall(runtime, "LocomotiveNumbering", TrainTuningFeature.Install);
+            TryInstall(runtime, "MapEditorThirdPartyMods", MapEditorThirdPartyFeature.Install);
             TryInstall(runtime, "AutoWorldDelivery", harmony => TweaksAutoShipDeliveryFeature.Install(harmony, resolver));
+            TryInstall(runtime, "AutoExploration", harmony => AutoExplorationFeature.Install(harmony, resolver));
             TryInstall(runtime, "BattleScoreOnMap", TweaksBattleScoreFeature.Install);
             TryInstall(runtime, "FarmFullToggle", TweaksFarmAlertFeature.Install);
             TryInstall(runtime, "CameraAndHud", TweaksCameraFeature.Install);
@@ -404,7 +416,8 @@ namespace TajsCOI.Tweaks
                 AdaptiveTowerInspectorFeature.RefreshAll();
             }
             if (change.Descriptor.Key == TajsTweaksSettingsCatalog.WorldOperations ||
-                change.Descriptor.Key == TajsTweaksSettingsCatalog.AutoWorldDelivery)
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.AutoWorldDelivery ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.AutoExploration)
             {
                 TweaksAutoShipDeliveryFeature.Reset();
             }
@@ -492,6 +505,10 @@ namespace TajsCOI.Tweaks
                 m_worldVisibilityFilters?.ApplyPersistedPolicy(TajsTweaksRuntimeState.WorldVisibilityHiddenCategories);
                 ApplyWorldVisibilityHudIndicator();
             }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.TrainTuningProfile)
+            {
+                TrainTuningFeature.ApplyFromSettings(m_resolver);
+            }
         }
 
         private void OnRenderUpdateEnd(GameTime _)
@@ -535,6 +552,8 @@ namespace TajsCOI.Tweaks
             TryInstall(m_runtime, "StorageOverrides", harmony => TweaksStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "StorageInspectorControls", harmony => TajsStorageAdvancedFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "MineDepletedTint", MineDepletedTintFeature.Install);
+            TryInstall(m_runtime, "WorldMapViewport", WorldMapViewportFeature.Install);
+            TryInstallResolved(m_runtime, "TrainTuning", () => TrainTuningFeature.ApplyFromSettings(m_resolver));
             TryInstall(m_runtime, "GameplayPlusPlusBridge", harmony => TweaksGameplayPlusPlusFeature.Install(harmony, m_resolver));
             TryInstallResolved(
                 m_runtime,
@@ -827,6 +846,12 @@ namespace TajsCOI.Tweaks
         {
             m_settings.Changed -= OnSettingChanged;
             TweaksAutoShipDeliveryFeature.Reset();
+            AutoExplorationFeature.Reset();
+            ShipyardOutputTransportFeature.Reset();
+            ShipUnloadPolicyFeature.Reset();
+            TerrainDesignationPriorityFeature.Reset();
+            TrainTuningFeature.Reset();
+            MapEditorThirdPartyFeature.Reset();
             ResearchTreeLayoutFeature.Reset();
             RecipePickerLayoutFeature.Reset();
             m_infiniteGroundwater.Dispose();
@@ -849,11 +874,13 @@ namespace TajsCOI.Tweaks
             TweaksKeepFullEmptyMarkerFeature.Reset();
             TajsStorageAdvancedFeature.Reset();
             MineDepletedTintFeature.Reset();
+            WorldMapViewportFeature.Reset();
             TweaksHudLayoutFeature.ClearFullscreenState();
             TweaksHudActionFeature.ResetAll();
             AdaptiveTowerInspectorFeature.Reset();
             CloseWorldOperationsWindow();
             CloseFleetManagementWindow();
+            CloseResearchQueueWindow();
             CloseOverclockingWindow();
         }
 
@@ -1676,6 +1703,55 @@ namespace TajsCOI.Tweaks
             }
         }
 
+        [ConsoleCommand(
+            documentation: "Opens the save-aware native research queue and schedules queue changes through normal input commands.",
+            customCommandName: "tajs_research_queue")]
+        public string ToggleResearchQueueWindow()
+        {
+            if (!TajsTweaksRuntimeState.WorldOperations)
+            {
+                return "Research queue manager is disabled.";
+            }
+            if (m_researchQueueWindow.HasValue && m_researchQueueWindow.Value.IsOpen)
+            {
+                CloseResearchQueueWindow();
+                return "Research queue window: hidden";
+            }
+            try
+            {
+                var window = m_resolver.Instantiate<TajsResearchQueueWindow>();
+                window.OnCloseStart += OnResearchQueueWindowClose;
+                m_researchQueueWindow = window;
+                return "Research queue window: shown";
+            }
+            catch (Exception exception)
+            {
+                m_log.Exception(exception, "Research queue window failed open.");
+                return "Research queue is unavailable in this scene.";
+            }
+        }
+
+        private void OnResearchQueueWindowClose(Window window)
+        {
+            if (m_researchQueueWindow.HasValue && ReferenceEquals(m_researchQueueWindow.Value, window))
+            {
+                window.OnCloseStart -= OnResearchQueueWindowClose;
+                m_researchQueueWindow = Option<TajsResearchQueueWindow>.None;
+            }
+        }
+
+        private void CloseResearchQueueWindow()
+        {
+            if (!m_researchQueueWindow.HasValue)
+            {
+                return;
+            }
+            TajsResearchQueueWindow window = m_researchQueueWindow.Value;
+            window.OnCloseStart -= OnResearchQueueWindowClose;
+            window.CloseNoFade();
+            m_researchQueueWindow = Option<TajsResearchQueueWindow>.None;
+        }
+
         private void OnWorldOperationsWindowClose(Window window)
         {
             if (m_worldOperationsWindow.HasValue && ReferenceEquals(m_worldOperationsWindow.Value, window))
@@ -1992,17 +2068,19 @@ namespace TajsCOI.Tweaks
                 return "Usage: tajs_fleet_scrap_type <prototype-id> <count> CONFIRM [assigned-only|unassigned-first|any]";
             }
             requested = Math.Min(requested, TajsTweaksRuntimeState.FleetBatchLimit);
-            Vehicle[] candidates = entities.GetAllEntitiesOfType<Vehicle>()
-                .Where(x => string.Equals(x.Prototype.Id.Value, (prototypeId ?? string.Empty).Trim(), StringComparison.Ordinal) &&
-                            !x.IsOnWayToDepotForScrap && !x.IsOnWayToDepotForReplacement && (!assignedOnly || x.AssignedTo.HasValue))
-                .OrderBy(x => unassignedFirst && x.AssignedTo.HasValue ? 1 : 0)
-                .ThenBy(x => x.Id.Value)
-                .Take(requested)
+            string sourceId = (prototypeId ?? string.Empty).Trim();
+            string assignmentState = assignedOnly ? "assigned" : unassignedFirst ? "unassigned-first" : string.Empty;
+            FleetVehicleSnapshot[] snapshots = entities.GetAllEntitiesOfType<Vehicle>()
+                .Where(x => !x.IsOnWayToDepotForScrap && !x.IsOnWayToDepotForReplacement && !x.ReplaceQueued)
+                .Select(x => new FleetVehicleSnapshot(x.Id.Value, x.Prototype.Id.Value, x.AssignedTo.HasValue, null, null, null))
                 .ToArray();
+            IReadOnlyList<int> selectedIds = FleetReplacementPlanner.Match(
+                snapshots,
+                new FleetReplacementFilterSnapshot(sourceId, string.Empty, assignmentState, null, null, null, requested));
             int changed = 0;
-            foreach (Vehicle vehicle in candidates)
+            foreach (int selectedId in selectedIds)
             {
-                scheduler.ScheduleInputCmd(new ToggleVehicleScrapCmd(vehicle.Id));
+                scheduler.ScheduleInputCmd(new ToggleVehicleScrapCmd(new EntityId(selectedId)));
                 changed++;
             }
             return "Fleet scrap requests queued: " + changed + "/" + requested + ". Progress is reported by tajs_fleet_status.";
@@ -2041,18 +2119,19 @@ namespace TajsCOI.Tweaks
                 return "Usage: tajs_fleet_replace_type <source-prototype-id> <target-prototype-id> <count> CONFIRM [assigned-only|unassigned-first|any]";
             }
             requested = Math.Min(requested, TajsTweaksRuntimeState.FleetBatchLimit);
-            Vehicle[] candidates = entities.GetAllEntitiesOfType<Vehicle>()
-                .Where(x => string.Equals(x.Prototype.Id.Value, (sourcePrototypeId ?? string.Empty).Trim(), StringComparison.Ordinal) &&
-                            !x.IsOnWayToDepotForScrap && !x.IsOnWayToDepotForReplacement && !x.ReplaceQueued &&
-                            (!assignedOnly || x.AssignedTo.HasValue))
-                .OrderBy(x => unassignedFirst && x.AssignedTo.HasValue ? 1 : 0)
-                .ThenBy(x => x.Id.Value)
-                .Take(requested)
+            string sourceId = (sourcePrototypeId ?? string.Empty).Trim();
+            string assignmentState = assignedOnly ? "assigned" : unassignedFirst ? "unassigned-first" : string.Empty;
+            FleetVehicleSnapshot[] snapshots = entities.GetAllEntitiesOfType<Vehicle>()
+                .Where(x => !x.IsOnWayToDepotForScrap && !x.IsOnWayToDepotForReplacement && !x.ReplaceQueued)
+                .Select(x => new FleetVehicleSnapshot(x.Id.Value, x.Prototype.Id.Value, x.AssignedTo.HasValue, null, null, null))
                 .ToArray();
+            IReadOnlyList<int> selectedIds = FleetReplacementPlanner.Match(
+                snapshots,
+                new FleetReplacementFilterSnapshot(sourceId, target.Id.Value, assignmentState, null, null, null, requested));
             int changed = 0;
-            foreach (Vehicle vehicle in candidates)
+            foreach (int selectedId in selectedIds)
             {
-                scheduler.ScheduleInputCmd(new ReplaceVehicleCmd(vehicle.Id, target.Id));
+                scheduler.ScheduleInputCmd(new ReplaceVehicleCmd(new EntityId(selectedId), target.Id));
                 changed++;
             }
             return "Fleet replacement requests queued: " + changed + "/" + requested + ". Progress is reported by tajs_fleet_status.";

@@ -65,6 +65,8 @@ namespace TajsCOI.Tweaks
         internal static double ResourceTowerZoomStart;
         internal static double ResourceTowerAreaHeight;
         internal static string ResourceTowerColors = string.Empty;
+        internal static string TrainTuningProfile = "vanilla";
+        internal static string LocomotiveNumbering = "vanilla";
         internal static GroundwaterPolicy GroundwaterPolicyMode = GroundwaterPolicy.Vanilla;
         internal static double GroundwaterRegenerationPercent = 18.5;
 
@@ -76,9 +78,13 @@ namespace TajsCOI.Tweaks
         internal static bool AllowExhaust;
         internal static bool WorldOperations;
         internal static bool AutoWorldDelivery;
+        internal static bool AutoExploration;
         internal static string WorldVisibilityHiddenCategories = string.Empty;
         internal static bool ShipPreload;
         internal static string ShipPreloadData = string.Empty;
+        internal static bool ShipyardOutputTransport;
+        internal static string ShipUnloadPolicy = "vanilla";
+        internal static string TerrainDesignationPriority = "vanilla";
         internal static bool RecoverTrucks;
         internal static bool DumpToShipyard;
         internal static int RecoverPeriod;
@@ -189,6 +195,8 @@ namespace TajsCOI.Tweaks
             MachineSoundRange = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.MachineSoundRange);
             TrainSoundVolume = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainSoundVolume);
             TrainSoundRange = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainSoundRange);
+            TrainTuningProfile = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainTuningProfile);
+            LocomotiveNumbering = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.LocomotiveNumbering);
 
             DefaultsUnit = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.DefaultsUnit);
             DefaultsLoose = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.DefaultsLoose);
@@ -240,9 +248,13 @@ namespace TajsCOI.Tweaks
             AllowExhaust = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AllowExhaust);
             WorldOperations = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.WorldOperations);
             AutoWorldDelivery = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AutoWorldDelivery);
+            AutoExploration = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AutoExploration);
             WorldVisibilityHiddenCategories = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.WorldVisibilityHiddenCategories);
             ShipPreload = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShipPreload);
             ShipPreloadData = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShipPreloadData);
+            ShipyardOutputTransport = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShipyardOutputTransport);
+            ShipUnloadPolicy = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShipUnloadPolicy);
+            TerrainDesignationPriority = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TerrainDesignationPriority);
             RecoverTrucks = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.RecoverTrucks);
             DumpToShipyard = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.DumpToShipyard);
             RecoverPeriod = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.RecoverPeriod);
@@ -459,7 +471,9 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.AllowExhaust: AllowExhaust = value; break;
                 case TajsTweaksSettingsCatalog.WorldOperations: WorldOperations = value; break;
                 case TajsTweaksSettingsCatalog.AutoWorldDelivery: AutoWorldDelivery = value; break;
+                case TajsTweaksSettingsCatalog.AutoExploration: AutoExploration = value; break;
                 case TajsTweaksSettingsCatalog.ShipPreload: ShipPreload = value; break;
+                case TajsTweaksSettingsCatalog.ShipyardOutputTransport: ShipyardOutputTransport = value; break;
                 case TajsTweaksSettingsCatalog.RecoverTrucks: RecoverTrucks = value; break;
                 case TajsTweaksSettingsCatalog.DumpToShipyard: DumpToShipyard = value; break;
                 case TajsTweaksSettingsCatalog.StageMineTrucks: StageMineTrucks = value; break;
@@ -624,6 +638,8 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.PlanningBuildingColor: PlanningBuildingColor = value; break;
                 case TajsTweaksSettingsCatalog.ResourceTowerLineColor: ResourceTowerLineColor = value; break;
                 case TajsTweaksSettingsCatalog.ResourceTowerColors: ResourceTowerColors = value; break;
+                case TajsTweaksSettingsCatalog.TrainTuningProfile: TrainTuningProfile = value; break;
+                case TajsTweaksSettingsCatalog.LocomotiveNumbering: LocomotiveNumbering = value; break;
                 case TajsTweaksSettingsCatalog.DefaultsUnit: DefaultsUnit = value; break;
                 case TajsTweaksSettingsCatalog.DefaultsLoose: DefaultsLoose = value; break;
                 case TajsTweaksSettingsCatalog.DefaultsFluid: DefaultsFluid = value; break;
@@ -631,6 +647,8 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.DefaultsMineDump: DefaultsMineDump = value; break;
                 case TajsTweaksSettingsCatalog.DefaultsMineWarn: DefaultsMineWarn = value; break;
                 case TajsTweaksSettingsCatalog.ShipPreloadData: ShipPreloadData = value; break;
+                case TajsTweaksSettingsCatalog.ShipUnloadPolicy: ShipUnloadPolicy = value; break;
+                case TajsTweaksSettingsCatalog.TerrainDesignationPriority: TerrainDesignationPriority = value; break;
                 case TajsTweaksSettingsCatalog.HudHidden: HudHidden = value; break;
                 case TajsTweaksSettingsCatalog.HudPositions: HudPositions = value; break;
                 case TajsTweaksSettingsCatalog.HudActionPolicy: HudActionPolicy = value; break;
