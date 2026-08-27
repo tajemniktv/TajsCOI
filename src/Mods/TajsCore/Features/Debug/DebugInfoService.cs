@@ -10,6 +10,7 @@ using System.Text;
 using Mafi;
 using Mafi.Core.Console;
 using Mafi.Core.Simulation;
+using TajsCOI.Bootstrap;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Runtime;
@@ -32,6 +33,17 @@ namespace TajsCOI.Core.Features.Debug
             m_runtime = runtime;
             m_harmony = HarmonyRuntimeInfo.Inspect(coreMod.Manifest.RootDirectoryPath);
             m_runtime.ReportCompatibility(m_harmony.ToCompatibilityReport());
+            BootstrapStatus bootstrap = BootstrapApi.Status;
+            m_runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    "TajsBootstrap",
+                    "EarlyLoader",
+                    BootstrapCompatibility(bootstrap.State),
+                    "Optional Doorstop.Entrypoint.Start with canonical 0Harmony.dll",
+                    bootstrap.State + (bootstrap.CanonicalVersion.Length == 0 ? string.Empty : " " + bootstrap.CanonicalVersion),
+                    bootstrap.State == BootstrapState.Ready
+                        ? "Canonical Harmony was loaded by the optional early loader."
+                        : "Optional bootstrap is inactive; the normal no-bootstrap Tajs installation remains available."));
             m_runtime.RegisterCapability(
                 new RuntimeCapabilityDescriptor(
                     "TajsCore.HarmonyInspection",
@@ -52,6 +64,11 @@ namespace TajsCOI.Core.Features.Debug
                     Array.Empty<string>(),
                     Array.Empty<string>()));
         }
+
+        private static CompatibilityState BootstrapCompatibility(BootstrapState state) =>
+            state == BootstrapState.Ready || state == BootstrapState.NotInitialized || state == BootstrapState.Disabled
+                ? CompatibilityState.Compatible
+                : CompatibilityState.Disabled;
 
         [ConsoleCommand(
             documentation: "Shows TajsCore version, build provenance and basic runtime status.",

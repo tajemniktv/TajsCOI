@@ -19,6 +19,7 @@ using TajsCOI.Common.Ui;
 using TajsCOI.Common.Profiles;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
+using TajsCOI.Bootstrap;
 using Button = Mafi.Unity.UiToolkit.Library.Button;
 
 namespace TajsCOI.Core.Settings
@@ -248,6 +249,11 @@ namespace TajsCOI.Core.Settings
             panel.Body.Add(new Label(("Compatibility reports: " + m_runtime.GetCompatibilitySnapshot().Count).AsLoc()).FontSize(11));
             panel.Body.Add(new Label(("Registered capabilities: " + m_runtime.GetCapabilitySnapshot().Count).AsLoc()).FontSize(11));
             panel.Body.Add(new Label(("Registered components: " + m_runtime.GetComponentSnapshot().Count).AsLoc()).FontSize(11));
+            BootstrapStatus bootstrap = BootstrapApi.Status;
+            panel.Body.Add(new Label(
+                    ("Early bootstrap: " + bootstrap.State +
+                     (bootstrap.CanonicalVersion.Length == 0 ? string.Empty : " " + bootstrap.CanonicalVersion)).AsLoc())
+                .FontSize(11));
             panel.Body.Add(new ButtonText(Button.Area, "Close".AsLoc(), Close));
             return panel;
         }
