@@ -37,5 +37,11 @@ Tajs-owned manifest's `Enabled` flag. It does not remove the payload or touch ex
 files, so the next launch falls back to the ordinary no-bootstrap installation.
 
 The BCL-only loader and custody operations are covered by unit tests. Successful UnityDoorstop
-startup on the supported 0.8.7b distribution remains an external acceptance step; no game process
-is launched by the repository build.
+startup was also exercised on 2026-08-27 with the installed 0.8.7b executable and managed data in
+an isolated temporary launch root. The x64 Doorstop 4.5 verbose log recorded the proxy load,
+Mono `v4.0.30319` initialization, opening `TajsBootstrap.dll`, and invoking
+`Doorstop.Entrypoint.Start`; a probe wrapper recorded `TajsBootstrap Ready` with Harmony 2.4.2.0
+and SHA-256 `77e6901ecc606aec66c2a972782a3779e4f50c037d2d165eb7ececdd4d8f794d`. The live Steam
+installation and its existing external `version.dll` were not changed. Fresh-game UI acceptance
+and Steam-launch behavior remain external checks; repository builds do not launch Captain of
+Industry.
