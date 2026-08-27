@@ -81,6 +81,7 @@ namespace TajsCOI.Tests
         [InlineData(100, 193, 140, 194)]
         [InlineData(194, 193, 140, 194)]
         [InlineData(250, 193, 80, 250)]
+        [InlineData(3, 4, 300, 5)]
         public void AnimationProcessFitOnlyAdjustsShortOverclockedTimelines(
             int currentProcessTicks,
             int animationTicks,

@@ -71,7 +71,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         private readonly ITajsLogger m_log;
         private readonly OverclockingStateStore m_store = new();
         private readonly IEntitiesManager m_entities;
-        private readonly IInputScheduler? m_inputScheduler;
+        private IInputScheduler? m_inputScheduler;
         private readonly IProductsManager? m_products;
         private readonly IElectricityManager? m_electricity;
         private readonly IWorkersManager? m_workers;
@@ -326,13 +326,13 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
             OverclockEffectivePolicy effective = GetEffectivePolicy(id.Value);
             int clamped = OverclockingMath.ClampPercent(percent, effective.MinPercent, effective.MaxPercent);
-            if (m_inputScheduler is null)
+            if (!TryGetInputScheduler(out IInputScheduler inputScheduler))
             {
                 message = "The normal input scheduler is unavailable.";
                 return false;
             }
 
-            m_inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.SetManual(id, clamped));
+            inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.SetManual(id, clamped));
             message = "Overclock command queued for entity " + id.Value + " at " + clamped + "%.";
             return true;
         }
@@ -352,13 +352,13 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
-            if (m_inputScheduler is null)
+            if (!TryGetInputScheduler(out IInputScheduler inputScheduler))
             {
                 message = "The normal input scheduler is unavailable.";
                 return false;
             }
 
-            m_inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.SetAuto(id, enabled, minimum, maximum));
+            inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.SetAuto(id, enabled, minimum, maximum));
             message = "Overclock Auto command queued for entity " + id.Value + ".";
             return true;
         }
@@ -378,13 +378,13 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
-            if (m_inputScheduler is null)
+            if (!TryGetInputScheduler(out IInputScheduler inputScheduler))
             {
                 message = "The normal input scheduler is unavailable.";
                 return false;
             }
 
-            m_inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.Reset(id));
+            inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.Reset(id));
             message = "Overclock reset command queued for entity " + id.Value + ".";
             return true;
         }
@@ -403,7 +403,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
-            if (m_inputScheduler is null)
+            if (!TryGetInputScheduler(out _))
             {
                 message = "The normal input scheduler is unavailable.";
                 return false;
@@ -413,6 +413,32 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return true;
         }
 
+        private bool TryGetInputScheduler(out IInputScheduler scheduler)
+        {
+            if (m_inputScheduler is not null)
+            {
+                scheduler = m_inputScheduler;
+                return true;
+            }
+
+            try
+            {
+                if (m_resolver.TryResolve(out IInputScheduler? resolved) && resolved is not null)
+                {
+                    m_inputScheduler = resolved;
+                    scheduler = resolved;
+                    return true;
+                }
+            }
+            catch
+            {
+                // Scene dependencies can be temporarily unavailable during a transition.
+            }
+
+            scheduler = null!;
+            return false;
+        }
+
         internal bool QueueDeleteGroup(int groupId, out string message)
         {
             if (!TryQueueGroupCommand(m_store.GetGroup(groupId), out message))
@@ -420,7 +446,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
-            m_inputScheduler!.ScheduleInputCmd(TajsOverclockPolicyCmd.DeleteGroup(groupId));
+            if (!TryGetInputScheduler(out IInputScheduler inputScheduler))
+            {
+                message = "The normal input scheduler is unavailable.";
+                return false;
+            }
+            inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.DeleteGroup(groupId));
             message = "Overclock group delete command queued for group " + groupId + ".";
             return true;
         }
@@ -444,7 +475,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
-            m_inputScheduler!.ScheduleInputCmd(TajsOverclockPolicyCmd.AddToGroup(groupId, id));
+            if (!TryGetInputScheduler(out IInputScheduler inputScheduler))
+            {
+                message = "The normal input scheduler is unavailable.";
+                return false;
+            }
+            inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.AddToGroup(groupId, id));
             message = "Overclock group add command queued for entity " + id.Value + ".";
             return true;
         }
@@ -463,7 +499,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
-            m_inputScheduler!.ScheduleInputCmd(TajsOverclockPolicyCmd.RemoveFromGroup(groupId, id));
+            if (!TryGetInputScheduler(out IInputScheduler inputScheduler))
+            {
+                message = "The normal input scheduler is unavailable.";
+                return false;
+            }
+            inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.RemoveFromGroup(groupId, id));
             message = "Overclock group remove command queued for entity " + id.Value + ".";
             return true;
         }
@@ -479,7 +520,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 percent,
                 TajsTweaksRuntimeState.OverclockMinPercent,
                 TajsTweaksRuntimeState.OverclockMaxPercent);
-            m_inputScheduler!.ScheduleInputCmd(TajsOverclockPolicyCmd.SetGroupDefault(groupId, clamped));
+            if (!TryGetInputScheduler(out IInputScheduler inputScheduler))
+            {
+                message = "The normal input scheduler is unavailable.";
+                return false;
+            }
+            inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.SetGroupDefault(groupId, clamped));
             message = "Overclock group default command queued for group " + groupId + " at " + clamped + "%.";
             return true;
         }
@@ -495,7 +541,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 percent,
                 TajsTweaksRuntimeState.OverclockMinPercent,
                 TajsTweaksRuntimeState.OverclockMaxPercent);
-            m_inputScheduler!.ScheduleInputCmd(TajsOverclockPolicyCmd.ApplyGroup(groupId, clamped));
+            if (!TryGetInputScheduler(out IInputScheduler inputScheduler))
+            {
+                message = "The normal input scheduler is unavailable.";
+                return false;
+            }
+            inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.ApplyGroup(groupId, clamped));
             message = "Overclock group apply command queued for group " + groupId + " at " + clamped + "%.";
             return true;
         }
@@ -507,7 +558,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
-            m_inputScheduler!.ScheduleInputCmd(TajsOverclockPolicyCmd.SetGroupAuto(groupId, enabled, minimum, maximum));
+            if (!TryGetInputScheduler(out IInputScheduler inputScheduler))
+            {
+                message = "The normal input scheduler is unavailable.";
+                return false;
+            }
+            inputScheduler.ScheduleInputCmd(TajsOverclockPolicyCmd.SetGroupAuto(groupId, enabled, minimum, maximum));
             message = "Overclock group Auto command queued for group " + groupId + ".";
             return true;
         }

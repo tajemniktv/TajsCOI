@@ -30,6 +30,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         private const string MaxConfigKey = "TajsTweaks_OverclockMax";
         private static readonly Dictionary<Type, MethodInfo?> s_simUpdateMethods = new();
         private static readonly FieldInfo? s_animationParamsField = AccessTools.Field(typeof(AnimationWithPauseState), "m_params");
+        private static readonly FieldInfo? s_repeatAnimationParamsField = AccessTools.Field(typeof(RepeatAnimationState), "m_params");
 
         internal static void Install(Harmony harmony, TajsOverclockingFeature feature)
         {
@@ -55,6 +56,14 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 harmony.Patch(
                     animationStart,
                     prefix: new HarmonyMethod(typeof(OverclockingPatches), nameof(AnimationWithPauseStartPrefix)));
+            }
+
+            MethodInfo? repeatAnimationStart = AccessTools.Method(typeof(RepeatAnimationState), nameof(RepeatAnimationState.Start));
+            if (repeatAnimationStart is not null && s_repeatAnimationParamsField is not null)
+            {
+                harmony.Patch(
+                    repeatAnimationStart,
+                    prefix: new HarmonyMethod(typeof(OverclockingPatches), nameof(RepeatAnimationStartPrefix)));
             }
 
             MethodInfo addToConfig = AccessTools.Method(typeof(Machine), "AddToConfig")
@@ -185,6 +194,69 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 int adjustedTicks = OverclockingMath.EnsureAnimationProcessFits(
                     currentProcessDuration.Ticks,
                     effectiveAnimationDuration.Ticks,
+                    overclockPercent);
+                if (adjustedTicks != currentProcessDuration.Ticks)
+                {
+                    currentProcessDuration = Duration.FromTicks(adjustedTicks);
+                }
+            }
+            catch
+            {
+                // Animation compatibility is optional. Preserve vanilla behavior if a private
+                // field or an unexpected animation parameter shape changes.
+            }
+        }
+
+        /// <summary>
+        ///     COI's RepeatAutoTimes state rounds the number of repeats from the available process
+        ///     duration. A sufficiently high overclock can make that duration shorter than one
+        ///     repeat, which produces the native "RepeatCount is not positive" diagnostic. Extend
+        ///     only the animation-local duration; the machine's production timer remains
+        ///     authoritative.
+        /// </summary>
+        internal static void RepeatAnimationStartPrefix(
+            RepeatAnimationState __instance,
+            IEntity entity,
+            ref Duration currentProcessDuration)
+        {
+            try
+            {
+                if (!TajsTweaksRuntimeState.Overclocking || entity is not Machine machine ||
+                    currentProcessDuration.IsNotPositive || s_repeatAnimationParamsField is null)
+                {
+                    return;
+                }
+
+                int overclockPercent = TajsOverclockingFeature.GetPercentFor(machine);
+                if (overclockPercent == 100)
+                {
+                    return;
+                }
+
+                if (s_repeatAnimationParamsField.GetValue(__instance) is not RepeatableAnimationParams animationParams ||
+                    animationParams.RepeatCount.HasValue || !animationParams.TotalDuration.IsPositive)
+                {
+                    return;
+                }
+
+                Duration repeatDuration = animationParams.TotalDuration;
+                if (animationParams.CustomSpeed.HasValue)
+                {
+                    if (animationParams.CustomSpeed.Value.IsNotPositive)
+                    {
+                        return;
+                    }
+
+                    repeatDuration = repeatDuration.ScaleByAnimationSpeed(animationParams.CustomSpeed.Value);
+                }
+
+                int delayedStartTicks = Math.Max(0, animationParams.DelayedStartAt.Ticks);
+                int requiredTicks = repeatDuration.Ticks >= int.MaxValue - delayedStartTicks
+                    ? int.MaxValue
+                    : repeatDuration.Ticks + delayedStartTicks;
+                int adjustedTicks = OverclockingMath.EnsureAnimationProcessFits(
+                    currentProcessDuration.Ticks,
+                    requiredTicks,
                     overclockPercent);
                 if (adjustedTicks != currentProcessDuration.Ticks)
                 {

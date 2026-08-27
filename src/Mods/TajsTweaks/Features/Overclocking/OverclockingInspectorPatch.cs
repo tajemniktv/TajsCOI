@@ -114,6 +114,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             internal UiSlider Slider = null!;
             internal UiTextField Input = null!;
             internal PendingPolicy? Pending;
+            internal bool InputEditing;
         }
 
         private static readonly Dictionary<object, State> s_states = new();
@@ -303,6 +304,11 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             try
             {
                 TajsOverclockingFeature feature = TajsOverclockingFeature.Current;
+                if (state.InputEditing)
+                {
+                    return;
+                }
+
                 PendingPolicy? requested = state.Pending;
                 if (requested is not null && requested.Matches(feature, state.Entity.Id))
                 {
@@ -340,6 +346,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     if (previous?.Id != existing.Entity?.Id)
                     {
                         existing.Pending = null;
+                        existing.InputEditing = false;
                     }
                     return;
                 }
@@ -433,6 +440,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 });
                 input.OnEditEnd(text =>
                 {
+                    state.InputEditing = false;
                     if (int.TryParse(text.Trim().TrimEnd('%'), out int value))
                     {
                         QueueExact(inspector, value);
@@ -441,6 +449,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     {
                         Refresh(inspector);
                     }
+                });
+                input.OnFocus(() => state.InputEditing = true);
+                input.OnEscape(() =>
+                {
+                    state.InputEditing = false;
+                    Refresh(inspector);
                 });
                 Refresh(inspector);
                 panel.RootElement.schedule.Execute(() => Refresh(inspector)).Every(250);

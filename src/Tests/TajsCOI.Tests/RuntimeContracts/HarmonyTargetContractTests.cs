@@ -195,6 +195,19 @@ namespace TajsCOI.Tests.RuntimeContracts
                 "m_params",
                 typeof(AnimationWithPauseParams),
                 isStatic: false);
+            RuntimeContractAssertions.RequireMethod(
+                typeof(RepeatAnimationState),
+                nameof(RepeatAnimationState.Start),
+                typeof(void),
+                isStatic: false,
+                typeof(IEntity),
+                typeof(Duration),
+                typeof(int));
+            RuntimeContractAssertions.RequireField(
+                typeof(RepeatAnimationState),
+                "m_params",
+                typeof(RepeatableAnimationParams),
+                isStatic: false);
 
             foreach (Type type in new[] { typeof(Machine), typeof(Transport) })
             {
