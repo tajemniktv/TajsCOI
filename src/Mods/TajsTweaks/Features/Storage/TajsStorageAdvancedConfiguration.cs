@@ -34,6 +34,98 @@ namespace TajsCOI.Tweaks.Features.Storage
         All = ProductAssignment | LogisticsThresholds | ImportExportEnablement | TruckPolicy | Alerts | KeepFullEmpty | CapacityOverride,
     }
 
+    /// <summary>
+    ///     Save-safe storage configuration projection. It contains selectable policy fields only;
+    ///     inventory quantities, live buffers, and resolver-owned references are intentionally absent.
+    /// </summary>
+    internal sealed class StorageConfigSnapshot
+    {
+        internal StorageConfigSnapshot(
+            StorageTransferFields fields,
+            string? productId,
+            bool? allowAllProducts,
+            int? importUntilPercent,
+            int? exportFromPercent,
+            int? transportFromPercent,
+            int? transportUntilPercent,
+            bool? inputDisabled,
+            bool? outputDisabled,
+            bool? alertAboveEnabled,
+            int? alertAbovePercent,
+            bool? alertBelowEnabled,
+            int? alertBelowPercent,
+            int? capacityOverride)
+        {
+            Fields = fields;
+            ProductId = productId?.Trim() ?? string.Empty;
+            AllowAllProducts = allowAllProducts;
+            ImportUntilPercent = ClampPercent(importUntilPercent);
+            ExportFromPercent = ClampPercent(exportFromPercent);
+            TransportFromPercent = ClampPercent(transportFromPercent);
+            TransportUntilPercent = ClampPercent(transportUntilPercent);
+            InputDisabled = inputDisabled;
+            OutputDisabled = outputDisabled;
+            AlertAboveEnabled = alertAboveEnabled;
+            AlertAbovePercent = ClampPercent(alertAbovePercent);
+            AlertBelowEnabled = alertBelowEnabled;
+            AlertBelowPercent = ClampPercent(alertBelowPercent);
+            CapacityOverride = capacityOverride is > 0 ? capacityOverride : null;
+        }
+
+        internal StorageTransferFields Fields { get; }
+        internal string ProductId { get; }
+        internal bool? AllowAllProducts { get; }
+        internal int? ImportUntilPercent { get; }
+        internal int? ExportFromPercent { get; }
+        internal int? TransportFromPercent { get; }
+        internal int? TransportUntilPercent { get; }
+        internal bool? InputDisabled { get; }
+        internal bool? OutputDisabled { get; }
+        internal bool? AlertAboveEnabled { get; }
+        internal int? AlertAbovePercent { get; }
+        internal bool? AlertBelowEnabled { get; }
+        internal int? AlertBelowPercent { get; }
+        internal int? CapacityOverride { get; }
+
+        private static int? ClampPercent(int? value) => value.HasValue ? Math.Max(0, Math.Min(100, value.Value)) : null;
+    }
+
+    internal static class StorageSnapshotTransfer
+    {
+        internal static bool ValidateDestination(
+            StorageConfigSnapshot snapshot,
+            bool destinationRestricted,
+            bool destinationSupportsProduct,
+            int destinationCurrentQuantity,
+            out string reason)
+        {
+            if (snapshot is null)
+            {
+                reason = "snapshot is missing";
+                return false;
+            }
+            if (destinationRestricted && (snapshot.Fields & (StorageTransferFields.ProductAssignment | StorageTransferFields.CapacityOverride)) != 0)
+            {
+                reason = "special storage is restricted";
+                return false;
+            }
+            if ((snapshot.Fields & StorageTransferFields.ProductAssignment) != 0 &&
+                snapshot.ProductId.Length > 0 && !destinationSupportsProduct)
+            {
+                reason = "destination does not support the selected product";
+                return false;
+            }
+            if ((snapshot.Fields & StorageTransferFields.CapacityOverride) != 0 &&
+                snapshot.CapacityOverride.HasValue && destinationCurrentQuantity > snapshot.CapacityOverride.Value)
+            {
+                reason = "capacity would be below current inventory";
+                return false;
+            }
+            reason = string.Empty;
+            return true;
+        }
+    }
+
     internal readonly struct StorageTransferCandidate
     {
         internal StorageTransferCandidate(int entityId, bool compatible, string reason)

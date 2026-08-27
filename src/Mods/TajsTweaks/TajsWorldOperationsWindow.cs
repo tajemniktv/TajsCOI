@@ -2,9 +2,11 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using Mafi;
 using Mafi.Core;
 using Mafi.Core.Buildings.Shipyard;
@@ -20,6 +22,7 @@ using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Metadata;
+using TajsCOI.Tweaks.Features.World;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Column = Mafi.Unity.UiToolkit.Library.Column;
@@ -43,15 +46,19 @@ namespace TajsCOI.Tweaks
         private readonly ScrollColumn m_minesScroll;
         private readonly ScrollColumn m_settlementsScroll;
         private readonly ScrollColumn m_preloadScroll;
+        private readonly ScrollColumn m_browserScroll;
         private readonly Column m_repairsContent;
         private readonly Column m_minesContent;
         private readonly Column m_settlementsContent;
         private readonly Column m_preloadContent;
+        private readonly Column m_browserContent;
         private readonly Label m_status;
         private readonly ButtonText m_repairsTab;
         private readonly ButtonText m_minesTab;
         private readonly ButtonText m_settlementsTab;
         private readonly ButtonText m_preloadTab;
+        private readonly ButtonText m_browserTab;
+        private readonly TextField m_browserSearch;
         private readonly Label m_preloadFeedback;
         private readonly Column m_preloadPending;
         private readonly Column m_preloadCargo;
@@ -83,24 +90,30 @@ namespace TajsCOI.Tweaks
             m_minesTab = MakeTab("Mines & rigs", 1, "Repaired mines and oil rigs.");
             m_settlementsTab = MakeTab("Settlements", 2, "Settlements and reputation upgrades.");
             m_preloadTab = MakeTab("Ship preload", 3, "Queue cargo through ordinary shipyard logistics.");
+            m_browserTab = MakeTab("All discovered", 4, "Snapshot of discovered world entities.");
             tabs.Add(m_repairsTab);
             tabs.Add(m_minesTab);
             tabs.Add(m_settlementsTab);
             tabs.Add(m_preloadTab);
+            tabs.Add(m_browserTab);
             panel.Add(tabs);
 
             m_repairsContent = new Column(2.pt()).AlignItemsStretch();
             m_minesContent = new Column(2.pt()).AlignItemsStretch();
             m_settlementsContent = new Column(2.pt()).AlignItemsStretch();
             m_preloadContent = new Column(6.pt()).AlignItemsStretch();
+            m_browserContent = new Column(4.pt()).AlignItemsStretch();
+            m_browserSearch = new TextField().Placeholder("Search discovered entities".AsLoc()).MaxWidth(new Px(360f));
             m_repairsScroll = MakeScroll(m_repairsContent);
             m_minesScroll = MakeScroll(m_minesContent);
             m_settlementsScroll = MakeScroll(m_settlementsContent);
             m_preloadScroll = MakeScroll(m_preloadContent);
+            m_browserScroll = MakeScroll(m_browserContent);
             panel.Add(m_repairsScroll);
             panel.Add(m_minesScroll);
             panel.Add(m_settlementsScroll);
             panel.Add(m_preloadScroll);
+            panel.Add(m_browserScroll);
             m_status = new Label(string.Empty.AsLoc());
             panel.Add(m_status);
             Body.Add(panel);
@@ -108,6 +121,7 @@ namespace TajsCOI.Tweaks
             m_preloadFeedback = new Label(string.Empty.AsLoc());
             m_preloadPending = new Column(2.pt()).AlignItemsStretch();
             m_preloadCargo = new Column(2.pt()).AlignItemsStretch();
+            m_browserContent.Add(m_browserSearch);
             BuildPreloadPanel();
             SwitchTab(0);
             RootElement.schedule.Execute(RefreshAll).Every(2000L);
@@ -142,10 +156,12 @@ namespace TajsCOI.Tweaks
             m_minesScroll.RootElement.style.display = tab == 1 ? DisplayStyle.Flex : DisplayStyle.None;
             m_settlementsScroll.RootElement.style.display = tab == 2 ? DisplayStyle.Flex : DisplayStyle.None;
             m_preloadScroll.RootElement.style.display = tab == 3 ? DisplayStyle.Flex : DisplayStyle.None;
+            m_browserScroll.RootElement.style.display = tab == 4 ? DisplayStyle.Flex : DisplayStyle.None;
             m_repairsTab.RootElement.style.backgroundColor = new StyleColor(tab == 0 ? EvenRow : OddRow);
             m_minesTab.RootElement.style.backgroundColor = new StyleColor(tab == 1 ? EvenRow : OddRow);
             m_settlementsTab.RootElement.style.backgroundColor = new StyleColor(tab == 2 ? EvenRow : OddRow);
             m_preloadTab.RootElement.style.backgroundColor = new StyleColor(tab == 3 ? EvenRow : OddRow);
+            m_browserTab.RootElement.style.backgroundColor = new StyleColor(tab == 4 ? EvenRow : OddRow);
             RefreshAll();
         }
 
@@ -156,6 +172,8 @@ namespace TajsCOI.Tweaks
                 m_repairsContent.Clear();
                 m_minesContent.Clear();
                 m_settlementsContent.Clear();
+                m_browserContent.Clear();
+                m_browserContent.Add(m_browserSearch);
                 int repairs = 0;
                 int mines = 0;
                 int settlements = 0;
@@ -200,10 +218,117 @@ namespace TajsCOI.Tweaks
                         m_activeTab == 1 ? mines + " mines & rigs available" :
                         m_activeTab == 2 ? settlements + " settlements discovered" : "Ship preload status").AsLoc());
                 RefreshPreload();
+                RefreshBrowser();
             }
             catch
             {
                 m_status.Value("World operations are unavailable in this scene.".AsLoc());
+            }
+        }
+
+        private void RefreshBrowser()
+        {
+            try
+            {
+                List<WorldEntitySnapshot> live = new();
+                foreach (WorldMapLocation location in m_worldMap.Map.Locations)
+                {
+                    if (location.State != WorldMapLocationState.Explored || location.Entity.IsNone)
+                    {
+                        continue;
+                    }
+                    IWorldMapEntity entity = location.Entity.Value;
+                    WorldEntityKind kind = entity switch
+                    {
+                        WorldMapVillage => WorldEntityKind.Settlement,
+                        WorldMapMine => WorldEntityKind.Mine,
+                        WorldMapCargoShipWreck => WorldEntityKind.Wreck,
+                        _ => WorldEntityKind.Other,
+                    };
+                    double? quantity = entity is WorldMapMine mine && mine.QuantityAvailable.HasValue
+                        ? mine.QuantityAvailable.Value.Value
+                        : null;
+                    live.Add(new WorldEntitySnapshot(
+                        entity.Id.Value,
+                        kind,
+                        entity.DefaultTitle.ToString(),
+                        location.Position.X,
+                        location.Position.Y,
+                        entity is WorldMapRepairableEntity repairable && repairable.IsUnderConstruction ? "under construction" : "discovered",
+                        entity.IsOwnedByPlayer,
+                        quantity,
+                        TryReadPrototypeId(entity)));
+                }
+
+                IReadOnlyList<WorldEntitySnapshot> snapshot = WorldEntityBrowser.Snapshot(live);
+                IReadOnlyList<WorldEntitySnapshot> rows = WorldEntityBrowser.Query(
+                    snapshot,
+                    new WorldEntityQuery { Search = m_browserSearch.GetText(), SortBy = WorldEntitySortField.Name });
+                int index = 0;
+                foreach (WorldEntitySnapshot row in rows)
+                {
+                    Row tableRow = MakeRow(index++);
+                    tableRow.Add(new Label(row.Name.AsLoc()).Width(new Px(260f)));
+                    tableRow.Add(new Label((row.Kind + "  " + row.Status).AsLoc()).Width(new Px(210f)));
+                    tableRow.Add(new Label(("(" + row.X + ", " + row.Y + ")").AsLoc()).Width(new Px(120f)));
+                    ButtonText focus = new ButtonText(Button.General, "Focus".AsLoc(), () => TryFocus(row.Id));
+                    focus.Width(new Px(90f));
+                    tableRow.Add(focus);
+                    m_browserContent.Add(tableRow);
+                }
+                if (index == 0)
+                {
+                    m_browserContent.Add(new Label("No discovered entities match the search.".AsLoc()));
+                }
+            }
+            catch
+            {
+                m_browserContent.Add(new Label("World entity browser is unavailable in this scene.".AsLoc()));
+            }
+        }
+
+        private static string TryReadPrototypeId(IWorldMapEntity entity)
+        {
+            try
+            {
+                FieldInfo? field = entity.GetType().GetField("Prototype", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                return (field?.GetValue(entity) as object)?.ToString() ?? string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private void TryFocus(int entityId)
+        {
+            try
+            {
+                WorldMapLocation? location = m_worldMap.Map.Locations.FirstOrDefault(item => item.Entity.HasValue && item.Entity.Value.Id.Value == entityId);
+                if (location is null)
+                {
+                    return;
+                }
+                // Keep the map-view controller authoritative. The exact controller is Unity-side
+                // and intentionally discovered by a narrow, optional reflection seam.
+                foreach (MethodInfo method in m_worldMap.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                {
+                    if (method.Name.IndexOf("Focus", StringComparison.OrdinalIgnoreCase) < 0 &&
+                        method.Name.IndexOf("Select", StringComparison.OrdinalIgnoreCase) < 0)
+                    {
+                        continue;
+                    }
+                    ParameterInfo[] parameters = method.GetParameters();
+                    if (parameters.Length == 1 && parameters[0].ParameterType.IsInstanceOfType(location))
+                    {
+                        method.Invoke(m_worldMap, new object[] { location });
+                        return;
+                    }
+                }
+            }
+            catch
+            {
+                // A missing map-view seam leaves the table usable.
             }
         }
 

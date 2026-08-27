@@ -43,6 +43,7 @@ using TajsCOI.Tweaks.Features.Presentation;
 using TajsCOI.Tweaks.Features.Selection;
 using TajsCOI.Tweaks.Features.Storage;
 using TajsCOI.Tweaks.Features.TransportNetwork;
+using TajsCOI.Tweaks.Features.World;
 
 namespace TajsCOI.Tweaks
 {
@@ -533,6 +534,7 @@ namespace TajsCOI.Tweaks
             TryInstall(m_runtime, "SteamAndExhaustStorage", harmony => TweaksSteamStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "StorageOverrides", harmony => TweaksStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "StorageInspectorControls", harmony => TajsStorageAdvancedFeature.Install(harmony, m_resolver));
+            TryInstall(m_runtime, "MineDepletedTint", MineDepletedTintFeature.Install);
             TryInstall(m_runtime, "GameplayPlusPlusBridge", harmony => TweaksGameplayPlusPlusFeature.Install(harmony, m_resolver));
             TryInstallResolved(
                 m_runtime,
@@ -846,6 +848,7 @@ namespace TajsCOI.Tweaks
             TweaksStuckTruckRecoveryFeature.ClearDestinations();
             TweaksKeepFullEmptyMarkerFeature.Reset();
             TajsStorageAdvancedFeature.Reset();
+            MineDepletedTintFeature.Reset();
             TweaksHudLayoutFeature.ClearFullscreenState();
             TweaksHudActionFeature.ResetAll();
             AdaptiveTowerInspectorFeature.Reset();
