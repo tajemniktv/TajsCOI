@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace TajsCOI.Tweaks.Features.Selection
 {
@@ -114,6 +115,90 @@ namespace TajsCOI.Tweaks.Features.Selection
 
             entered = added;
             exited = removed;
+        }
+    }
+
+    /// <summary>
+    ///     Bounded world-rectangle ID query for scene tools that do not use the screen drag
+    ///     adapter. It retains only stable integer EntityId.Value keys and keeps source inspection
+    ///     bounded even when the native scene index is unavailable.
+    /// </summary>
+    internal static class SceneSelectionWorldQuery
+    {
+        internal static IReadOnlyList<int> SelectIds<T>(
+            IEnumerable<T>? source,
+            SceneAreaBounds bounds,
+            Func<T, bool> intersects,
+            Func<T, int> idSelector,
+            int maximumSelectionCount,
+            out bool truncated)
+        {
+            IReadOnlyList<T> selected = SelectItems(source, bounds, intersects, idSelector, maximumSelectionCount, out truncated);
+            var ids = selected.Select(idSelector).ToList();
+            ids.Sort();
+            return ids;
+        }
+
+        internal static IReadOnlyList<T> SelectItems<T>(
+            IEnumerable<T>? source,
+            SceneAreaBounds bounds,
+            Func<T, bool> intersects,
+            Func<T, int> idSelector,
+            int maximumSelectionCount,
+            out bool truncated)
+        {
+            if (intersects is null)
+            {
+                throw new ArgumentNullException(nameof(intersects));
+            }
+            if (idSelector is null)
+            {
+                throw new ArgumentNullException(nameof(idSelector));
+            }
+
+            truncated = false;
+            int maximum = Math.Max(1, maximumSelectionCount);
+            int maximumInspected = maximum > int.MaxValue / 16 ? int.MaxValue : maximum * 16;
+            var selected = new List<T>();
+            var seen = new HashSet<int>();
+            if (source is null)
+            {
+                return selected;
+            }
+
+            try
+            {
+                int inspected = 0;
+                foreach (T item in source)
+                {
+                    if (++inspected > maximumInspected)
+                    {
+                        truncated = true;
+                        break;
+                    }
+                    if (!intersects(item))
+                    {
+                        continue;
+                    }
+
+                    int id = idSelector(item);
+                    if (seen.Add(id))
+                    {
+                        selected.Add(item);
+                    }
+                }
+            }
+            catch
+            {
+                truncated = true;
+            }
+
+            if (selected.Count > maximum)
+            {
+                selected.RemoveRange(maximum, selected.Count - maximum);
+                truncated = true;
+            }
+            return selected;
         }
     }
 

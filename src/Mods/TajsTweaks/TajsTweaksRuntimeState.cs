@@ -124,6 +124,7 @@ namespace TajsCOI.Tweaks
         internal static bool ElectricityComputingTotals;
         internal static bool StackerDesignationOverlay;
         internal static bool TerrainGrid;
+        internal static double PolygonGridSize = 1d;
         internal static bool TerrainXRay;
         internal static string TerrainXRayShortcut = "F7";
         internal static bool EfficiencyOverlay;
@@ -197,6 +198,20 @@ namespace TajsCOI.Tweaks
         internal static double TuningOreSorterThroughputMultiplier = 1d;
         internal static double TuningShaftThroughputMultiplier = 1d;
         internal static double TuningThermalStorageCapacityMultiplier = 1d;
+        internal static double TuningTransportTruckCapacityMultiplier = 1d;
+        internal static double TuningTransportExcavatorCapacityMultiplier = 1d;
+        internal static double TuningTransportTrainWagonCapacityMultiplier = 1d;
+        internal static double TuningTransportCargoShipCapacityMultiplier = 1d;
+        internal static double TuningTransportCargoDepotCapacityMultiplier = 1d;
+        internal static double TuningSpaceStationConstructionMultiplier = 1d;
+        internal static double TuningSpaceStationMaintenanceMultiplier = 1d;
+        internal static double TuningSpaceStationCrewSuppliesMultiplier = 1d;
+        internal static double TuningSpaceStationResearchPointsMultiplier = 1d;
+        internal static double TuningSpaceStationResearchSuppliesMultiplier = 1d;
+        internal static double TuningSpaceStationUnityMultiplier = 1d;
+        internal static double TuningSpaceStationResearchEfficiencyMultiplier = 1d;
+        internal static double TuningSpaceStationCrewCapacityMultiplier = 1d;
+        internal static double TuningSpaceStationCrewRotationMultiplier = 1d;
         internal static string DiseaseScalingPolicy = "vanilla";
         internal static string DiseaseScalingCustomFractions = string.Empty;
 
@@ -328,6 +343,7 @@ namespace TajsCOI.Tweaks
             ElectricityComputingTotals = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ElectricityComputingTotals);
             StackerDesignationOverlay = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.StackerDesignationOverlay);
             TerrainGrid = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TerrainGrid);
+            PolygonGridSize = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.PolygonGridSize);
             TerrainXRay = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TerrainXRay);
             TerrainXRayShortcut = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TerrainXRayShortcut);
             EfficiencyOverlay = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.EfficiencyOverlay);
@@ -403,6 +419,20 @@ namespace TajsCOI.Tweaks
             TuningOreSorterThroughputMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningOreSorterThroughputMultiplier);
             TuningShaftThroughputMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningShaftThroughputMultiplier);
             TuningThermalStorageCapacityMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningThermalStorageCapacityMultiplier);
+            TuningTransportTruckCapacityMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningTransportTruckCapacityMultiplier);
+            TuningTransportExcavatorCapacityMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningTransportExcavatorCapacityMultiplier);
+            TuningTransportTrainWagonCapacityMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningTransportTrainWagonCapacityMultiplier);
+            TuningTransportCargoShipCapacityMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningTransportCargoShipCapacityMultiplier);
+            TuningTransportCargoDepotCapacityMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningTransportCargoDepotCapacityMultiplier);
+            TuningSpaceStationConstructionMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningSpaceStationConstructionMultiplier);
+            TuningSpaceStationMaintenanceMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningSpaceStationMaintenanceMultiplier);
+            TuningSpaceStationCrewSuppliesMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningSpaceStationCrewSuppliesMultiplier);
+            TuningSpaceStationResearchPointsMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningSpaceStationResearchPointsMultiplier);
+            TuningSpaceStationResearchSuppliesMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningSpaceStationResearchSuppliesMultiplier);
+            TuningSpaceStationUnityMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningSpaceStationUnityMultiplier);
+            TuningSpaceStationResearchEfficiencyMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningSpaceStationResearchEfficiencyMultiplier);
+            TuningSpaceStationCrewCapacityMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningSpaceStationCrewCapacityMultiplier);
+            TuningSpaceStationCrewRotationMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningSpaceStationCrewRotationMultiplier);
             DiseaseScalingPolicy = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.DiseaseScalingPolicy);
             DiseaseScalingCustomFractions = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.DiseaseScalingCustomFractions);
             s_mutedNotificationData = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.MutedNotifications);
@@ -719,6 +749,10 @@ namespace TajsCOI.Tweaks
             {
                 SandboxFocusMultiplier = value;
             }
+            if (key == TajsTweaksSettingsCatalog.PolygonGridSize)
+            {
+                PolygonGridSize = value;
+            }
             if (key == TajsTweaksSettingsCatalog.TuningShipyardCargoMultiplier)
             {
                 TuningShipyardCargoMultiplier = value;
@@ -742,6 +776,62 @@ namespace TajsCOI.Tweaks
             if (key == TajsTweaksSettingsCatalog.TuningThermalStorageCapacityMultiplier)
             {
                 TuningThermalStorageCapacityMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningTransportTruckCapacityMultiplier)
+            {
+                TuningTransportTruckCapacityMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningTransportExcavatorCapacityMultiplier)
+            {
+                TuningTransportExcavatorCapacityMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningTransportTrainWagonCapacityMultiplier)
+            {
+                TuningTransportTrainWagonCapacityMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningTransportCargoShipCapacityMultiplier)
+            {
+                TuningTransportCargoShipCapacityMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningTransportCargoDepotCapacityMultiplier)
+            {
+                TuningTransportCargoDepotCapacityMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningSpaceStationConstructionMultiplier)
+            {
+                TuningSpaceStationConstructionMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningSpaceStationMaintenanceMultiplier)
+            {
+                TuningSpaceStationMaintenanceMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningSpaceStationCrewSuppliesMultiplier)
+            {
+                TuningSpaceStationCrewSuppliesMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningSpaceStationResearchPointsMultiplier)
+            {
+                TuningSpaceStationResearchPointsMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningSpaceStationResearchSuppliesMultiplier)
+            {
+                TuningSpaceStationResearchSuppliesMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningSpaceStationUnityMultiplier)
+            {
+                TuningSpaceStationUnityMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningSpaceStationResearchEfficiencyMultiplier)
+            {
+                TuningSpaceStationResearchEfficiencyMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningSpaceStationCrewCapacityMultiplier)
+            {
+                TuningSpaceStationCrewCapacityMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningSpaceStationCrewRotationMultiplier)
+            {
+                TuningSpaceStationCrewRotationMultiplier = value;
             }
         }
 

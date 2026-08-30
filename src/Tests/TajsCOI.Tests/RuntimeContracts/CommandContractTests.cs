@@ -14,6 +14,7 @@ using Mafi.Serialization;
 using TajsCOI.Tweaks.Features.Difficulty;
 using TajsCOI.Tweaks.Features.Overclocking;
 using TajsCOI.Tweaks.Features.Storage;
+using TajsCOI.Tweaks.Features.TransportFlowLimits;
 using Xunit;
 using Assert = Xunit.Assert;
 
@@ -29,6 +30,7 @@ namespace TajsCOI.Tests.RuntimeContracts
             Assert.True(typeof(InputCommand).IsAssignableFrom(typeof(TajsOverclockSetRateCmd)));
             Assert.True(typeof(InputCommand).IsAssignableFrom(typeof(TajsOverclockPolicyCmd)));
             Assert.True(typeof(InputCommand).IsAssignableFrom(typeof(TajsStorageInstantEmptyCmd)));
+            Assert.True(typeof(InputCommand).IsAssignableFrom(typeof(TransportFlowLimitCmd)));
 
             Assert.Equal(
                 new[] { typeof(string), typeof(string), typeof(bool) },
@@ -74,6 +76,12 @@ namespace TajsCOI.Tests.RuntimeContracts
             Assert.DoesNotContain(
                 typeof(TajsDifficultySetCmd).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
                 field => typeof(GameDifficultyConfig).IsAssignableFrom(field.FieldType));
+            Assert.Equal(
+                new[] { typeof(EntityId), typeof(string) },
+                typeof(TransportFlowLimitCmd)
+                    .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Where(field => !field.IsStatic)
+                    .Select(field => field.FieldType));
         }
 
         [Fact]
@@ -125,6 +133,16 @@ namespace TajsCOI.Tests.RuntimeContracts
                 isStatic: false,
                 typeof(TajsOverclockPolicyCmd));
 
+            Type flowProcessor = typeof(TransportFlowLimitCommandsProcessor);
+            Assert.Contains(typeof(ICommandProcessor<TransportFlowLimitCmd>), flowProcessor.GetInterfaces());
+            Assert.Contains(typeof(IAction<TransportFlowLimitCmd>), flowProcessor.GetInterfaces());
+            RuntimeContractAssertions.RequireMethod(
+                flowProcessor,
+                nameof(IAction<TransportFlowLimitCmd>.Invoke),
+                typeof(void),
+                isStatic: false,
+                typeof(TransportFlowLimitCmd));
+
             RuntimeContractAssertions.RequireConstructor(typeof(ChangeGameDifficultyCmd), typeof(GameDifficultyConfig));
             Assert.Contains(typeof(ICommandProcessor<ChangeGameDifficultyCmd>), typeof(GameDifficultyApplier).GetInterfaces());
         }
@@ -152,6 +170,12 @@ namespace TajsCOI.Tests.RuntimeContracts
             TajsStorageInstantEmptyCmd restoredEmpty = RoundTrip(empty, TajsStorageInstantEmptyCmd.Serialize, TajsStorageInstantEmptyCmd.Deserialize);
             Assert.Equal(empty.StorageId, restoredEmpty.StorageId);
             Assert.Equal(empty.Confirmed, restoredEmpty.Confirmed);
+
+            TransportFlowLimitCmd flow = new(new EntityId(17), 12.5d);
+            TransportFlowLimitCmd restoredFlow = RoundTrip(flow, TransportFlowLimitCmd.Serialize, TransportFlowLimitCmd.Deserialize);
+            Assert.Equal(flow.TargetId, restoredFlow.TargetId);
+            Assert.True(restoredFlow.TryReadLimit(out double restoredLimit));
+            Assert.Equal(12.5d, restoredLimit);
         }
 
         private static T RoundTrip<T>(

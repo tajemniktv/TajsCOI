@@ -17,6 +17,7 @@ using Mafi.Unity.UiStatic.Toolbar;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Logging;
+using TajsCOI.Tweaks.Features.Selection;
 using UnityEngine;
 using EntityId = Mafi.Core.EntityId;
 
@@ -64,7 +65,7 @@ namespace TajsCOI.Tweaks.Features.TransportNetwork
     ///     only connected ports using a visited ID set. Highlight state is always released before
     ///     replacing a selection or tearing down the gameplay scene.
     /// </summary>
-    internal sealed class TransportNetworkVisualizerController : IToolbarItemController, IUnityInputController, IDisposable
+    internal sealed class TransportNetworkVisualizerController : IToolbarItemController, IUnityInputController, ISceneSelectionOwner, IDisposable
     {
         internal const int MaximumTraceEntities = TransportNetworkTraversal.DefaultMaximumEntities;
 
@@ -80,10 +81,12 @@ namespace TajsCOI.Tweaks.Features.TransportNetwork
         private readonly ITajsLogger m_log;
         private readonly List<ITransportNetworkConnectorAdapter> m_adapters;
         private readonly Dictionary<int, IRenderedEntity> m_entitiesById = new();
-        private readonly Dictionary<int, ulong> m_entityHighlights = new();
+        private readonly Dictionary<int, ColorRgba> m_entityHighlightColors = new();
+        private readonly PooledHighlightUtility<int, HighlightLease> m_entityHighlightPool;
         private readonly HashSet<EntityId> m_activeTraceIds = new();
         private HighlightId m_portHighlight;
         private bool m_hasPortHighlight;
+        private bool m_coordinatorActive;
         private bool m_disposed;
 
         internal TransportNetworkVisualizerController(
@@ -118,6 +121,30 @@ namespace TajsCOI.Tweaks.Features.TransportNetwork
                 "Assets/Unity/UserInterface/Toolbar/Transports.svg",
                 945f);
             m_toolbarButton.Selected(false);
+            m_entityHighlightPool = new PooledHighlightUtility<int, HighlightLease>(
+                () => new HighlightLease(),
+                (lease, id) =>
+                {
+                    if (!m_entitiesById.TryGetValue(id, out IRenderedEntity? entity) || entity is null || entity.IsDestroyed ||
+                        !m_entityHighlightColors.TryGetValue(id, out ColorRgba color))
+                    {
+                        throw new InvalidOperationException("The transport network highlight entity is unavailable.");
+                    }
+
+                    lease.Handle = m_rendering.AddHighlight(entity, color);
+                    if (lease.Handle == 0)
+                    {
+                        throw new InvalidOperationException("The renderer returned an empty highlight handle.");
+                    }
+                },
+                lease =>
+                {
+                    if (lease.Handle != 0)
+                    {
+                        m_rendering.RemoveHighlight(lease.Handle);
+                        lease.Handle = 0;
+                    }
+                });
         }
 
         internal TransportNetworkTrace? CurrentTrace { get; private set; }
@@ -134,17 +161,21 @@ namespace TajsCOI.Tweaks.Features.TransportNetwork
 
         public event Action<IToolbarItemController>? VisibilityChanged;
 
-        public void Activate()
+        public void Activate() => TryActivate();
+
+        internal bool TryActivate()
         {
-            if (m_disposed)
+            if (m_disposed || !SceneSelectionCoordinator.TryActivate(this))
             {
-                return;
+                return false;
             }
 
+            m_coordinatorActive = true;
             ClearSelection();
             m_inputManager.ActivateNewController(this);
             m_toolbarButton.Selected(true);
             VisibilityChanged?.Invoke(this);
+            return true;
         }
 
         public void Deactivate()
@@ -155,6 +186,7 @@ namespace TajsCOI.Tweaks.Features.TransportNetwork
             }
 
             ClearSelection();
+            ReleaseCoordinator();
             m_toolbarButton.Selected(false);
             VisibilityChanged?.Invoke(this);
         }
@@ -168,8 +200,10 @@ namespace TajsCOI.Tweaks.Features.TransportNetwork
 
             if (Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1))
             {
+                SceneSelectionCoordinator.CancelActive();
                 ClearSelection();
                 m_inputManager.DeactivateController(this);
+                ReleaseCoordinator();
                 return true;
             }
 
@@ -237,19 +271,9 @@ namespace TajsCOI.Tweaks.Features.TransportNetwork
         internal void ClearSelection()
         {
             ClearPortHighlight();
-            foreach (ulong handle in m_entityHighlights.Values.ToArray())
-            {
-                try
-                {
-                    m_rendering.RemoveHighlight(handle);
-                }
-                catch
-                {
-                }
-            }
-
-            m_entityHighlights.Clear();
+            m_entityHighlightPool.Clear();
             m_entitiesById.Clear();
+            m_entityHighlightColors.Clear();
             m_activeTraceIds.Clear();
             CurrentTrace = null;
             SelectionStatus = string.Empty;
@@ -275,7 +299,22 @@ namespace TajsCOI.Tweaks.Features.TransportNetwork
                 m_log.Exception(exception, "Transport network tool could not be removed from input state.");
             }
             ClearSelection();
+            ReleaseCoordinator();
+            m_entityHighlightPool.Dispose();
             m_toolbarButton.RemoveFromHierarchy();
+        }
+
+        public void CancelSelection() => Deactivate();
+
+        private void ReleaseCoordinator()
+        {
+            if (!m_coordinatorActive)
+            {
+                return;
+            }
+
+            SceneSelectionCoordinator.Deactivate(this);
+            m_coordinatorActive = false;
         }
 
         private TransportNetworkNodeDescription? Describe(IRenderedEntity entity)
@@ -307,26 +346,23 @@ namespace TajsCOI.Tweaks.Features.TransportNetwork
                 return;
             }
 
+            m_entityHighlightColors.Clear();
             foreach (TransportNetworkTraceEntry entry in CurrentTrace.Entries)
             {
                 m_activeTraceIds.Add(entry.EntityId);
-                if (!m_entitiesById.TryGetValue(entry.EntityId.Value, out IRenderedEntity? entity) || entity.IsDestroyed)
+                if (m_entitiesById.ContainsKey(entry.EntityId.Value))
                 {
-                    continue;
+                    m_entityHighlightColors[entry.EntityId.Value] = ColorFor(entry.Classification);
                 }
-
-                try
-                {
-                    ulong handle = m_rendering.AddHighlight(entity, ColorFor(entry.Classification));
-                    if (handle != 0)
-                    {
-                        m_entityHighlights[entry.EntityId.Value] = handle;
-                    }
-                }
-                catch (Exception exception)
-                {
-                    m_log.Exception(exception, "Transport network entity highlight failed for " + entry.EntityId.Value + ".");
-                }
+            }
+            try
+            {
+                m_entityHighlightPool.Set(m_entityHighlightColors.Keys);
+            }
+            catch (Exception exception)
+            {
+                m_log.Exception(exception, "Transport network entity highlighting failed open.");
+                m_entityHighlightPool.Clear();
             }
         }
 
@@ -377,5 +413,10 @@ namespace TajsCOI.Tweaks.Features.TransportNetwork
 
         private static LocStrFormatted Localize(string text) =>
             LocalizationManager.CreateAlreadyLocalizedStr("TajsTweaksTransportNetwork_" + text, text).AsFormatted;
+
+        private sealed class HighlightLease
+        {
+            internal ulong Handle;
+        }
     }
 }

@@ -7,12 +7,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 using HarmonyLib;
 using Mafi;
 using Mafi.Collections.ImmutableCollections;
 using Mafi.Core.Entities.Static.Layout;
-using Mafi.Core.Factory.Lifts;
-using Mafi.Core.Factory.Sorters;
 using Mafi.Core.Factory.Transports;
 using Mafi.Core.Factory.Zippers;
 using Mafi.Core.Input;
@@ -51,10 +50,12 @@ namespace TajsCOI.Tweaks
         private static MethodInfo? s_getTransportPillarHeight;
         private static MethodInfo? s_getTrainPillarHeight;
         private static MethodInfo? s_getTrainSupportDistance;
-        private static MethodInfo? s_transportBuildPrefix;
-        private static MethodInfo? s_occupiedTileConstructorPrefix;
-        private static MethodInfo? s_occupiedTileConstraintPostfix;
+        private static MethodInfo? s_getOccupiedTilesRelative;
         private static bool s_initialized;
+
+        // Prototype/layout objects are resolver-scoped.  Keep only weak keys so the process-lived
+        // Harmony patch cannot retain an entire gameplay scene after returning to the menu.
+        private static ConditionalWeakTable<EntityLayout, object> s_relaxedLayouts = new();
 
         private static int s_transportSupportRadius = VanillaTransportSupportRadius;
         private static int s_transportPillarHeight = VanillaTransportPillarHeight;
@@ -85,6 +86,7 @@ namespace TajsCOI.Tweaks
                 MaxConfiguredTrainSupportDistance,
                 VanillaTrainSupportDistance);
             s_ignorePillarRequirements = TajsTweaksRuntimeState.IgnorePillarRequirements;
+            s_relaxedLayouts = new ConditionalWeakTable<EntityLayout, object>();
             s_initialized = true;
         }
 
@@ -118,35 +120,7 @@ namespace TajsCOI.Tweaks
             s_getTransportPillarHeight = AccessTools.Method(typeof(TransportPillarRulesFeature), nameof(GetTransportPillarHeight));
             s_getTrainPillarHeight = AccessTools.Method(typeof(TransportPillarRulesFeature), nameof(GetTrainPillarHeight));
             s_getTrainSupportDistance = AccessTools.Method(typeof(TransportPillarRulesFeature), nameof(GetTrainSupportDistance));
-            s_transportBuildPrefix = AccessTools.Method(typeof(TransportPillarRulesFeature), nameof(ForceIgnorePillarRequirements));
-            s_occupiedTileConstructorPrefix = AccessTools.Method(typeof(TransportPillarRulesFeature), nameof(RemovePillarConstraintFromOccupiedTile));
-            s_occupiedTileConstraintPostfix = AccessTools.Method(typeof(TransportPillarRulesFeature), nameof(RemovePillarConstraintFromResult));
-
-            MethodInfo transportBuild = AccessTools.Method(typeof(TransportsManager), "CanBuildOrJoinTransport")
-                                        ?? throw new MissingMethodException(typeof(TransportsManager).FullName, "CanBuildOrJoinTransport");
-            harmony.Patch(transportBuild, prefix: new HarmonyMethod(s_transportBuildPrefix));
-
-            ConstructorInfo occupiedTileConstructor = AccessTools.Constructor(
-                                                          typeof(OccupiedTileRelative),
-                                                          new[]
-                                                          {
-                                                              typeof(short),
-                                                              typeof(short),
-                                                              typeof(short),
-                                                              typeof(ushort),
-                                                              typeof(ushort),
-                                                              typeof(TileSurfaceSlimId),
-                                                              typeof(short),
-                                                          }) ??
-                                                      throw new MissingMethodException(typeof(OccupiedTileRelative).FullName, ".ctor");
-            harmony.Patch(occupiedTileConstructor, prefix: new HarmonyMethod(s_occupiedTileConstructorPrefix));
-
-            MethodInfo occupiedTileConstraint = AccessTools.PropertyGetter(
-                                                    typeof(OccupiedTileRelative),
-                                                    nameof(OccupiedTileRelative.Constraint))
-                                                ?? throw new MissingMethodException(typeof(OccupiedTileRelative).FullName, "Constraint");
-            harmony.Patch(occupiedTileConstraint, postfix: new HarmonyMethod(s_occupiedTileConstraintPostfix));
-
+            s_getOccupiedTilesRelative = AccessTools.Method(typeof(TransportPillarRulesFeature), nameof(GetOccupiedTilesRelative));
             PatchMethods(harmony, typeof(TransportsManager));
             PatchMethods(harmony, typeof(TransportsConstructionHelper));
             PatchMethods(harmony, typeof(TransportPathFinder));
@@ -158,6 +132,12 @@ namespace TajsCOI.Tweaks
                 typeof(TrainTracksGraphManager).BaseType
                 ?? throw new MissingMemberException(typeof(TrainTracksGraphManager).FullName, "BaseType"));
             PatchConstructor(harmony, typeof(TrainTrackPillar));
+
+            MethodInfo occupiedTilesRelative = AccessTools.Method(
+                                                   typeof(EntityLayout),
+                                                   nameof(EntityLayout.GetOccupiedTilesRelative))
+                                               ?? throw new MissingMethodException(typeof(EntityLayout).FullName, nameof(EntityLayout.GetOccupiedTilesRelative));
+            harmony.Patch(occupiedTilesRelative, postfix: new HarmonyMethod(s_getOccupiedTilesRelative));
 
             PatchOptionalType(harmony, "Mafi.Unity.InputControl.Factory.StaticTransportPreview, Mafi.Unity");
             PatchOptionalType(harmony, "Mafi.Unity.Ui.Controllers.TransportBuildController, Mafi.Unity");
@@ -187,39 +167,77 @@ namespace TajsCOI.Tweaks
                 return;
             }
 
-            FieldInfo combinedConstraint = typeof(EntityLayout).GetField(
-                                               nameof(EntityLayout.CombinedConstraint),
-                                               BindingFlags.Instance | BindingFlags.Public)
-                                           ?? throw new MissingFieldException(typeof(EntityLayout).FullName, nameof(EntityLayout.CombinedConstraint));
-
-            foreach (LayoutEntityProto proto in GetPillarLayoutPrototypes(protosDb))
+            // Issue #140 is deliberately narrow: start with the validated full zipper
+            // connector shape.  Do not mutate every OccupiedTileRelative globally; that would
+            // remove pillar failures from unrelated buildings and make preview/final placement
+            // disagree.  The same prototype layout is used by both native paths.
+            foreach (ZipperProto proto in protosDb.All<ZipperProto>())
             {
-                combinedConstraint.SetValue(proto.Layout, RemovePillarConstraint(proto.Layout.CombinedConstraint));
+                if (CanIgnorePillarOccupancy(proto, proto.Layout, null))
+                {
+                    s_relaxedLayouts.GetValue(proto.Layout, _ => new object());
+                }
             }
+        }
+
+        /// <summary>
+        /// Returns whether the connector layout is explicitly validated for the optional
+        /// pillar-occupancy relaxation.  Keep this predicate as the single policy authority for
+        /// preview and final construction callers; unsupported connector classes remain vanilla.
+        /// </summary>
+        internal static bool CanIgnorePillarOccupancy(object? proto, object? layout, object? context)
+        {
+            if (!s_ignorePillarRequirements || proto is not ZipperProto zipper)
+            {
+                return false;
+            }
+
+            // Require the native layout object and the pillar bit.  This keeps the adapter
+            // semantic rather than type-name based and fails closed if a future version changes
+            // the prototype shape.
+            if (layout is not EntityLayout entityLayout || !ReferenceEquals(entityLayout, zipper.Layout))
+            {
+                return false;
+            }
+
+            return (entityLayout.CombinedConstraint & LayoutTileConstraint.UsingPillar) != 0;
         }
 
         internal static LayoutTileConstraint RemovePillarConstraint(LayoutTileConstraint constraint) =>
             constraint & ~LayoutTileConstraint.UsingPillar;
 
-        private static IEnumerable<LayoutEntityProto> GetPillarLayoutPrototypes(ProtosDb protosDb)
+        /// <summary>
+        /// The native layout method caches per-tile constraints separately from
+        /// <see cref="EntityLayout.CombinedConstraint"/>.  Strip only the validated zipper
+        /// layout's pillar bit in this shared seam so preview and final construction receive the
+        /// same tile data; all terrain, overlap, height, type, and port constraints remain.
+        /// </summary>
+        private static void GetOccupiedTilesRelative(
+            EntityLayout __instance,
+            ref ImmutableArray<OccupiedTileRelative> __result)
         {
-            foreach (MiniZipperProto proto in protosDb.All<MiniZipperProto>())
+            if (__instance is null || !s_relaxedLayouts.TryGetValue(__instance, out _) || __result.Length == 0)
             {
-                yield return proto;
+                return;
             }
-            foreach (ZipperProto proto in protosDb.All<ZipperProto>())
+
+            var builder = new ImmutableArrayBuilder<OccupiedTileRelative>(__result.Length);
+            for (int i = 0; i < __result.Length; i++)
             {
-                yield return proto;
+                OccupiedTileRelative tile = __result[i];
+                builder[i] = new OccupiedTileRelative(
+                    tile.RelativeX,
+                    tile.RelativeY,
+                    tile.RelativeFrom,
+                    tile.VerticalSizeRaw,
+                    (ushort)RemovePillarConstraint(tile.Constraint),
+                    tile.TileSurface,
+                    tile.TileSurfaceRelHeightRaw);
             }
-            foreach (SorterProto proto in protosDb.All<SorterProto>())
-            {
-                yield return proto;
-            }
-            foreach (LiftProto proto in protosDb.All<LiftProto>())
-            {
-                yield return proto;
-            }
+
+            __result = builder.GetImmutableArrayAndClear();
         }
+
 
         internal static bool IsAreaWithinBounds(int minX, int minY, int maxX, int maxY, out int width, out int height)
         {
@@ -425,34 +443,5 @@ namespace TajsCOI.Tweaks
         private static ThicknessTilesI GetTrainPillarHeight() => new(s_trainPillarHeight);
 
         private static RelTile1f GetTrainSupportDistance() => new(s_trainSupportDistance);
-
-        private static void ForceIgnorePillarRequirements(
-            ref bool ignorePillars,
-            ref bool skipExtraPillarsForBetterVisuals)
-        {
-            if (!s_ignorePillarRequirements)
-            {
-                return;
-            }
-
-            ignorePillars = true;
-            skipExtraPillarsForBetterVisuals = true;
-        }
-
-        private static void RemovePillarConstraintFromOccupiedTile(ref ushort ___ConstraintSlim)
-        {
-            if (s_ignorePillarRequirements)
-            {
-                ___ConstraintSlim = (ushort)RemovePillarConstraint((LayoutTileConstraint)___ConstraintSlim);
-            }
-        }
-
-        private static void RemovePillarConstraintFromResult(ref LayoutTileConstraint __result)
-        {
-            if (s_ignorePillarRequirements)
-            {
-                __result = RemovePillarConstraint(__result);
-            }
-        }
     }
 }

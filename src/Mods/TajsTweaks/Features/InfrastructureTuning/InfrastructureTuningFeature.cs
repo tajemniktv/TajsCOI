@@ -3,6 +3,7 @@
 // All Rights Reserved.
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
@@ -13,6 +14,7 @@ using Mafi.Core.Buildings.Shipyard;
 using Mafi.Core.Prototypes;
 using Mafi.Core.Vehicles.Trucks;
 using TajsCOI.Common.Tuning;
+using TajsCOI.Tweaks.Features.Tuning;
 
 namespace TajsCOI.Tweaks.Features.InfrastructureTuning
 {
@@ -21,7 +23,7 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
     /// all later changes derive from that capture, so changing a setting never compounds a
     /// previous override.  Missing or readonly members simply leave the native value untouched.
     /// </summary>
-    internal static class InfrastructureTuningFeature
+    internal sealed class InfrastructureTuningFeature : IDisposable
     {
         internal const string HarmonyId = "TajsCOI.Tweaks.InfrastructureTuning";
         internal const string ShipyardCargoKey = "TajsTweaks.Tuning.ShipyardCargoCapacity";
@@ -32,14 +34,29 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
         internal const string ShaftThroughputKey = "TajsTweaks.Tuning.ShaftThroughput";
         internal const string ThermalStorageCapacityKey = "TajsTweaks.Tuning.ThermalStorageCapacity";
 
-        private static readonly BaseValueOverrideService s_values = new();
+        private readonly TypedBaseValueOverrideRegistry m_values;
+        private readonly HashSet<string> m_ownedKeys = new(StringComparer.Ordinal);
         private static bool s_thermalInstalled;
-        internal static BaseValueOverrideService Values => s_values;
+        internal TypedBaseValueOverrideRegistry Values => m_values;
 
-        internal static bool IsAvailable(string key) => s_values.HasRegistration(key);
+        internal InfrastructureTuningFeature(TypedBaseValueOverrideRegistry values)
+        {
+            m_values = values ?? throw new ArgumentNullException(nameof(values));
+        }
+
+        internal bool IsAvailable(string key) => m_values.HasRegistration(key);
         internal static bool ThermalPatchAvailable => s_thermalInstalled;
 
-        internal static void Reset() => s_values.Clear();
+        internal void Reset()
+        {
+            foreach (string key in m_ownedKeys.ToArray())
+            {
+                m_values.TryUnregister(key);
+            }
+            m_ownedKeys.Clear();
+        }
+
+        public void Dispose() => Reset();
 
         private sealed class ThermalState
         {
@@ -99,7 +116,7 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
             if (TajsTweaksRuntimeState.TuningThermalStorageCapacityMultiplier < 1d &&
                 ReadInt(__instance, "HeatStored") >= ReadInt(__instance, "HeatCapacity"))
             {
-                PropertyInfo? quantity = __0.GetType().GetProperty("Quantity", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                PropertyInfo? quantity = FindInstanceProperty(__0.GetType(), "Quantity");
                 if (quantity?.GetValue(__0) is Quantity incoming)
                 {
                     __result = incoming;
@@ -113,7 +130,7 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
         {
             try
             {
-                object? value = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(instance);
+                object? value = FindInstanceProperty(instance.GetType(), propertyName)?.GetValue(instance);
                 return value is int integer ? integer : Convert.ToInt32(value, CultureInfo.InvariantCulture);
             }
             catch
@@ -126,7 +143,7 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
         {
             try
             {
-                PropertyInfo? property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                PropertyInfo? property = FindInstanceProperty(instance.GetType(), propertyName);
                 MethodInfo? setter = property?.GetSetMethod(nonPublic: true);
                 if (setter is not null)
                 {
@@ -141,7 +158,7 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
             }
         }
 
-        internal static void ApplyFromPrototypes(ProtosDb protosDb, bool thermalSafe = true)
+        internal void ApplyFromPrototypes(ProtosDb protosDb, bool thermalSafe = true)
         {
             if (protosDb is null)
             {
@@ -166,9 +183,9 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
                 TryRegisterField(proto, nameof(OreSortingPlantProto.OutputBuffersCapacity), OreSorterOutputBufferKey, 1d, 1000000d);
                 TryRegisterMember(proto, nameof(OreSortingPlantProto.QuantityPerDuration), OreSorterThroughputKey, 1d, 1000000d);
             }
-            if (!s_values.HasRegistration(OreSorterInputBufferKey) ||
-                !s_values.HasRegistration(OreSorterOutputBufferKey) ||
-                !s_values.HasRegistration(OreSorterThroughputKey))
+            if (!m_values.HasRegistration(OreSorterInputBufferKey) ||
+                !m_values.HasRegistration(OreSorterOutputBufferKey) ||
+                !m_values.HasRegistration(OreSorterThroughputKey))
             {
                 RemoveCategory(OreSorterInputBufferKey);
                 RemoveCategory(OreSorterOutputBufferKey);
@@ -192,7 +209,7 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
             if (shaftField is not null)
             {
                 bool existed = HasExactRegistration(ShaftThroughputKey);
-                bool registered = s_values.TryRegister(
+                bool registered = m_values.TryRegister(
                     ShaftThroughputKey,
                     shaftField.FieldType,
                     () => shaftField.GetValue(null),
@@ -200,20 +217,25 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
                     1d,
                     1000000d,
                     BaseValueApplyMode.ReloadRequired);
-                if (registered && !s_values.TrySetMultiplier(ShaftThroughputKey, TajsTweaksRuntimeState.TuningShaftThroughputMultiplier))
+                if (registered)
+                {
+                    m_ownedKeys.Add(ShaftThroughputKey);
+                }
+                if (registered && !m_values.TrySetMultiplier(ShaftThroughputKey, TajsTweaksRuntimeState.TuningShaftThroughputMultiplier))
                 {
                     if (!existed)
                     {
-                        s_values.TryUnregister(ShaftThroughputKey);
+                        m_values.TryUnregister(ShaftThroughputKey);
+                        m_ownedKeys.Remove(ShaftThroughputKey);
                     }
                 }
             }
         }
 
-        internal static bool TrySetMultiplier(string key, double multiplier) =>
-            s_values.TrySetMultiplier(key, multiplier);
+        internal bool TrySetMultiplier(string key, double multiplier) =>
+            m_values.TrySetMultiplier(key, multiplier);
 
-        internal static bool TryReset(string key) => s_values.TryReset(key);
+        internal bool TryReset(string key) => m_values.TryReset(key);
 
         /// <summary>
         /// Returns a capacity that cannot strand already stored thermal energy.  A reduction is
@@ -238,7 +260,7 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
         internal static bool CanChargeThermalStorage(double requestedCapacity, double heatStored) =>
             heatStored < requestedCapacity;
 
-        private static void TryRegisterField(object target, string memberName, string key, double minimum, double maximum)
+        private void TryRegisterField(object target, string memberName, string key, double minimum, double maximum)
         {
             FieldInfo? field = target.GetType().GetField(memberName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             if (field is null)
@@ -248,11 +270,19 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
 
             string registrationKey = key + "." + GetPrototypeIdentity(target);
             bool existed = HasExactRegistration(registrationKey);
-            if (!s_values.TryRegister(
+            if (!m_values.TryRegister(
                 registrationKey,
                 field.FieldType,
                 () => field.GetValue(target),
-                value => field.SetValue(target, value),
+                value =>
+                {
+                    field.SetValue(target, value);
+                    VerifyNativeWrite(
+                        value,
+                        field.GetValue(target),
+                        field.FieldType,
+                        "The infrastructure member did not accept the reflected value.");
+                },
                 minimum,
                 maximum,
                 BaseValueApplyMode.ReloadRequired) ||
@@ -260,15 +290,19 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
             {
                 if (!existed)
                 {
-                    s_values.TryUnregister(registrationKey);
+                    m_values.TryUnregister(registrationKey);
                 }
+            }
+            else
+            {
+                m_ownedKeys.Add(registrationKey);
             }
         }
 
-        private static void TryRegisterMember(object target, string memberName, string key, double minimum, double maximum)
+        private void TryRegisterMember(object target, string memberName, string key, double minimum, double maximum)
         {
             Type type = target.GetType();
-            PropertyInfo? property = type.GetProperty(memberName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            PropertyInfo? property = FindInstanceProperty(type, memberName);
             FieldInfo? field = property is null
                 ? type.GetField(memberName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
                 : null;
@@ -289,19 +323,39 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
             bool existed = HasExactRegistration(registrationKey);
             Func<object?> getter = property is not null ? () => property.GetValue(target) : () => field!.GetValue(target);
             Action<object?> setter = property?.CanWrite == true
-                ? value => property.SetValue(target, value)
-                : value => field!.SetValue(target, value);
-            if (s_values.TryRegister(registrationKey, valueType, getter, setter, minimum, maximum, BaseValueApplyMode.ReloadRequired) &&
+                ? value =>
+                {
+                    property.SetValue(target, value);
+                    VerifyNativeWrite(
+                        value,
+                        property.GetValue(target),
+                        valueType,
+                        "The infrastructure property did not accept the reflected value.");
+                }
+                : value =>
+                {
+                    field!.SetValue(target, value);
+                    VerifyNativeWrite(
+                        value,
+                        field.GetValue(target),
+                        valueType,
+                        "The infrastructure backing field did not accept the reflected value.");
+                };
+            if (m_values.TryRegister(registrationKey, valueType, getter, setter, minimum, maximum, BaseValueApplyMode.ReloadRequired) &&
                 !ApplyConfigured(registrationKey, key))
             {
                 if (!existed)
                 {
-                    s_values.TryUnregister(registrationKey);
+                    m_values.TryUnregister(registrationKey);
                 }
+            }
+            else if (m_values.IsAvailable(registrationKey))
+            {
+                m_ownedKeys.Add(registrationKey);
             }
         }
 
-        private static bool ApplyConfigured(string registrationKey, string category)
+        private bool ApplyConfigured(string registrationKey, string category)
         {
             double multiplier = category switch
             {
@@ -315,26 +369,98 @@ namespace TajsCOI.Tweaks.Features.InfrastructureTuning
                 ThermalStorageCapacityKey => TajsTweaksRuntimeState.TuningThermalStorageCapacityMultiplier,
                 _ => 1d,
             };
-            return s_values.TrySetMultiplier(registrationKey, multiplier);
+            return m_values.TrySetMultiplier(registrationKey, multiplier);
         }
 
         private static string GetPrototypeIdentity(object prototype)
         {
-            object? id = prototype.GetType().GetProperty("Id", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(prototype);
+            object? id = FindInstanceProperty(prototype.GetType(), "Id")?.GetValue(prototype);
             return Convert.ToString(id, CultureInfo.InvariantCulture) ?? prototype.GetType().Name;
         }
 
-        private static bool HasExactRegistration(string key) =>
-            s_values.Registrations.Any(registration => string.Equals(registration.Key, key, StringComparison.Ordinal));
-
-        private static void RemoveCategory(string keyPrefix)
+        private static PropertyInfo? FindInstanceProperty(Type type, string name)
         {
-            foreach (string key in s_values.Registrations
-                         .Where(registration => registration.Key.StartsWith(keyPrefix + ".", StringComparison.Ordinal))
-                         .Select(registration => registration.Key)
+            // GetProperty(name, flags) throws when a game type hides a property with the same
+            // name on a base type. Walk from the concrete type instead, selecting one readable
+            // non-indexed property at each level so a compatibility seam remains deterministic.
+            for (Type? current = type; current is not null; current = current.BaseType)
+            {
+                PropertyInfo? property = current.GetProperties(
+                        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+                    .Where(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) &&
+                                        candidate.GetIndexParameters().Length == 0 &&
+                                        candidate.GetGetMethod(nonPublic: true) is not null)
+                    .OrderBy(candidate => candidate.MetadataToken)
+                    .FirstOrDefault();
+                if (property is not null)
+                {
+                    return property;
+                }
+            }
+
+            return null;
+        }
+
+        private static void VerifyNativeWrite(object? expected, object? actual, Type nativeType, string message)
+        {
+            double expectedValue = ReadScalar(expected);
+            double actualValue = ReadScalar(actual);
+            double tolerance = nativeType == typeof(Fix32) ||
+                               nativeType == typeof(PartialQuantity) ||
+                               nativeType == typeof(Upoints)
+                ? 1d / Fix32.FRACTION_RANGE
+                : nativeType == typeof(Percent) ? 1d / 100000d : 0d;
+            if (Math.Abs(actualValue - expectedValue) > tolerance)
+            {
+                throw new InvalidOperationException(message);
+            }
+        }
+
+        private static double ReadScalar(object? value)
+        {
+            if (value is null)
+            {
+                throw new InvalidOperationException("The native infrastructure value is null.");
+            }
+
+            if (value is Quantity quantity)
+            {
+                return quantity.Value;
+            }
+            if (value is Duration duration)
+            {
+                return duration.Ticks;
+            }
+            if (value is PartialQuantity partial)
+            {
+                return partial.Value.RawValue / (double)Fix32.FRACTION_RANGE;
+            }
+            if (value is Fix32 fix32)
+            {
+                return fix32.RawValue / (double)Fix32.FRACTION_RANGE;
+            }
+            if (value is Upoints upoints)
+            {
+                return upoints.Value.RawValue / (double)Fix32.FRACTION_RANGE;
+            }
+            if (value is Percent percent)
+            {
+                return percent.RawValue / 100000d;
+            }
+
+            return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+        }
+
+        private bool HasExactRegistration(string key) => m_values.Keys.Any(
+            registrationKey => string.Equals(registrationKey, key, StringComparison.Ordinal));
+
+        private void RemoveCategory(string keyPrefix)
+        {
+            foreach (string key in m_values.Keys
+                         .Where(registrationKey => registrationKey.StartsWith(keyPrefix + ".", StringComparison.Ordinal))
                          .ToArray())
             {
-                s_values.TryUnregister(key);
+                m_values.TryUnregister(key);
             }
         }
     }

@@ -3,9 +3,12 @@ using System.Linq;
 using System.Reflection;
 using Mafi.Core;
 using Mafi;
+using TajsCOI.Common.Settings;
 using TajsCOI.Common.Tuning;
+using TajsCOI.Tweaks;
 using TajsCOI.Tweaks.Features.Difficulty;
 using TajsCOI.Tweaks.Features.InfrastructureTuning;
+using TajsCOI.Tweaks.Features.SpaceStation;
 using TajsCOI.Tweaks.Features.ProgressionSandbox;
 using TajsCOI.Tweaks.Features.Sandbox;
 using TajsCOI.Tweaks.Features.Storage;
@@ -59,6 +62,32 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void ClearingBaseValueRegistrationsRestoresCapturedBaseBeforeReregistration()
+        {
+            int value = 10;
+            var service = new BaseValueOverrideService();
+            Assert.True(service.TryRegister("reload", () => value, next => value = next, 0, 100, BaseValueApplyMode.ReloadRequired));
+            Assert.True(service.TrySetMultiplier("reload", 2));
+            Assert.Equal(20, value);
+
+            service.Clear();
+            Assert.Equal(10, value);
+            Assert.True(service.TryRegister("reload", () => value, next => value = next, 0, 100, BaseValueApplyMode.ReloadRequired));
+            Assert.True(service.TrySetMultiplier("reload", 3));
+            Assert.Equal(30, value);
+        }
+
+        [Fact]
+        public void BaseValueOverrideRejectsArithmeticOverflowInsteadOfClampingToMinimum()
+        {
+            double value = double.MaxValue;
+            var service = new BaseValueOverrideService();
+            Assert.True(service.TryRegister("overflow", () => value, next => value = next, 0d, double.MaxValue));
+            Assert.False(service.TrySetMultiplier("overflow", 2d));
+            Assert.Equal(double.MaxValue, value);
+        }
+
+        [Fact]
         public void DiseaseScalingPreservesTierOrderAndInclusiveEligibility()
         {
             int[] scaled = DiseaseScalingPolicy.Compute(
@@ -91,6 +120,66 @@ namespace TajsCOI.Tests
             Assert.Equal(100d, InfrastructureTuningFeature.EffectiveThermalCapacity(100d, 50d));
             Assert.False(InfrastructureTuningFeature.CanChargeThermalStorage(100d, 100d));
             Assert.True(InfrastructureTuningFeature.CanChargeThermalStorage(100d, 99d));
+        }
+
+        [Fact]
+        public void SpaceStationTuningDescriptorsCoverTheExactPrototypeFieldsAndLifecycle()
+        {
+            Assert.Equal(
+                SpaceStationTuningFeature.Descriptors.Count,
+                SpaceStationTuningFeature.Descriptors.Select(x => x.Key).Distinct(StringComparer.Ordinal).Count());
+            Assert.Contains(
+                SpaceStationTuningFeature.Descriptors,
+                x => x.MemberName == "m_constructionCostFirstTier" &&
+                     x.Lifecycle == SpaceStationFieldLifecycle.FutureUpgradeOnly);
+            Assert.Contains(
+                SpaceStationTuningFeature.Descriptors,
+                x => x.MemberName == "m_constructionCostPerTier" &&
+                     x.Lifecycle == SpaceStationFieldLifecycle.FutureUpgradeOnly);
+            Assert.Contains(
+                SpaceStationTuningFeature.Descriptors,
+                x => x.MemberName == "m_maintenancePerMonthPerTier" &&
+                     x.Lifecycle == SpaceStationFieldLifecycle.ReloadRequired);
+            Assert.Contains(
+                SpaceStationTuningFeature.Descriptors,
+                x => x.MemberName == "m_researchPointsProvidedPerMonthPerTier" &&
+                     x.Lifecycle == SpaceStationFieldLifecycle.ReloadRequired);
+            Assert.Contains(
+                SpaceStationTuningFeature.Descriptors,
+                x => x.MemberName == "CREW_ROTATION_DURATION" &&
+                     x.Lifecycle == SpaceStationFieldLifecycle.LiveFutureTick);
+            Assert.All(
+                SpaceStationTuningFeature.Descriptors,
+                descriptor =>
+                {
+                    Assert.True(descriptor.Minimum <= descriptor.Maximum);
+                    Assert.False(double.IsNaN(descriptor.Minimum));
+                    Assert.False(double.IsNaN(descriptor.Maximum));
+                });
+        }
+
+        [Fact]
+        public void SpaceStationTuningSettingsAreReloadScopedExceptCrewRotation()
+        {
+            string[] reloadSettings =
+            {
+                TajsTweaksSettingsCatalog.TuningSpaceStationConstructionMultiplier,
+                TajsTweaksSettingsCatalog.TuningSpaceStationMaintenanceMultiplier,
+                TajsTweaksSettingsCatalog.TuningSpaceStationCrewSuppliesMultiplier,
+                TajsTweaksSettingsCatalog.TuningSpaceStationResearchPointsMultiplier,
+                TajsTweaksSettingsCatalog.TuningSpaceStationResearchSuppliesMultiplier,
+                TajsTweaksSettingsCatalog.TuningSpaceStationUnityMultiplier,
+                TajsTweaksSettingsCatalog.TuningSpaceStationResearchEfficiencyMultiplier,
+                TajsTweaksSettingsCatalog.TuningSpaceStationCrewCapacityMultiplier,
+            };
+            Assert.All(
+                reloadSettings,
+                key => Assert.Equal(
+                    SettingApplyMode.ReloadSave,
+                    TajsTweaksSettingsCatalog.All.Single(x => x.Key == key).ApplyMode));
+            Assert.Equal(
+                SettingApplyMode.Immediate,
+                TajsTweaksSettingsCatalog.All.Single(x => x.Key == TajsTweaksSettingsCatalog.TuningSpaceStationCrewRotationMultiplier).ApplyMode);
         }
 
         [Fact]

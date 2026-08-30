@@ -62,7 +62,10 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
                 return "Usage: tajs_transport_pillar_tool <add|remove>";
             }
 
-            m_tool.Activate(normalized == "remove" ? TransportPillarToolMode.Remove : TransportPillarToolMode.Add);
+            if (!m_tool.Activate(normalized == "remove" ? TransportPillarToolMode.Remove : TransportPillarToolMode.Add))
+            {
+                return "Another selection tool is already active.";
+            }
             return "Transport pillar planner active (" + normalized + "). Native validity checks remain authoritative.";
         }
 
@@ -99,8 +102,9 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
                     valid++;
                 }
             }
+            string capped = m_tool.LastAreaQueryTruncated ? "; source query truncated" : string.Empty;
             return "Previewed " + plans.Count + " candidate(s); valid=" + valid + ", capped at " +
-                   TransportPillarSelectionTool.MaxOperationsPerBatch + ".";
+                   TransportPillarSelectionTool.MaxOperationsPerBatch + capped + ".";
         }
 
         [ConsoleCommand(

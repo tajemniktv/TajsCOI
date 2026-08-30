@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Reflection;
 
 namespace TajsCOI.Common.Tuning
@@ -82,10 +83,43 @@ namespace TajsCOI.Common.Tuning
 
         public bool TryUnregister(string key)
         {
-            return !string.IsNullOrWhiteSpace(key) && m_registrations.Remove(key);
+            if (string.IsNullOrWhiteSpace(key) || !m_registrations.TryGetValue(key, out Registration? registration))
+            {
+                return false;
+            }
+
+            // A registration owns the value it captured.  Restore that immutable base before
+            // dropping the metadata so a later registration/reload cannot capture an already
+            // modified value and compound the override.
+            try
+            {
+                registration.Setter(ConvertValue(registration.BaseValue, registration.ValueType));
+            }
+            catch
+            {
+                return false;
+            }
+
+            return m_registrations.Remove(key);
         }
 
-        public void Clear() => m_registrations.Clear();
+        public void Clear()
+        {
+            foreach (Registration registration in m_registrations.Values.ToArray())
+            {
+                try
+                {
+                    registration.Setter(ConvertValue(registration.BaseValue, registration.ValueType));
+                }
+                catch
+                {
+                    // One unavailable setter must not prevent unrelated registrations from
+                    // being restored and removed.
+                }
+            }
+
+            m_registrations.Clear();
+        }
 
         public bool TryRegister<T>(
             string key,
@@ -196,7 +230,16 @@ namespace TajsCOI.Common.Tuning
 
         public bool TrySetMultiplier(string key, double multiplier)
         {
-            if (!m_registrations.TryGetValue(key, out Registration? registration) || !IsFinite(multiplier))
+            if (!m_registrations.TryGetValue(key, out Registration? registration) || !IsFinite(multiplier) || multiplier < 0d)
+            {
+                return false;
+            }
+
+            // Reject arithmetic overflow before the bounded effective-value clamp.  Clamping an
+            // infinity to the minimum would silently turn an invalid multiplier into a destructive
+            // zero/low setting instead of reporting failure to the owning feature.
+            double raw = registration.BaseValue * multiplier;
+            if (!IsFinite(raw))
             {
                 return false;
             }
@@ -284,7 +327,7 @@ namespace TajsCOI.Common.Tuning
                 if (value is not null)
                 {
                     Type type = value.GetType();
-                    foreach (string memberName in new[] { "Value", "Ticks" })
+                    foreach (string memberName in new[] { "Value", "Ticks", "RawValue" })
                     {
                         try
                         {
@@ -347,6 +390,20 @@ namespace TajsCOI.Common.Tuning
             if (integerConstructor is not null)
             {
                 return integerConstructor.Invoke(new object[] { checked((int)Math.Round(value, MidpointRounding.AwayFromZero)) });
+            }
+
+            // Percent and a few other fixed-point value objects keep their backing integer
+            // private and expose a public FromRaw factory. Prefer this shape over
+            // Convert.ChangeType so capacity multipliers retain their fixed-point precision.
+            MethodInfo? fromRaw = type.GetMethod(
+                "FromRaw",
+                BindingFlags.Public | BindingFlags.Static,
+                null,
+                new[] { typeof(int) },
+                null);
+            if (fromRaw is not null)
+            {
+                return fromRaw.Invoke(null, new object[] { checked((int)Math.Round(value, MidpointRounding.AwayFromZero)) })!;
             }
 
             // MechPower/Electricity/Computing wrappers expose FromQuantity(...) instead of an

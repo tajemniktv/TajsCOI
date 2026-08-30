@@ -69,6 +69,15 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void ConnectorRelaxationPredicateFailsClosedForUnsupportedShapes()
+        {
+            // The optional issue #140 policy starts with the explicitly validated zipper
+            // connector.  A null/foreign prototype must never acquire the relaxation merely
+            // because it happens to carry a pillar bit.
+            Assert.False(TransportPillarRulesFeature.CanIgnorePillarOccupancy(null, null, null));
+        }
+
+        [Fact]
         public void AreaBoundsAreFiniteAndInclusive()
         {
             Assert.True(TransportPillarRulesFeature.IsAreaWithinBounds(-10, 4, 53, 67, out int width, out int height));

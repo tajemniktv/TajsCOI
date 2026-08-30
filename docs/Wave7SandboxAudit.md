@@ -48,12 +48,13 @@ behavior therefore remain native.
 
 ## #106 base-value tuning
 
-`BaseValueOverrideService` captures each prototype/property base once and derives
-every effective value from that immutable base.  Registration is idempotent,
-reset restores the exact base, bounds are enforced, and conversion/setter
-failures leave the native value unchanged.  Shipyard cargo, truck pickup
-duration, ore sorting buffers/throughput, shaft throughput, and thermal storage
-capacity are independent reload-scoped adapters.  Thermal reductions preserve
+`TypedBaseValueOverrideRegistry` captures each prototype/property base once and
+derives every effective value from that immutable base through typed
+`IBaseValueOverride<double>` registrations. Registration is idempotent, reset
+restores the exact base, bounds are enforced, and conversion/setter failures
+leave the native value unchanged. Shipyard cargo, truck pickup duration, ore
+sorting buffers/throughput, shaft throughput, and thermal storage capacity are
+independent reload-scoped adapters. Thermal reductions preserve
 already stored heat as temporary over-capacity and reject new charging until the
 stored amount falls below the reduced capacity.
 

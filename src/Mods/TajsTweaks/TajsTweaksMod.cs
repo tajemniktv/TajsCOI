@@ -4,6 +4,8 @@
 
 #region
 
+using System;
+using Mafi;
 using Mafi.Core.Mods;
 using HarmonyLib;
 using TajsCOI.Tweaks.Features.Difficulty;
@@ -34,9 +36,13 @@ namespace TajsCOI.Tweaks
             {
                 MapEditorThirdPartyFeature.InstallProcess();
             }
-            catch
+            catch (Exception exception)
             {
-                // The native menu seam is optional; vanilla map-editor startup remains intact.
+                // The native menu seam is optional; vanilla map-editor startup remains intact,
+                // but an opt-in compatibility failure must be visible to the user.
+                Log.Warning(
+                    "Map editor third-party preservation is unavailable; vanilla startup remains active. " +
+                    (MapEditorNativeContract.LastFailure ?? exception.GetType().Name) + ".");
             }
         }
 

@@ -41,6 +41,20 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void GridSnapUsesConfiguredInterval()
+        {
+            PolygonVector2 result = PolygonConstraintMath.Apply(
+                new PolygonVector2(0f, 0f),
+                new PolygonVector2(2.9f, 5.1f),
+                false,
+                true,
+                gridSize: 2f);
+
+            Assert.Equal(2f, result.X);
+            Assert.Equal(6f, result.Y);
+        }
+
+        [Fact]
         public void AxisRunsBeforeGridAndOnlyTheFreeAxisSnaps()
         {
             PolygonVector2 result = PolygonConstraintMath.Apply(new PolygonVector2(10.2f, 10.2f), new PolygonVector2(12.6f, 11.4f), true, true);

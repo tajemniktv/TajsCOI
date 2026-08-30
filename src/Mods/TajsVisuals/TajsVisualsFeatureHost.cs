@@ -34,6 +34,7 @@ namespace TajsCOI.Visuals
         private float m_lastPresentationClock;
         private float? m_fixedClock;
         private bool m_lastFixedLighting;
+        private bool m_policyWasActive;
         private bool m_terminated;
 
         public TajsVisualsFeatureHost(
@@ -215,13 +216,18 @@ namespace TajsCOI.Visuals
                 m_lighting.SetPhasePolicy(null);
             }
 
-            if (lightingEnabled || cycleEnabled)
+            bool policyActive = lightingEnabled || cycleEnabled;
+            if (policyActive)
             {
                 m_lighting.Apply();
+                m_policyWasActive = true;
             }
-            else
+            else if (m_policyWasActive)
             {
+                // Restore only when leaving an active policy. Repeating a one-time snapshot
+                // restore every render would overwrite vanilla weather/controller updates.
                 m_lighting.RestoreVanilla();
+                m_policyWasActive = false;
             }
         }
 
@@ -353,6 +359,7 @@ namespace TajsCOI.Visuals
             m_lastPresentationClock = 0f;
             m_fixedClock = null;
             m_lastFixedLighting = false;
+            m_policyWasActive = false;
         }
     }
 }

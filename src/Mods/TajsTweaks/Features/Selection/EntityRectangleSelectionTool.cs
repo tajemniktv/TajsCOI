@@ -4,7 +4,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using Mafi;
 using Mafi.Core.Entities.Static;
 using UnityEngine;
@@ -22,10 +21,13 @@ namespace TajsCOI.Tweaks.Features.Selection
         private readonly Func<IStaticEntity, bool> m_canSelect;
         private readonly Action<IReadOnlyList<IStaticEntity>> m_onCompleted;
         private readonly Action<IReadOnlyList<IStaticEntity>>? m_onMatchesChanged;
+        private readonly Action? m_onCancelled;
         private readonly Func<IStaticEntity, Camera, float, float, float, float, bool>? m_geometry;
+        private readonly Func<IStaticEntity, SceneAreaBounds, bool>? m_worldGeometry;
+        private readonly Func<int, bool>? m_canSelectId;
         private readonly int m_maxCandidates;
         private readonly SceneSelection<int> m_sceneSelection;
-        private readonly Dictionary<string, IStaticEntity> m_candidateById = new(StringComparer.Ordinal);
+        private readonly Dictionary<int, IStaticEntity> m_candidateById = new();
         private readonly List<IStaticEntity> m_candidateSnapshot = new();
         private readonly List<IStaticEntity> m_matches = new();
         private Vector2 m_start;
@@ -38,7 +40,10 @@ namespace TajsCOI.Tweaks.Features.Selection
             Action<IReadOnlyList<IStaticEntity>> onCompleted,
             Action<IReadOnlyList<IStaticEntity>>? onMatchesChanged = null,
             Func<IStaticEntity, Camera, float, float, float, float, bool>? geometry = null,
-            int maxCandidates = 0)
+            int maxCandidates = 0,
+            Action? onCancelled = null,
+            Func<IStaticEntity, SceneAreaBounds, bool>? worldGeometry = null,
+            Func<int, bool>? canSelectId = null)
         {
             m_candidates = candidates ?? throw new ArgumentNullException(nameof(candidates));
             m_canSelect = canSelect ?? throw new ArgumentNullException(nameof(canSelect));
@@ -46,10 +51,15 @@ namespace TajsCOI.Tweaks.Features.Selection
             m_onMatchesChanged = onMatchesChanged;
             m_geometry = geometry;
             m_maxCandidates = Math.Max(0, maxCandidates);
+            m_onCancelled = onCancelled;
+            m_worldGeometry = worldGeometry;
+            m_canSelectId = canSelectId;
             m_sceneSelection = new SceneSelection<int>(
                 QueryPoint,
                 QueryRectangle,
-                m_maxCandidates > 0 ? m_maxCandidates : SceneSelectionLimits.MaxInteractiveCandidates);
+                m_maxCandidates > 0 ? m_maxCandidates : SceneSelectionLimits.MaxInteractiveCandidates,
+                worldPointQuery: QueryWorldPoint,
+                worldRectangleQuery: QueryWorldRectangle);
         }
 
         internal bool IsActive => m_sceneSelection.IsActive;
@@ -82,6 +92,14 @@ namespace TajsCOI.Tweaks.Features.Selection
             if (Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1))
             {
                 Deactivate();
+                try
+                {
+                    m_onCancelled?.Invoke();
+                }
+                catch
+                {
+                    // Owner cleanup is optional and must not interfere with the input loop.
+                }
                 return;
             }
 
@@ -146,9 +164,22 @@ namespace TajsCOI.Tweaks.Features.Selection
             float maxY = Mathf.Max(m_start.y, m_current.y);
             try
             {
-                m_sceneSelection.SelectRectangle(new SceneSelectionRectangle(minX, minY, maxX, maxY));
+                bool selected = m_sceneSelection.SelectRectangle(new SceneSelectionRectangle(minX, minY, maxX, maxY));
+                bool queryTruncated = m_sceneSelection.LastQueryTruncated;
+                if (!selected)
+                {
+                    // SceneSelection consumes native query failures and cancels itself. Mirror
+                    // that terminal state in the screen tool so a subsequent mouse-up cannot
+                    // commit a stale preview or retain the drag owner.
+                    Deactivate();
+                    LastCandidateSnapshotTruncated |= queryTruncated;
+                    NotifyCancelled();
+                    return;
+                }
+
+                LastCandidateSnapshotTruncated |= queryTruncated;
                 m_matches.Clear();
-                foreach (string id in m_sceneSelection.SelectedEntityIds)
+                foreach (int id in m_sceneSelection.SelectedEntityIds)
                 {
                     if (m_candidateById.TryGetValue(id, out IStaticEntity? entity))
                     {
@@ -162,8 +193,64 @@ namespace TajsCOI.Tweaks.Features.Selection
                 // Entity enumeration is scene-scoped and can race teardown; retain an empty,
                 // conservative selection for this frame.
                 m_matches.Clear();
+                m_sceneSelection.Cancel();
+                NotifyCancelled();
             }
             NotifyMatchesChanged();
+        }
+
+        /// <summary>
+        ///     Runs the same bounded, ID-based selector for a world/tile rectangle. The temporary
+        ///     activation makes console and preview callers obey the same cross-tool ownership and
+        ///     cleanup rules as the screen drag path.
+        /// </summary>
+        internal IReadOnlyList<IStaticEntity> SelectWorldRectangle(SceneAreaBounds bounds)
+        {
+            if (!m_sceneSelection.Activate())
+            {
+                return Array.Empty<IStaticEntity>();
+            }
+
+            m_candidateById.Clear();
+            m_candidateSnapshot.Clear();
+            m_matches.Clear();
+            CandidateSnapshotTruncated = false;
+            LastCandidateSnapshotTruncated = false;
+            try
+            {
+                CaptureCandidates();
+                if (!m_sceneSelection.SelectWorldRectangle(bounds))
+                {
+                    NotifyCancelled();
+                    return Array.Empty<IStaticEntity>();
+                }
+
+                LastCandidateSnapshotTruncated |= m_sceneSelection.LastQueryTruncated;
+                foreach (int id in m_sceneSelection.SelectedEntityIds)
+                {
+                    if (m_candidateById.TryGetValue(id, out IStaticEntity? entity))
+                    {
+                        m_matches.Add(entity);
+                    }
+                }
+                m_matches.Sort((left, right) => left.Id.Value.CompareTo(right.Id.Value));
+                return m_matches.ToArray();
+            }
+            catch
+            {
+                m_sceneSelection.Cancel();
+                NotifyCancelled();
+                return Array.Empty<IStaticEntity>();
+            }
+            finally
+            {
+                m_sceneSelection.Deactivate();
+                LastCandidateSnapshotTruncated = CandidateSnapshotTruncated;
+                CandidateSnapshotTruncated = false;
+                m_candidateById.Clear();
+                m_candidateSnapshot.Clear();
+                m_matches.Clear();
+            }
         }
 
         private void CaptureCandidates()
@@ -173,12 +260,12 @@ namespace TajsCOI.Tweaks.Features.Selection
             {
                 foreach (IStaticEntity entity in m_candidates())
                 {
-                    if (entity is null)
+                    if (entity is null || !IsSelectable(entity))
                     {
                         continue;
                     }
 
-                    string id = StableId(entity.Id.Value);
+                    int id = entity.Id.Value;
                     if (m_candidateById.ContainsKey(id))
                     {
                         continue;
@@ -201,7 +288,7 @@ namespace TajsCOI.Tweaks.Features.Selection
             }
         }
 
-        private IEnumerable<string> QueryPoint(SceneSelectionPoint point)
+        private IEnumerable<int> QueryPoint(SceneSelectionPoint point)
         {
             foreach (IStaticEntity entity in m_candidateSnapshot)
             {
@@ -209,14 +296,14 @@ namespace TajsCOI.Tweaks.Features.Selection
                 if (tile.X == (int)Math.Round(point.X) &&
                     tile.Y == (int)Math.Round(point.Y) &&
                     tile.Z == (int)Math.Round(point.Z) &&
-                    m_canSelect(entity))
+                    IsSelectable(entity))
                 {
-                    yield return StableId(entity.Id.Value);
+                    yield return entity.Id.Value;
                 }
             }
         }
 
-        private IEnumerable<string> QueryRectangle(SceneSelectionRectangle rectangle)
+        private IEnumerable<int> QueryRectangle(SceneSelectionRectangle rectangle)
         {
             Camera? camera = Camera.main;
             if (camera is null)
@@ -226,7 +313,7 @@ namespace TajsCOI.Tweaks.Features.Selection
 
             foreach (IStaticEntity entity in m_candidateSnapshot)
             {
-                if (m_canSelect(entity) &&
+                if (IsSelectable(entity) &&
                     (m_geometry?.Invoke(
                          entity,
                          camera,
@@ -242,12 +329,38 @@ namespace TajsCOI.Tweaks.Features.Selection
                          rectangle.MinZ,
                          rectangle.MaxZ)))
                 {
-                    yield return StableId(entity.Id.Value);
+                    yield return entity.Id.Value;
                 }
             }
         }
 
-        private static string StableId(int id) => id.ToString("D10", CultureInfo.InvariantCulture);
+        private IEnumerable<int> QueryWorldPoint(SceneSelectionPoint point)
+        {
+            foreach (IStaticEntity entity in m_candidateSnapshot)
+            {
+                Tile3i tile = entity.CenterTile;
+                if (tile.X == (int)Math.Round(point.X) &&
+                    tile.Y == (int)Math.Round(point.Y) &&
+                    tile.Z == (int)Math.Round(point.Z) &&
+                    IsSelectable(entity))
+                {
+                    yield return entity.Id.Value;
+                }
+            }
+        }
+
+        private IEnumerable<int> QueryWorldRectangle(SceneAreaBounds bounds)
+        {
+            foreach (IStaticEntity entity in m_candidateSnapshot)
+            {
+                if (IsSelectable(entity) &&
+                    (m_worldGeometry?.Invoke(entity, bounds) ??
+                     bounds.Contains(entity.CenterTile.X, entity.CenterTile.Y)))
+                {
+                    yield return entity.Id.Value;
+                }
+            }
+        }
 
         private void NotifyMatchesChanged()
         {
@@ -263,6 +376,21 @@ namespace TajsCOI.Tweaks.Features.Selection
             catch
             {
                 // Preview/highlight consumers are optional and must never break input handling.
+            }
+        }
+
+        private bool IsSelectable(IStaticEntity entity) =>
+            m_canSelect(entity) && (m_canSelectId?.Invoke(entity.Id.Value) ?? true);
+
+        private void NotifyCancelled()
+        {
+            try
+            {
+                m_onCancelled?.Invoke();
+            }
+            catch
+            {
+                // Owner cleanup is optional and must not interfere with the input loop.
             }
         }
 

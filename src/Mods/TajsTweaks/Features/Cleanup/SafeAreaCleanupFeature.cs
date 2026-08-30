@@ -14,6 +14,8 @@ using Mafi.Core.Factory.Transports;
 using Mafi.Core.Input;
 using Mafi.Core.Products;
 using TajsCOI.Tweaks.Features.Selection;
+using UnityEngine;
+using EntityId = Mafi.Core.EntityId;
 
 namespace TajsCOI.Tweaks.Features.Cleanup
 {
@@ -34,7 +36,8 @@ namespace TajsCOI.Tweaks.Features.Cleanup
         internal SafeAreaCleanupFeature(
             IEntitiesManager entities,
             IInputScheduler scheduler,
-            IProductsManager products)
+            IProductsManager products,
+            Func<int, bool>? canSelectId = null)
         {
             m_entities = entities ?? throw new ArgumentNullException(nameof(entities));
             m_scheduler = scheduler ?? throw new ArgumentNullException(nameof(scheduler));
@@ -43,7 +46,11 @@ namespace TajsCOI.Tweaks.Features.Cleanup
                 EnumerateCandidates,
                 CanSelect,
                 OnSelectionCompleted,
-                maxCandidates: SafeAreaCleanupLimits.MaxSelectedEntities);
+                geometry: IsInSelectionGeometry,
+                maxCandidates: SafeAreaCleanupLimits.MaxSelectedEntities,
+                onCancelled: Deactivate,
+                worldGeometry: IsInTileBounds,
+                canSelectId: canSelectId);
         }
 
         internal bool IsActive => m_selection.IsActive;
@@ -77,10 +84,11 @@ namespace TajsCOI.Tweaks.Features.Cleanup
                 return "Safe area cleanup is idle; select transport or products first.";
             }
 
-            m_selection.Deactivate();
-            IEnumerable<IStaticEntity> matches = EnumerateCandidates()
-                .Where(entity => bounds.Contains(entity.CenterTile.X, entity.CenterTile.Y) && CanSelect(entity));
-            OnSelectionCompleted(matches.ToArray());
+            // The shared scene selector owns bounded candidate capture, stable IDs, and the
+            // temporary coordinator session for world-area callers as well as screen drags.
+            IStaticEntity[] matches = m_selection.SelectWorldRectangle(bounds).ToArray();
+            OnSelectionCompleted(matches);
+            m_truncated |= m_selection.LastCandidateSnapshotTruncated;
             return Status();
         }
 
@@ -278,6 +286,117 @@ namespace TajsCOI.Tweaks.Features.Cleanup
 
             product = null;
             return false;
+        }
+
+        private static bool IsInSelectionGeometry(
+            IStaticEntity entity,
+            Camera camera,
+            float minX,
+            float maxX,
+            float minY,
+            float maxY)
+        {
+            if (entity is Transport transport)
+            {
+                bool hadPivot = false;
+                Vector2? previous = null;
+                foreach (Tile3i pivot in transport.Trajectory.Pivots)
+                {
+                    hadPivot = true;
+                    Vector2 screen = Project(camera, pivot);
+                    if (IsInside(screen, minX, maxX, minY, maxY) ||
+                        previous.HasValue && SegmentIntersects(previous.Value, screen, minX, maxX, minY, maxY))
+                    {
+                        return true;
+                    }
+                    previous = screen;
+                }
+                if (hadPivot)
+                {
+                    return false;
+                }
+            }
+
+            return IsInside(Project(camera, entity.CenterTile), minX, maxX, minY, maxY);
+        }
+
+        private static bool IsInTileBounds(IStaticEntity entity, SceneAreaBounds bounds)
+        {
+            if (entity is Transport transport)
+            {
+                Vector2? previous = null;
+                foreach (Tile3i pivot in transport.Trajectory.Pivots)
+                {
+                    Vector2 current = new(pivot.X, pivot.Y);
+                    if (bounds.Contains((int)current.x, (int)current.y) ||
+                        previous.HasValue && SegmentIntersects(
+                            previous.Value,
+                            current,
+                            bounds.MinX,
+                            bounds.MaxX,
+                            bounds.MinY,
+                            bounds.MaxY))
+                    {
+                        return true;
+                    }
+                    previous = current;
+                }
+                return false;
+            }
+            return bounds.Contains(entity.CenterTile.X, entity.CenterTile.Y);
+        }
+
+        private static Vector2 Project(Camera camera, Tile3i tile)
+        {
+            Vector3 screen = camera.WorldToScreenPoint(new Vector3(tile.X * 2f, tile.Z * 2f, tile.Y * 2f));
+            return screen.z < 0f
+                ? new Vector2(float.NaN, float.NaN)
+                : new Vector2(screen.x, Screen.height - screen.y);
+        }
+
+        private static bool IsInside(Vector2 point, float minX, float maxX, float minY, float maxY) =>
+            !float.IsNaN(point.x) && point.x >= minX && point.x <= maxX &&
+            point.y >= minY && point.y <= maxY;
+
+        private static bool SegmentIntersects(Vector2 start, Vector2 end, float minX, float maxX, float minY, float maxY)
+        {
+            if (float.IsNaN(start.x) || float.IsNaN(end.x))
+            {
+                return false;
+            }
+            if (IsInside(start, minX, maxX, minY, maxY) || IsInside(end, minX, maxX, minY, maxY))
+            {
+                return true;
+            }
+
+            float dx = end.x - start.x;
+            float dy = end.y - start.y;
+            float t0 = 0f;
+            float t1 = 1f;
+            return Clip(-dx, start.x - minX, ref t0, ref t1) &&
+                   Clip(dx, maxX - start.x, ref t0, ref t1) &&
+                   Clip(-dy, start.y - minY, ref t0, ref t1) &&
+                   Clip(dy, maxY - start.y, ref t0, ref t1);
+        }
+
+        private static bool Clip(float p, float q, ref float t0, ref float t1)
+        {
+            if (Math.Abs(p) < 0.00001f)
+            {
+                return q >= 0f;
+            }
+            float ratio = q / p;
+            if (p < 0f)
+            {
+                if (ratio > t1) return false;
+                if (ratio > t0) t0 = ratio;
+            }
+            else
+            {
+                if (ratio < t0) return false;
+                if (ratio < t1) t1 = ratio;
+            }
+            return true;
         }
 
         private static IReadOnlyList<SafeAreaProductPreview> BuildProductPreview(IStaticEntity entity)

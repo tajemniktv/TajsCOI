@@ -7,6 +7,11 @@ using System.Collections.Generic;
 
 namespace TajsCOI.Tweaks.Features.Selection
 {
+    internal interface ISceneSelectionOwner
+    {
+        void CancelSelection();
+    }
+
     internal static class SceneSelectionCoordinator
     {
         private static readonly object s_gate = new();
@@ -45,6 +50,40 @@ namespace TajsCOI.Tweaks.Features.Selection
                     ReferenceEquals(active, owner))
                 {
                     s_activeOwner = null;
+                }
+            }
+        }
+
+        /// <summary>
+        ///     Common Escape/right-click cancellation hook. The coordinator retains only the
+        ///     owner weakly, so a scene teardown cannot be kept alive by process state.
+        /// </summary>
+        internal static bool CancelActive()
+        {
+            lock (s_gate)
+            {
+                if (s_activeOwner?.TryGetTarget(out object? active) != true)
+                {
+                    s_activeOwner = null;
+                    return false;
+                }
+
+                if (active is not ISceneSelectionOwner owner)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    owner.CancelSelection();
+                    return true;
+                }
+                catch
+                {
+                    // A teardown race must not strand the coordinator or break the caller's
+                    // input loop when an owner cannot complete its visual cleanup.
+                    s_activeOwner = null;
+                    return false;
                 }
             }
         }
@@ -93,31 +132,40 @@ namespace TajsCOI.Tweaks.Features.Selection
     ///     lifetime rules. Queries are supplied by the owning native feature; only stable IDs are
     ///     retained here, and highlights are always released on cancel/deactivation/disposal.
     /// </summary>
-    internal sealed class SceneSelection<THandle> : IDisposable
+    internal sealed class SceneSelection<THandle> : IDisposable, ISceneSelectionOwner
     {
-        private readonly Func<SceneSelectionPoint, IEnumerable<string>> m_pointQuery;
-        private readonly Func<SceneSelectionRectangle, IEnumerable<string>> m_rectangleQuery;
-        private readonly PooledHighlightUtility<string, THandle>? m_highlights;
-        private readonly List<string> m_selected = new();
+        private readonly Func<SceneSelectionPoint, IEnumerable<int>> m_pointQuery;
+        private readonly Func<SceneSelectionRectangle, IEnumerable<int>> m_rectangleQuery;
+        private readonly Func<SceneSelectionPoint, IEnumerable<int>>? m_worldPointQuery;
+        private readonly Func<SceneAreaBounds, IEnumerable<int>>? m_worldRectangleQuery;
+        private readonly PooledHighlightUtility<int, THandle>? m_highlights;
+        private readonly List<int> m_selected = new();
         private readonly int m_maximumSelectionCount;
         private bool m_active;
         private bool m_disposed;
 
         internal SceneSelection(
-            Func<SceneSelectionPoint, IEnumerable<string>> pointQuery,
-            Func<SceneSelectionRectangle, IEnumerable<string>> rectangleQuery,
+            Func<SceneSelectionPoint, IEnumerable<int>> pointQuery,
+            Func<SceneSelectionRectangle, IEnumerable<int>> rectangleQuery,
             int maximumSelectionCount,
-            PooledHighlightUtility<string, THandle>? highlights = null)
+            PooledHighlightUtility<int, THandle>? highlights = null,
+            Func<SceneSelectionPoint, IEnumerable<int>>? worldPointQuery = null,
+            Func<SceneAreaBounds, IEnumerable<int>>? worldRectangleQuery = null)
         {
             m_pointQuery = pointQuery ?? throw new ArgumentNullException(nameof(pointQuery));
             m_rectangleQuery = rectangleQuery ?? throw new ArgumentNullException(nameof(rectangleQuery));
             m_maximumSelectionCount = Math.Max(1, maximumSelectionCount);
             m_highlights = highlights;
+            m_worldPointQuery = worldPointQuery;
+            m_worldRectangleQuery = worldRectangleQuery;
         }
 
         internal bool IsActive => m_active && !m_disposed;
 
-        internal IReadOnlyList<string> SelectedEntityIds => m_selected;
+        /// <summary>Stable native EntityId.Value keys retained for the active scene session.</summary>
+        internal IReadOnlyList<int> SelectedEntityIds => m_selected;
+
+        internal bool LastQueryTruncated { get; private set; }
 
         internal bool Activate()
         {
@@ -130,15 +178,93 @@ namespace TajsCOI.Tweaks.Features.Selection
             {
                 return false;
             }
+
+            // Reusing a tool starts a fresh selection session. Do not expose IDs or renderer
+            // handles from the previous session while the owner is preparing its next query.
+            m_selected.Clear();
+            m_highlights?.Clear();
+            LastQueryTruncated = false;
             m_active = true;
             return true;
         }
 
-        internal bool SelectPoint(SceneSelectionPoint point) => Select(m_pointQuery(point));
+        internal bool SelectPoint(SceneSelectionPoint point)
+        {
+            if (!IsActive)
+            {
+                return false;
+            }
 
-        internal bool SelectRectangle(SceneSelectionRectangle rectangle) => Select(m_rectangleQuery(rectangle));
+            try
+            {
+                return Select(m_pointQuery(point));
+            }
+            catch
+            {
+                // Native world queries are compatibility seams. A failed query must release
+                // temporary highlights and relinquish the shared tool owner immediately.
+                Cancel();
+                return false;
+            }
+        }
+
+        internal bool SelectRectangle(SceneSelectionRectangle rectangle)
+        {
+            if (!IsActive)
+            {
+                return false;
+            }
+
+            try
+            {
+                return Select(m_rectangleQuery(rectangle));
+            }
+            catch
+            {
+                Cancel();
+                return false;
+            }
+        }
+
+        internal bool SelectWorldPoint(SceneSelectionPoint point)
+        {
+            if (!IsActive || m_worldPointQuery is null)
+            {
+                return false;
+            }
+
+            try
+            {
+                return Select(m_worldPointQuery(point));
+            }
+            catch
+            {
+                Cancel();
+                return false;
+            }
+        }
+
+        internal bool SelectWorldRectangle(SceneAreaBounds bounds)
+        {
+            if (!IsActive || m_worldRectangleQuery is null)
+            {
+                return false;
+            }
+
+            try
+            {
+                return Select(m_worldRectangleQuery(bounds));
+            }
+            catch
+            {
+                Cancel();
+                return false;
+            }
+        }
 
         internal bool HandleEscape() => IsActive && Cancel();
+
+        public void CancelSelection() => Cancel();
 
         internal bool Cancel()
         {
@@ -168,20 +294,30 @@ namespace TajsCOI.Tweaks.Features.Selection
             m_disposed = true;
         }
 
-        private bool Select(IEnumerable<string>? ids)
+        private bool Select(IEnumerable<int>? ids)
         {
             if (!IsActive)
             {
                 return false;
             }
 
-            var next = new List<string>();
-            var seen = new HashSet<string>(StringComparer.Ordinal);
+            LastQueryTruncated = false;
+            var next = new List<int>();
+            var seen = new HashSet<int>();
+            int inspected = 0;
+            int maximumInspected = m_maximumSelectionCount > int.MaxValue / 16
+                ? int.MaxValue
+                : m_maximumSelectionCount * 16;
             if (ids is not null)
             {
-                foreach (string? id in ids)
+                foreach (int id in ids)
                 {
-                    if (string.IsNullOrWhiteSpace(id) || !seen.Add(id))
+                    if (++inspected > maximumInspected)
+                    {
+                        LastQueryTruncated = true;
+                        break;
+                    }
+                    if (!seen.Add(id))
                     {
                         continue;
                     }
@@ -193,7 +329,7 @@ namespace TajsCOI.Tweaks.Features.Selection
                 }
             }
 
-            next.Sort(StringComparer.Ordinal);
+            next.Sort();
             try
             {
                 m_highlights?.Set(next);
@@ -205,6 +341,9 @@ namespace TajsCOI.Tweaks.Features.Selection
             {
                 m_highlights?.Clear();
                 m_selected.Clear();
+                // Renderer teardown is a lifecycle boundary. Do not leave a dead selector
+                // holding the shared coordinator after a highlight allocation failure.
+                Cancel();
                 return false;
             }
         }

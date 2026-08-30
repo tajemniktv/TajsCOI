@@ -5,6 +5,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using Mafi;
 
 namespace TajsCOI.Tweaks.Features.MapEditor
 {
@@ -50,6 +52,114 @@ namespace TajsCOI.Tweaks.Features.MapEditor
                 candidate.IsValid &&
                 string.Equals(candidate.Id, requested.Id, StringComparison.Ordinal) &&
                 string.Equals(candidate.Version, requested.Version, StringComparison.Ordinal));
+        }
+    }
+
+    internal static class MapEditorNativeContract
+    {
+        internal static string? LastFailure { get; private set; }
+
+        internal static bool TryResolve(
+            out MethodInfo? mapEditorClick,
+            out MethodInfo? goToMainMenu,
+            out MethodInfo? tryLoadMods,
+            out FieldInfo? mainField)
+        {
+            try
+            {
+                Assembly? gameAssembly = AppDomain.CurrentDomain.GetAssemblies()
+                    .FirstOrDefault(assembly => string.Equals(assembly.GetName().Name, "Mafi.Unity", StringComparison.Ordinal));
+                gameAssembly ??= Assembly.Load("Mafi.Unity");
+                Type? menuType = gameAssembly?.GetType("Mafi.Unity.MainMenu.MainMenuScreen", throwOnError: false);
+                Type? mainInterfaceType = gameAssembly?.GetType("Mafi.Unity.IMain", throwOnError: false);
+                Type? mainMenuArgsType = gameAssembly?.GetType("Mafi.Unity.MainMenu.MainMenuArgs", throwOnError: false);
+                if (menuType is null || mainInterfaceType is null || mainMenuArgsType is null)
+                {
+                    throw new TypeLoadException("Mafi.Unity map-editor contract types were not loaded");
+                }
+
+                mapEditorClick = menuType.GetMethod(
+                    "onMapEditorClick",
+                    BindingFlags.Instance | BindingFlags.NonPublic,
+                    binder: null,
+                    types: Type.EmptyTypes,
+                    modifiers: null);
+                Assembly loadedAssembly = gameAssembly!;
+                Type? mainType = loadedAssembly.GetType("Mafi.Unity.Main", throwOnError: false);
+                goToMainMenu = mainType?.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                    .SingleOrDefault(method => method.Name == "GoToMainMenu" && IsExactInstanceVoid(method, mainMenuArgsType.FullName!));
+                tryLoadMods = mainType?.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                    .SingleOrDefault(method => method.Name == "TryLoadMods" && IsExactTryLoadMods(method));
+                mainField = menuType.GetField(
+                    "m_main",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+                bool exact = IsExactInstanceVoid(mapEditorClick) &&
+                             IsExactInstanceVoid(goToMainMenu, "Mafi.Unity.MainMenu.MainMenuArgs") &&
+                             tryLoadMods is not null &&
+                             mainField is not null &&
+                             !mainField.IsStatic &&
+                             TypeName(mainField.FieldType) == mainInterfaceType.FullName;
+                LastFailure = exact
+                    ? null
+                    : "Mafi.Unity map-editor members do not match the exact 0.8.7b contract";
+                return exact;
+            }
+            catch (Exception exception)
+            {
+                mapEditorClick = null;
+                goToMainMenu = null;
+                tryLoadMods = null;
+                mainField = null;
+                LastFailure = exception.GetType().FullName + ": " + exception.Message;
+                return false;
+            }
+        }
+
+        private static bool IsExactInstanceVoid(MethodInfo? method, params string[] parameterTypeNames)
+        {
+            if (method is null || method.IsStatic || method.ReturnType != typeof(void))
+            {
+                return false;
+            }
+
+            ParameterInfo[] parameters = method.GetParameters();
+            return parameters.Length == parameterTypeNames.Length &&
+                   parameters.Select(parameter => TypeName(parameter.ParameterType))
+                       .SequenceEqual(parameterTypeNames, StringComparer.Ordinal);
+        }
+
+        private static bool IsExactTryLoadMods(MethodInfo? method)
+        {
+            if (method is null || method.IsStatic || TypeName(method.ReturnType) != "System.Boolean")
+            {
+                return false;
+            }
+
+            string[] expected =
+            {
+                "Mafi.Collections.ImmutableCollections.ImmutableArray`1[Mafi.Core.Mods.AvailableModData]",
+                "System.Boolean",
+                "Mafi.Collections.ImmutableCollections.ImmutableArray`1[Mafi.Core.Mods.LoadedModData]&",
+                "System.String&",
+            };
+            return method.GetParameters().Select(parameter => TypeName(parameter.ParameterType))
+                .SequenceEqual(expected, StringComparer.Ordinal);
+        }
+
+        private static string TypeName(Type type)
+        {
+            if (type.IsByRef)
+            {
+                return TypeName(type.GetElementType()!) + "&";
+            }
+            if (type.IsGenericType)
+            {
+                string definition = type.GetGenericTypeDefinition().FullName ?? type.Name;
+                string arguments = string.Join(",", type.GetGenericArguments().Select(TypeName));
+                return definition + "[" + arguments + "]";
+            }
+            return type.FullName ?? type.Name;
         }
     }
 

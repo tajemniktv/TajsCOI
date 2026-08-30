@@ -23,7 +23,20 @@ namespace TajsCOI.Tweaks.Features.Overclocking
     /// </summary>
     internal static class TransportOverclockingPatches
     {
+        private sealed class TransportCapacitySnapshot
+        {
+            internal TransportCapacitySnapshot(int spacing, Quantity stackMaximum)
+            {
+                Spacing = spacing;
+                StackMaximum = stackMaximum;
+            }
+
+            internal int Spacing { get; }
+            internal Quantity StackMaximum { get; }
+        }
+
         private static readonly ConditionalWeakTable<TransportTrajectory, Transport> s_trajectoryOwners = new();
+        private static readonly ConditionalWeakTable<Transport, TransportCapacitySnapshot> s_capacitySnapshots = new();
         private static FieldInfo? s_spacingField;
         private static FieldInfo? s_stackField;
         private static MethodInfo? s_quantityMin;
@@ -71,6 +84,22 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 TransportTrajectory trajectory = transport.Trajectory;
                 s_trajectoryOwners.Remove(trajectory);
                 s_trajectoryOwners.Add(trajectory, transport);
+                if (!s_capacitySnapshots.TryGetValue(transport, out _))
+                {
+                    try
+                    {
+                        s_capacitySnapshots.Add(
+                            transport,
+                            new TransportCapacitySnapshot(
+                                transport.Prototype.ProductSpacingWaypoints,
+                                transport.Prototype.MaxQuantityPerTransportedProduct));
+                    }
+                    catch
+                    {
+                        // A partially constructed transport can be registered before its
+                        // prototype is ready. A later registration may capture it then.
+                    }
+                }
             }
             catch
             {
@@ -96,6 +125,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
         internal static int EffectiveSpacing(int vanillaSpacing, Transport transport)
         {
+            vanillaSpacing = GetVanillaSpacing(transport, vanillaSpacing);
             if (!CanCompensate(transport) || vanillaSpacing <= 1)
             {
                 return vanillaSpacing;
@@ -113,12 +143,14 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
         internal static Quantity EffectiveStackMin(ref Quantity productMax, Quantity protoMax, Transport transport)
         {
+            protoMax = GetVanillaStackMaximum(transport, protoMax);
             Quantity vanilla = productMax.Value <= protoMax.Value ? productMax : protoMax;
             return EffectiveStackValue(vanilla, transport);
         }
 
         internal static Quantity EffectiveStackValue(Quantity protoMax, Transport transport)
         {
+            protoMax = GetVanillaStackMaximum(transport, protoMax);
             if (!CanCompensate(transport) || protoMax.Value <= 0)
             {
                 return protoMax;
@@ -136,7 +168,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         }
 
         internal static int EffectiveStackFor(Transport transport) =>
-            EffectiveStackValue(transport.Prototype.MaxQuantityPerTransportedProduct, transport).Value;
+            EffectiveStackValue(GetVanillaStackMaximum(transport, transport.Prototype.MaxQuantityPerTransportedProduct), transport).Value;
 
         internal static string DescribeCapacity(Transport transport)
         {
@@ -145,7 +177,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return "transport capacity: pipe semantics (no belt compensation)";
             }
 
-            int vanillaSpacing = transport.Prototype.ProductSpacingWaypoints;
+            int vanillaSpacing = GetVanillaSpacing(transport, transport.Prototype.ProductSpacingWaypoints);
             int effectiveSpacing = EffectiveSpacing(vanillaSpacing, transport);
             int effectiveStack = EffectiveStackFor(transport);
             int maxProducts = transport.Trajectory.MaxProducts;
@@ -162,7 +194,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     return;
                 }
 
-                int vanillaSpacing = transport.Prototype.ProductSpacingWaypoints;
+                int vanillaSpacing = GetVanillaSpacing(transport, transport.Prototype.ProductSpacingWaypoints);
                 int spacing = EffectiveSpacing(vanillaSpacing, transport);
                 if (spacing >= 1 && spacing < vanillaSpacing)
                 {
@@ -280,6 +312,22 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             TajsTweaksRuntimeState.OverclockTransportCapacityCompensation &&
             IsBelt(transport) &&
             TajsOverclockingFeature.Current is not null;
+
+        private static int GetVanillaSpacing(Transport transport, int fallback)
+        {
+            return s_capacitySnapshots.TryGetValue(transport, out TransportCapacitySnapshot? snapshot) &&
+                   snapshot.Spacing > 0
+                ? snapshot.Spacing
+                : fallback;
+        }
+
+        private static Quantity GetVanillaStackMaximum(Transport transport, Quantity fallback)
+        {
+            return s_capacitySnapshots.TryGetValue(transport, out TransportCapacitySnapshot? snapshot) &&
+                   snapshot.StackMaximum.Value > 0
+                ? snapshot.StackMaximum
+                : fallback;
+        }
 
         private static MethodInfo? FindInterfaceImplementation(Type type, Type interfaceType, string methodName)
         {

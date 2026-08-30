@@ -21,7 +21,10 @@ namespace TajsCOI.Tweaks.Features.EntityMetadata
         private readonly EntityRectangleSelectionTool m_selection;
         private string? m_groupId;
 
-        internal EntityMetadataSelectionTool(IEntitiesManager entities, IEntityMetadataService metadata)
+        internal EntityMetadataSelectionTool(
+            IEntitiesManager entities,
+            IEntityMetadataService metadata,
+            Func<int, bool>? canSelectId = null)
         {
             if (entities is null)
             {
@@ -32,7 +35,8 @@ namespace TajsCOI.Tweaks.Features.EntityMetadata
                 () => EnumerateCandidates(entities),
                 entity => !entity.IsDestroyed,
                 ApplyGroup,
-                maxCandidates: SceneSelectionLimits.MaxInteractiveCandidates);
+                maxCandidates: SceneSelectionLimits.MaxInteractiveCandidates,
+                canSelectId: canSelectId);
         }
 
         internal bool IsActive => m_selection.IsActive;

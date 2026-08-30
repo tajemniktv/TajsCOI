@@ -3,10 +3,12 @@
 // All Rights Reserved.
 
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using HarmonyLib;
 using Mafi;
+using TajsCOI.Common.Shortcuts;
 using UnityEngine;
 
 namespace TajsCOI.Tweaks.Features.Selection
@@ -32,6 +34,7 @@ namespace TajsCOI.Tweaks.Features.Selection
         private static readonly object s_modifierGate = new();
         private static Func<bool> s_axisModifierHeld = DefaultAxisModifierHeld;
         private static Func<bool> s_gridModifierHeld = DefaultGridModifierHeld;
+        private static float s_gridSize = 1f;
         private static bool s_installed;
 
         /// <summary>
@@ -45,6 +48,30 @@ namespace TajsCOI.Tweaks.Features.Selection
                 s_axisModifierHeld = axisModifierHeld ?? DefaultAxisModifierHeld;
                 s_gridModifierHeld = gridModifierHeld ?? DefaultGridModifierHeld;
             }
+        }
+
+        internal static void ConfigureModifiers(IShortcutRegistry registry)
+        {
+            if (registry is null)
+            {
+                ConfigureModifiers(null, null);
+                return;
+            }
+
+            ConfigureModifiers(
+                () => IsModifierHeld(registry, "TajsTweaks.Polygon.AxisConstraint", "SHIFT"),
+                () => IsModifierHeld(registry, "TajsTweaks.Polygon.GridSnap", "CTRL"));
+        }
+
+        internal static void ConfigureGridSize(double gridSize)
+        {
+            if (double.IsNaN(gridSize) || double.IsInfinity(gridSize) || gridSize <= 0d)
+            {
+                s_gridSize = 1f;
+                return;
+            }
+
+            s_gridSize = (float)Math.Min(64d, Math.Max(0.25d, gridSize));
         }
 
         internal static void Install(Harmony harmony)
@@ -129,7 +156,8 @@ namespace TajsCOI.Tweaks.Features.Selection
                     drag.Origin,
                     ToVector(cursor),
                     axisHeld,
-                    gridHeld);
+                    gridHeld,
+                    s_gridSize);
                 cursor = ToMafi(constrained);
             }
 
@@ -165,5 +193,35 @@ namespace TajsCOI.Tweaks.Features.Selection
 
         private static bool DefaultGridModifierHeld() =>
             Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+
+        private static bool IsModifierHeld(IShortcutRegistry registry, string actionId, string fallback)
+        {
+            try
+            {
+                if (!registry.TryGet(actionId, out ShortcutBindingSnapshot snapshot) ||
+                    snapshot.Primary.IsEmpty)
+                {
+                    return IsDefaultModifierHeld(fallback);
+                }
+
+                string[] tokens = snapshot.Primary.Serialized.Split('+');
+                return tokens.Length == 1
+                    ? IsDefaultModifierHeld(tokens[0])
+                    : tokens.Any(token => IsDefaultModifierHeld(token));
+            }
+            catch
+            {
+                return IsDefaultModifierHeld(fallback);
+            }
+        }
+
+        private static bool IsDefaultModifierHeld(string token) => token switch
+        {
+            "SHIFT" => Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift),
+            "CTRL" => Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl),
+            "ALT" => Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt),
+            "META" => Input.GetKey(KeyCode.LeftCommand) || Input.GetKey(KeyCode.RightCommand),
+            _ => false,
+        };
     }
 }

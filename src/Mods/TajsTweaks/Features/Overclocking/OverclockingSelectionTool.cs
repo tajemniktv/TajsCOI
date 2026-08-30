@@ -22,7 +22,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         private readonly EntityRectangleSelectionTool m_selection;
         private int m_groupId = -1;
 
-        internal OverclockingSelectionTool(IEntitiesManager entities, TajsOverclockingFeature feature)
+        internal OverclockingSelectionTool(
+            IEntitiesManager entities,
+            TajsOverclockingFeature feature,
+            System.Func<int, bool>? canSelectId = null)
         {
             m_entities = entities ?? throw new System.ArgumentNullException(nameof(entities));
             m_feature = feature ?? throw new System.ArgumentNullException(nameof(feature));
@@ -30,7 +33,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 () => EnumerateCandidates(m_entities),
                 entity => m_feature.CanControl(entity.Id),
                 OnSelectionCompleted,
-                maxCandidates: SceneSelectionLimits.MaxInteractiveCandidates);
+                maxCandidates: SceneSelectionLimits.MaxInteractiveCandidates,
+                canSelectId: canSelectId);
         }
 
         internal bool IsActive => m_selection.IsActive;

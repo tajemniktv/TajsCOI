@@ -34,6 +34,13 @@ namespace TajsCOI.Tweaks.Features.MapEditor
         /// </summary>
         internal static void InstallProcess()
         {
+            if (!MapEditorStartupSettings.TryReadPersistedBoolean(
+                    TajsTweaksSettingsCatalog.ModId + "." + TajsTweaksSettingsCatalog.MapEditorThirdPartyMods,
+                    out bool enabled) || !enabled)
+            {
+                return;
+            }
+
             Install(new Harmony(HarmonyId));
         }
 
@@ -43,14 +50,17 @@ namespace TajsCOI.Tweaks.Features.MapEditor
             {
                 return;
             }
-            MethodInfo target = AccessTools.Method(typeof(MainMenuScreen), "onMapEditorClick")
-                                ?? throw new MissingMethodException(typeof(MainMenuScreen).FullName, "onMapEditorClick");
-            MethodInfo transition = AccessTools.Method(typeof(Mafi.Unity.Main), "GoToMainMenu")
-                                     ?? throw new MissingMethodException(typeof(Mafi.Unity.Main).FullName, "GoToMainMenu");
-            MethodInfo tryLoadMods = AccessTools.Method(typeof(Mafi.Unity.Main), "TryLoadMods")
-                                     ?? throw new MissingMethodException(typeof(Mafi.Unity.Main).FullName, "TryLoadMods");
-            s_mainField = AccessTools.Field(typeof(MainMenuScreen), "m_main")
-                          ?? throw new MissingFieldException(typeof(MainMenuScreen).FullName, "m_main");
+            if (!MapEditorNativeContract.TryResolve(
+                    out MethodInfo? target,
+                    out MethodInfo? transition,
+                    out MethodInfo? tryLoadMods,
+                    out FieldInfo? mainField) ||
+                target is null || transition is null || tryLoadMods is null || mainField is null)
+            {
+                throw new MissingMethodException("0.8.7b map-editor transition contract was not resolved");
+            }
+
+            s_mainField = mainField;
             try
             {
                 harmony.Patch(target, prefix: new HarmonyMethod(typeof(MapEditorThirdPartyFeature), nameof(Prefix)));
@@ -76,12 +86,13 @@ namespace TajsCOI.Tweaks.Features.MapEditor
 
         private static bool Prefix(MainMenuScreen __instance)
         {
-            if (s_mainField?.GetValue(__instance) is not IMain main)
-            {
-                return true;
-            }
             try
             {
+                if (s_mainField?.GetValue(__instance) is not IMain main)
+                {
+                    return true;
+                }
+
                 LoadedModData[] loadedThirdParty = main.LoadedMods
                     .Where(mod => mod?.Manifest is not null && !mod.Manifest.IsCoreMod && !mod.Manifest.IsDlcMod)
                     .ToArray();
@@ -109,9 +120,11 @@ namespace TajsCOI.Tweaks.Features.MapEditor
                     return true;
                 }
 
-                HashSet<string> compatibleIds = new(compatible.Select(mod => mod.Id), StringComparer.Ordinal);
+                HashSet<(string Id, string Version)> compatibleManifests = new(
+                    compatible.Select(mod => (mod.Id, mod.Version)));
                 ImmutableArray<AvailableModData> selectedThirdParty = availableThirdParty
-                    .Where(mod => mod?.Manifest is not null && compatibleIds.Contains(mod.Manifest.Id))
+                    .Where(mod => mod?.Manifest is not null &&
+                                  compatibleManifests.Contains((mod.Manifest.Id, mod.Manifest.Version.ToString())))
                     .ToImmutableArray();
                 ImmutableArray<AvailableModData> selected = main.AvailableMods
                     .SelectCoreAndDlcMods()
@@ -121,6 +134,9 @@ namespace TajsCOI.Tweaks.Features.MapEditor
                     s_context.Clear();
                     return true;
                 }
+                Log.Warning(
+                    "Map editor carrying compatible third-party mods: " +
+                    string.Join(", ", compatible.Select(mod => mod.Id + "@" + mod.Version)) + ".");
                 main.StartMapEditor(Mafi.Collections.ImmutableCollections.ImmutableArray<IConfig>.Empty, loadedMods);
                 return false;
             }
@@ -140,30 +156,41 @@ namespace TajsCOI.Tweaks.Features.MapEditor
             Mafi.Unity.Main __instance,
             ref ImmutableArray<AvailableModData> modsToLoad)
         {
-            if (!s_context.IsActive || modsToLoad.Any(mod => mod?.Manifest is not null &&
-                                                              !mod.Manifest.IsCoreMod &&
-                                                              !mod.Manifest.IsDlcMod))
+            try
             {
-                return;
-            }
+                if (!s_context.IsActive || modsToLoad.Any(mod => mod?.Manifest is not null &&
+                                                                  !mod.Manifest.IsCoreMod &&
+                                                                  !mod.Manifest.IsDlcMod))
+                {
+                    return;
+                }
 
-            HashSet<string> compatibleIds = new(
-                s_context.Decisions.Where(decision => decision.Compatible).Select(decision => decision.Manifest.Id),
-                StringComparer.Ordinal);
-            if (compatibleIds.Count == 0)
+                HashSet<(string Id, string Version)> compatibleManifests = new(
+                    s_context.Decisions
+                        .Where(decision => decision.Compatible)
+                        .Select(decision => (decision.Manifest.Id, decision.Manifest.Version)));
+                if (compatibleManifests.Count == 0)
+                {
+                    return;
+                }
+
+                ImmutableArray<AvailableModData> selectedThirdParty = __instance.AvailableThirdPartyMods
+                    .Where(mod => mod?.Manifest is not null &&
+                                  compatibleManifests.Contains((mod.Manifest.Id, mod.Manifest.Version.ToString())))
+                    .ToImmutableArray();
+                if (selectedThirdParty.IsEmpty)
+                {
+                    return;
+                }
+
+                modsToLoad = modsToLoad.Concat(selectedThirdParty);
+            }
+            catch
             {
-                return;
+                // The callback must never interfere with native mod loading when the optional
+                // compatibility seam changes or throws.
+                s_context.Clear();
             }
-
-            ImmutableArray<AvailableModData> selectedThirdParty = __instance.AvailableThirdPartyMods
-                .Where(mod => mod?.Manifest is not null && compatibleIds.Contains(mod.Manifest.Id))
-                .ToImmutableArray();
-            if (selectedThirdParty.IsEmpty)
-            {
-                return;
-            }
-
-            modsToLoad = modsToLoad.Concat(selectedThirdParty);
         }
 
         private static IEnumerable<MapEditorModManifest> BuildManifests(Mafi.Collections.ImmutableCollections.ImmutableArray<AvailableModData> available)

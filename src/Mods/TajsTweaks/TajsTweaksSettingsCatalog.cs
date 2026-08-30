@@ -130,6 +130,7 @@ namespace TajsCOI.Tweaks
         internal const string ElectricityComputingTotals = "electricity_computing_totals";
         internal const string StackerDesignationOverlay = "stacker_designation_overlay";
         internal const string TerrainGrid = "terrain_grid";
+        internal const string PolygonGridSize = "polygon_grid_size";
         internal const string TerrainXRay = "terrain_xray";
         internal const string TerrainXRayShortcut = "terrain_xray_shortcut";
         internal const string EfficiencyOverlay = "efficiency_overlay";
@@ -146,6 +147,7 @@ namespace TajsCOI.Tweaks
         internal const string BridgeCableEnabled = "bridge_cable_enabled";
         internal const string BridgeScaleMode = "bridge_scale_mode";
         internal const string CenterDriving = "center_driving";
+        internal const string MapEditorThirdPartyMods = "map_editor_third_party_mods";
 
         internal const string TransportPillarSupportRadius = "transport_pillar_support_radius";
         internal const string TransportPillarMaxHeight = "transport_pillar_max_height";
@@ -211,6 +213,20 @@ namespace TajsCOI.Tweaks
         internal const string TuningOreSorterThroughputMultiplier = "tuning_ore_sorter_throughput_multiplier";
         internal const string TuningShaftThroughputMultiplier = "tuning_shaft_throughput_multiplier";
         internal const string TuningThermalStorageCapacityMultiplier = "tuning_thermal_storage_capacity_multiplier";
+        internal const string TuningTransportTruckCapacityMultiplier = "tuning_transport_truck_capacity_multiplier";
+        internal const string TuningTransportExcavatorCapacityMultiplier = "tuning_transport_excavator_capacity_multiplier";
+        internal const string TuningTransportTrainWagonCapacityMultiplier = "tuning_transport_train_wagon_capacity_multiplier";
+        internal const string TuningTransportCargoShipCapacityMultiplier = "tuning_transport_cargo_ship_capacity_multiplier";
+        internal const string TuningTransportCargoDepotCapacityMultiplier = "tuning_transport_cargo_depot_capacity_multiplier";
+        internal const string TuningSpaceStationConstructionMultiplier = "tuning_space_station_construction_multiplier";
+        internal const string TuningSpaceStationMaintenanceMultiplier = "tuning_space_station_maintenance_multiplier";
+        internal const string TuningSpaceStationCrewSuppliesMultiplier = "tuning_space_station_crew_supplies_multiplier";
+        internal const string TuningSpaceStationResearchPointsMultiplier = "tuning_space_station_research_points_multiplier";
+        internal const string TuningSpaceStationResearchSuppliesMultiplier = "tuning_space_station_research_supplies_multiplier";
+        internal const string TuningSpaceStationUnityMultiplier = "tuning_space_station_unity_multiplier";
+        internal const string TuningSpaceStationResearchEfficiencyMultiplier = "tuning_space_station_research_efficiency_multiplier";
+        internal const string TuningSpaceStationCrewCapacityMultiplier = "tuning_space_station_crew_capacity_multiplier";
+        internal const string TuningSpaceStationCrewRotationMultiplier = "tuning_space_station_crew_rotation_multiplier";
 
         internal const string DiseaseScalingPolicy = "disease_scaling_policy";
         internal const string DiseaseScalingCustomFractions = "disease_scaling_custom_fractions";
@@ -1685,6 +1701,29 @@ namespace TajsCOI.Tweaks
                 "Building",
                 applyMode: SettingApplyMode.RestartGame,
                 flags: SettingFlags.Advanced),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                PolygonGridSize,
+                "Polygon grid size",
+                "Grid interval used while Ctrl-snap is held in native mine and forestry polygon tools.",
+                1,
+                0.25,
+                64,
+                0.25,
+                "Area tools",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                MapEditorThirdPartyMods,
+                "Keep third-party mods in map editor",
+                "When enabled, the ordinary map-editor transition carries compatible third-party mods into the native editor. Disabled by default so the vanilla editor transition remains unchanged.",
+                false,
+                "Map editor",
+                applyMode: SettingApplyMode.RestartGame,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental),
             SettingDescriptor.Integer(
                 ModId,
                 DisplayName,
@@ -1742,7 +1781,7 @@ namespace TajsCOI.Tweaks
                 DisplayName,
                 IgnorePillarRequirements,
                 "Ignore pillar requirements",
-                "Disables pillar requirements for transports and elevated layout entities, matching the native ignore-pillar behavior. Existing terrain and occupancy checks remain authoritative; requires a game restart.",
+                "Relaxes only the UsingPillar occupancy constraint for the validated zipper connector layout. Terrain, overlap, height, type, port alignment, and all other failures remain authoritative; requires a game restart.",
                 false,
                 "Transport",
                 applyMode: SettingApplyMode.RestartGame,
@@ -2068,6 +2107,20 @@ namespace TajsCOI.Tweaks
             SettingDescriptor.Float(ModId, DisplayName, TuningOreSorterThroughputMultiplier, "Ore-sorter throughput multiplier", "Advanced tuning: coherent multiplier for ore-sorter quantity-per-duration and displayed rate.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
             SettingDescriptor.Float(ModId, DisplayName, TuningShaftThroughputMultiplier, "Shaft-throughput multiplier", "Advanced tuning: bounded mechanical-shaft throughput multiplier.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
             SettingDescriptor.Float(ModId, DisplayName, TuningThermalStorageCapacityMultiplier, "Thermal-storage capacity multiplier", "Advanced tuning: bounded thermal capacity multiplier; reductions defer until stored heat discharges.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningTransportTruckCapacityMultiplier, "Truck capacity multiplier", "Advanced tuning: multiplier from each truck prototype's captured native capacity; existing cargo is never truncated.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningTransportExcavatorCapacityMultiplier, "Excavator capacity multiplier", "Advanced tuning: multiplier from each excavator prototype's captured native shovel capacity; existing cargo is never truncated.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningTransportTrainWagonCapacityMultiplier, "Train-wagon capacity multiplier", "Advanced tuning: multiplier from each cargo-wagon prototype's captured native capacity; existing cargo is never truncated.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningTransportCargoShipCapacityMultiplier, "Cargo-ship capacity multiplier", "Advanced tuning: multiplier from each cargo-ship prototype's captured native capacity multiplier; trade estimates use the effective ship capacity.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningTransportCargoDepotCapacityMultiplier, "Cargo-depot capacity multiplier", "Advanced tuning: multiplier from each cargo-depot module's captured native storage capacity; existing cargo is never truncated.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningSpaceStationConstructionMultiplier, "Space-station construction multiplier", "Base: 80 parts for tier I and 120 parts per later tier. Applies only when a new station/upgrade cost is calculated; already-paid upgrades are never repriced. Accepted value requires save reload.", 1, 0.1, 20, 0.1, "Space program", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningSpaceStationMaintenanceMultiplier, "Space-station maintenance multiplier", "Base: 0.25 maintenance/month/tier. Reload required because station tier data caches maintenance rates; existing inventory is not rewritten.", 1, 0, 20, 0.1, "Space program", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningSpaceStationCrewSuppliesMultiplier, "Space-station crew-supplies multiplier", "Base: 0.2 supplies/member/month. Reload required; native crew and supply state machines remain authoritative.", 1, 0, 20, 0.1, "Space program", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningSpaceStationResearchPointsMultiplier, "Space-station research-points multiplier", "Base: 48 research points/month/tier. Reload required; fixed-point output is bounded.", 1, 0, 20, 0.1, "Space program", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningSpaceStationResearchSuppliesMultiplier, "Space-station research-supplies multiplier", "Base: 2 supplies/month/tier. Reload required; fixed-point consumption is bounded.", 1, 0, 20, 0.1, "Space program", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningSpaceStationUnityMultiplier, "Space-station Unity multiplier", "Base: 0.15 Unity for tier I plus 0.05 per tier. Reload required; output is capped to preserve fixed-point stability.", 1, 0, 20, 0.1, "Space program", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningSpaceStationResearchEfficiencyMultiplier, "Space-station research-efficiency multiplier", "Base: 10% first tier plus 5% per tier. Reload required; the resulting efficiency remains within the native fixed-point percentage range.", 1, 0, 20, 0.1, "Space program", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningSpaceStationCrewCapacityMultiplier, "Space-station crew-capacity multiplier", "Base: 2 crew per tier. Reload required; the native crew assignment/ejection state machine is unchanged.", 1, 0, 20, 0.1, "Space program", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningSpaceStationCrewRotationMultiplier, "Space-station crew-rotation multiplier", "Base: 2 years. This value is live-safe and affects future crew-rotation checks; the native rotation request state machine remains unchanged.", 1, 0.1, 20, 0.1, "Space program", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
 
             SettingDescriptor.Choice(ModId, DisplayName, DiseaseScalingPolicy, "Disease progression distance", "Selects vanilla, map-scaled, or custom disease-distance policy. Existing unlocked diseases are never relocked.", "vanilla", s_diseaseScalingPolicies, "Difficulty", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
             SettingDescriptor.String(ModId, DisplayName, DiseaseScalingCustomFractions, "Disease custom fractions", "Comma-separated bounded fractions (0..1) used only by the custom disease-distance policy.", "", "Difficulty", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental, componentRequirement: DiseaseScalingPolicy),

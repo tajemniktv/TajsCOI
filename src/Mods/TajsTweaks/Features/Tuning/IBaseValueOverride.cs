@@ -12,13 +12,14 @@ namespace TajsCOI.Tweaks.Features.Tuning
     ///     instances scoped to the prototype/scene lifecycle; no process-static registry or game
     ///     object retention is implied by this internal Tweaks primitive.
     /// </summary>
-    internal interface IBaseValueOverride<T>
+    internal interface IBaseValueOverride<T> : IDisposable
     {
         string StableKey { get; }
         T BaseValue { get; }
         T EffectiveValue { get; }
         BaseValueApplyMode ApplyMode { get; }
         bool Validate();
+        bool TrySetEffective(T value);
         bool Apply();
         void Reset();
     }
@@ -31,6 +32,7 @@ namespace TajsCOI.Tweaks.Features.Tuning
         private readonly Action<T>? m_setter;
         private readonly Func<T, bool>? m_validator;
         private T m_effectiveValue;
+        private T m_lastAppliedValue;
         private bool m_disposed;
 
         internal BaseValueOverride(
@@ -46,6 +48,7 @@ namespace TajsCOI.Tweaks.Features.Tuning
             m_setter = setter;
             m_validator = validator;
             ApplyMode = applyMode;
+            m_lastAppliedValue = baseValue;
         }
 
         public string StableKey => m_stableKey;
@@ -80,15 +83,28 @@ namespace TajsCOI.Tweaks.Features.Tuning
             try
             {
                 m_setter!(m_effectiveValue);
+                m_lastAppliedValue = m_effectiveValue;
                 return true;
             }
             catch
             {
+                // A compatibility setter may mutate before reporting failure. Restore the
+                // last value known to have applied so callers never retain an uncommitted
+                // effective value after a failed write.
+                m_effectiveValue = m_lastAppliedValue;
+                try
+                {
+                    m_setter!(m_lastAppliedValue);
+                }
+                catch
+                {
+                    // The seam is unavailable; remain fail-open and let the owner report it.
+                }
                 return false;
             }
         }
 
-        internal bool TrySetEffective(T value)
+        public bool TrySetEffective(T value)
         {
             if (m_disposed)
             {
@@ -117,6 +133,7 @@ namespace TajsCOI.Tweaks.Features.Tuning
             try
             {
                 m_setter?.Invoke(m_baseValue);
+                m_lastAppliedValue = m_baseValue;
             }
             catch
             {

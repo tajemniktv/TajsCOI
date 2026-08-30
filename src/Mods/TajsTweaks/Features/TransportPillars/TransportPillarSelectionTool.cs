@@ -26,18 +26,18 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
     {
         internal TransportPillarPlan(
             TransportPillarToolMode mode,
-            Transport? transport,
+            int? transportId,
             int supportIndex,
-            TransportPillar? pillar,
+            int? pillarId,
             Tile2i position,
             HeightTilesI topHeight,
             bool valid,
             string reason)
         {
             Mode = mode;
-            Transport = transport;
+            TransportId = transportId;
             SupportIndex = supportIndex;
-            Pillar = pillar;
+            PillarId = pillarId;
             Position = position;
             TopHeight = topHeight;
             IsValid = valid;
@@ -45,9 +45,9 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
         }
 
         internal TransportPillarToolMode Mode { get; }
-        internal Transport? Transport { get; }
+        internal int? TransportId { get; }
         internal int SupportIndex { get; }
-        internal TransportPillar? Pillar { get; }
+        internal int? PillarId { get; }
         internal Tile2i Position { get; }
         internal HeightTilesI TopHeight { get; }
         internal bool IsValid { get; }
@@ -74,7 +74,7 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
     ///     The optional preview callback can render a native preview, but this class never mutates
     ///     renderer-only phantom pillars.
     /// </summary>
-    internal sealed class TransportPillarSelectionTool : IDisposable
+    internal sealed class TransportPillarSelectionTool : ISceneSelectionOwner, IDisposable
     {
         internal const int MaxAreaWidth = 64;
         internal const int MaxAreaHeight = 64;
@@ -86,6 +86,7 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
         private readonly Action<TransportPillarPlan?>? m_previewChanged;
         private readonly List<TransportPillarPlan> m_areaPlans = new();
         private TransportPillarPlan? m_hoverPlan;
+        private bool m_coordinatorActive;
         private bool m_disposed;
 
         internal TransportPillarSelectionTool(
@@ -103,16 +104,23 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
         internal bool IsActive { get; private set; }
         internal TransportPillarPlan? HoverPlan => m_hoverPlan;
         internal IReadOnlyList<TransportPillarPlan> AreaPlans => m_areaPlans;
+        internal bool LastAreaQueryTruncated { get; private set; }
 
-        internal void Activate(TransportPillarToolMode mode)
+        internal bool Activate(TransportPillarToolMode mode)
         {
             if (m_disposed)
             {
-                return;
+                return false;
             }
+            if (!SceneSelectionCoordinator.TryActivate(this))
+            {
+                return false;
+            }
+            m_coordinatorActive = true;
             Mode = mode;
             IsActive = true;
             ClearPreview();
+            return true;
         }
 
         internal void SetMode(TransportPillarToolMode mode)
@@ -126,8 +134,15 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
         internal void Deactivate()
         {
             IsActive = false;
+            if (m_coordinatorActive)
+            {
+                SceneSelectionCoordinator.Deactivate(this);
+                m_coordinatorActive = false;
+            }
             ClearPreview();
         }
+
+        public void CancelSelection() => Deactivate();
 
         internal TransportPillarPlan Probe(Transport transport, int supportIndex)
         {
@@ -156,9 +171,9 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
                 return Mode == TransportPillarToolMode.Remove
                     ? new TransportPillarPlan(
                         Mode,
-                        transport,
+                        transport.Id.Value,
                         supportIndex,
-                        existing,
+                        existing.Id.Value,
                         position,
                         topHeight,
                         removable,
@@ -175,7 +190,7 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
             bool canExtend = m_manager.CanExtendPillarAt(position, topHeight, out _, out _);
             return new TransportPillarPlan(
                 Mode,
-                transport,
+                transport.Id.Value,
                 supportIndex,
                 null,
                 position,
@@ -196,6 +211,7 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
         internal IReadOnlyList<TransportPillarPlan> BuildAreaPreview(SceneAreaBounds bounds)
         {
             m_areaPlans.Clear();
+            LastAreaQueryTruncated = false;
             if (!bounds.IsWithin(MaxAreaWidth, MaxAreaHeight, MaxAreaCells))
             {
                 return m_areaPlans;
@@ -204,7 +220,15 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
             var occupiedPositions = new HashSet<Tile2i>();
             if (Mode == TransportPillarToolMode.Add)
             {
-                foreach (Transport transport in m_manager.Transports)
+                IReadOnlyList<Transport> transports = SceneSelectionWorldQuery.SelectItems(
+                    m_manager.Transports,
+                    bounds,
+                    transport => transport is not null && !transport.IsDestroyed && IntersectsBounds(transport, bounds),
+                    transport => transport.Id.Value,
+                    MaxOperationsPerBatch,
+                    out bool queryTruncated);
+                LastAreaQueryTruncated = queryTruncated;
+                foreach (Transport transport in transports)
                 {
                     if (transport is null || transport.IsDestroyed)
                     {
@@ -231,7 +255,15 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
             }
             else
             {
-                foreach (KeyValuePair<Tile2i, TransportPillar> item in m_manager.Pillars)
+                IReadOnlyList<KeyValuePair<Tile2i, TransportPillar>> pillars = SceneSelectionWorldQuery.SelectItems(
+                    m_manager.Pillars,
+                    bounds,
+                    item => item.Value is not null && !item.Value.IsDestroyed && bounds.Contains(item.Key.X, item.Key.Y),
+                    item => item.Value.Id.Value,
+                    MaxOperationsPerBatch,
+                    out bool queryTruncated);
+                LastAreaQueryTruncated = queryTruncated;
+                foreach (KeyValuePair<Tile2i, TransportPillar> item in pillars)
                 {
                     if (m_areaPlans.Count >= MaxOperationsPerBatch)
                     {
@@ -252,7 +284,7 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
                             Mode,
                             null,
                             -1,
-                            item.Value,
+                            item.Value.Id.Value,
                             item.Key,
                             item.Value.TopTileHeight,
                             redundant,
@@ -302,6 +334,11 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
             }
             m_disposed = true;
             IsActive = false;
+            if (m_coordinatorActive)
+            {
+                SceneSelectionCoordinator.Deactivate(this);
+                m_coordinatorActive = false;
+            }
             ClearPreview();
         }
 
@@ -325,23 +362,25 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
                         skipped++;
                         continue;
                     }
-                    if (plan.Pillar is null || plan.Pillar.IsDestroyed || !m_manager.IsPillarRedundant(plan.Position))
+                    if (!m_manager.HasPillarAt(plan.Position, plan.TopHeight, out TransportPillar? pillar) ||
+                        pillar is null || pillar.IsDestroyed || !m_manager.IsPillarRedundant(plan.Position))
                     {
                         skipped++;
                         continue;
                     }
-                    m_scheduler.ScheduleInputCmd(new RemoveTransportPillarCmd(plan.Pillar.Id));
+                    m_scheduler.ScheduleInputCmd(new RemoveTransportPillarCmd(pillar.Id));
                     queued++;
                     continue;
                 }
 
-                if (plan.Transport is null || plan.Transport.IsDestroyed ||
-                    !TryRevalidateAdd(plan.Transport, plan.SupportIndex, plan.Position, plan.TopHeight))
+                if (!TryGetTransport(plan.TransportId, out Transport? transport) ||
+                    transport is null || transport.IsDestroyed ||
+                    !TryRevalidateAdd(transport, plan.SupportIndex, plan.Position, plan.TopHeight))
                 {
                     skipped++;
                     continue;
                 }
-                m_scheduler.ScheduleInputCmd(new AddTransportPillarCmd(plan.Transport.Id, plan.SupportIndex));
+                m_scheduler.ScheduleInputCmd(new AddTransportPillarCmd(transport.Id, plan.SupportIndex));
                 queued++;
             }
 
@@ -363,6 +402,40 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
         }
 
         private TransportPillarPlan Invalid(Transport? transport, int supportIndex, Tile2i position, string reason) =>
-            new(Mode, transport, supportIndex, null, position, default, false, reason);
+            new(Mode, transport?.Id.Value, supportIndex, null, position, default, false, reason);
+
+        private bool TryGetTransport(int? transportId, out Transport? transport)
+        {
+            if (!transportId.HasValue)
+            {
+                transport = null;
+                return false;
+            }
+
+            foreach (Transport candidate in m_manager.Transports)
+            {
+                if (candidate is not null && candidate.Id.Value == transportId.Value)
+                {
+                    transport = candidate;
+                    return true;
+                }
+            }
+
+            transport = null;
+            return false;
+        }
+
+        private static bool IntersectsBounds(Transport transport, SceneAreaBounds bounds)
+        {
+            foreach (TransportSupportInfo support in transport.Trajectory.TilesSupportInfo)
+            {
+                if (bounds.Contains(support.Position.Xy.X, support.Position.Xy.Y))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }

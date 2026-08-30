@@ -99,7 +99,11 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         internal IReadOnlyList<OverclockGroup> Groups => m_store.Groups;
         internal string SelectionStatus { get; set; } = string.Empty;
 
-        internal TajsOverclockingFeature(DependencyResolver resolver, ITajsSettings settings, ITajsRuntime runtime)
+        internal TajsOverclockingFeature(
+            DependencyResolver resolver,
+            ITajsSettings settings,
+            ITajsRuntime runtime,
+            Func<int, bool>? canSelectId = null)
         {
             m_resolver = resolver;
             m_settings = settings;
@@ -115,7 +119,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             resolver.TryResolve(out m_workers);
             resolver.TryResolve(out m_rendering);
             resolver.TryResolve(out m_metadata);
-            m_selection = new OverclockingSelectionTool(m_entities, this);
+            m_selection = new OverclockingSelectionTool(m_entities, this, canSelectId);
 
             BindingFlags privateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
             m_machineSpeedBase = typeof(Machine).GetField("m_speedFactorBase", privateInstance)
@@ -594,11 +598,32 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
-            OverclockEntityPolicy policy = m_store.GetOrCreateEntity(id.Value);
-            policy.HasManualOverride = true;
-            policy.ManualPercent = clamped;
-            policy.HasAutoOverride = true;
-            policy.Auto = false;
+            // 1.0x is the native policy, not an explicit override.  Removing the entry keeps
+            // the hot path at its zero-work default and prevents stale transport compensation
+            // or copied configuration from surviving a reset-to-vanilla operation.  Preserve
+            // explicit bounds only when they were deliberately configured for Auto mode.
+            if (clamped == DefaultPercent)
+            {
+                if (m_store.TryGetEntity(id.Value, out OverclockEntityPolicy? existing) && existing is not null)
+                {
+                    existing.HasManualOverride = false;
+                    existing.ManualPercent = DefaultPercent;
+                    existing.HasAutoOverride = false;
+                    existing.Auto = false;
+                    if (!existing.HasBoundsOverride)
+                    {
+                        m_store.RemoveEntity(id.Value);
+                    }
+                }
+            }
+            else
+            {
+                OverclockEntityPolicy policy = m_store.GetOrCreateEntity(id.Value);
+                policy.HasManualOverride = true;
+                policy.ManualPercent = clamped;
+                policy.HasAutoOverride = true;
+                policy.Auto = false;
+            }
             m_store.Save();
             message = "Entity " + id.Value + " now runs at " + clamped + "%.";
             return true;

@@ -99,8 +99,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return baseValue;
             }
 
-            double scaled = Math.Round(baseValue * (percent / 100d), MidpointRounding.AwayFromZero);
-            return scaled >= int.MaxValue ? int.MaxValue : Math.Max(0, (int)scaled);
+            double scaled = Math.Round((double)baseValue * percent / 100d, MidpointRounding.AwayFromZero);
+            return scaled >= int.MaxValue ? int.MaxValue : scaled <= 0d ? 0 : (int)scaled;
         }
 
         /// <summary>
@@ -200,17 +200,20 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             int target;
             if (increase)
             {
-                int bonus = Math.Max(0, vanilla * Math.Min(500, bonusPercent) / 100);
-                target = vanilla + bonus;
+                long bonus = Math.Max(0L, (long)vanilla * Math.Min(500, bonusPercent) / 100L);
+                long candidate = (long)vanilla + bonus;
+                target = candidate >= int.MaxValue ? int.MaxValue : (int)candidate;
             }
             else
             {
                 int boundedBonus = Math.Min(300, bonusPercent);
-                target = Math.Max(1, (vanilla * 100 + 100 + boundedBonus / 2) / (100 + boundedBonus));
+                long numerator = (long)vanilla * 100L + 100L + boundedBonus / 2L;
+                target = Math.Max(1, (int)Math.Min(int.MaxValue, numerator / (100L + boundedBonus)));
             }
 
-            int delta = target - vanilla;
-            return vanilla + (int)Math.Round(delta * amount, MidpointRounding.AwayFromZero);
+            long delta = (long)target - vanilla;
+            long result = vanilla + (long)Math.Round(delta * amount, MidpointRounding.AwayFromZero);
+            return result >= int.MaxValue ? int.MaxValue : result <= 0L ? 0 : (int)result;
         }
     }
 }

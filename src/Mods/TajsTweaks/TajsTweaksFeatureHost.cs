@@ -45,6 +45,7 @@ using TajsCOI.Tweaks.Features.EntityMetadata;
 using TajsCOI.Tweaks.Features.Fleet;
 using TajsCOI.Tweaks.Features.MapEditor;
 using TajsCOI.Tweaks.Features.InfrastructureTuning;
+using TajsCOI.Tweaks.Features.SpaceStation;
 using TajsCOI.Tweaks.Features.Overclocking;
 using TajsCOI.Tweaks.Features.Presentation;
 using TajsCOI.Tweaks.Features.ProgressionSandbox;
@@ -53,7 +54,10 @@ using TajsCOI.Tweaks.Features.Storage;
 using TajsCOI.Tweaks.Features.Sandbox;
 using TajsCOI.Tweaks.Features.Terrain;
 using TajsCOI.Tweaks.Features.Trains;
+using TajsCOI.Tweaks.Features.TransportCapacity;
+using TajsCOI.Tweaks.Features.TransportFlowLimits;
 using TajsCOI.Tweaks.Features.TransportNetwork;
+using TajsCOI.Tweaks.Features.Tuning;
 using TajsCOI.Tweaks.Features.World;
 
 namespace TajsCOI.Tweaks
@@ -74,6 +78,10 @@ namespace TajsCOI.Tweaks
         private readonly IShortcutRegistry m_shortcuts;
         private readonly ITajsLogger m_log;
         private readonly TweaksInfiniteGroundwaterFeature m_infiniteGroundwater;
+        private readonly TypedBaseValueOverrideRegistry m_baseValueOverrides;
+        private readonly InfrastructureTuningFeature m_infrastructureTuning;
+        private readonly SpaceStationTuningFeature m_spaceStationTuning;
+        private readonly TransportCapacityFeature m_transportCapacity;
         private TajsOverclockingFeature? m_overclocking;
         private TajsDifficultyFeature? m_difficulty;
         private bool m_overclockingInitializationAttempted;
@@ -107,10 +115,16 @@ namespace TajsCOI.Tweaks
             m_shortcuts = shortcuts;
             m_log = runtime.GetLogger(TajsTweaksSettingsCatalog.ModId, "FeatureHost");
             m_infiniteGroundwater = new TweaksInfiniteGroundwaterFeature(resolver, gameLoop, m_log);
+            m_baseValueOverrides = new TypedBaseValueOverrideRegistry();
+            m_infrastructureTuning = new InfrastructureTuningFeature(m_baseValueOverrides);
+            m_spaceStationTuning = new SpaceStationTuningFeature(m_baseValueOverrides);
+            m_transportCapacity = new TransportCapacityFeature(m_baseValueOverrides);
             TajsTweaksSettingsCatalog.RegisterAll(settings);
             TajsTweaksRuntimeState.Load(settings);
             RegisterConfigurationHandlers(configurationRegistry);
             RegisterShortcutMetadata(shortcuts);
+            PolygonConstraintFeature.ConfigureModifiers(shortcuts);
+            PolygonConstraintFeature.ConfigureGridSize(TajsTweaksRuntimeState.PolygonGridSize);
             TransportPillarRulesFeature.Initialize();
             settings.Changed += OnSettingChanged;
             gameLoop.RenderUpdateEnd.AddNonSaveable(this, OnRenderUpdateEnd);
@@ -131,13 +145,15 @@ namespace TajsCOI.Tweaks
             TryInstall(runtime, "StatisticsTotals", TweaksStatisticsTotalsFeature.Install);
             TryInstall(runtime, "ResourceDepositClusters", TweaksResourceDepositFeature.Install);
             TryInstallResolved(runtime, "InfiniteGroundwater", m_infiniteGroundwater.Install);
-            TryInstallResolved(runtime, "EntityMetadataInspector", InstallEntityMetadataInspector);
             TryInstall(runtime, "ShipCargoPreload", harmony => TweaksShipPreloadFeature.Install(harmony, resolver, settings));
             TryInstall(runtime, "ShipyardOutputTransport", ShipyardOutputTransportFeature.Install);
             TryInstall(runtime, "ShipUnloadPolicy", ShipUnloadPolicyFeature.Install);
             TryInstall(runtime, "TerrainDesignationPriority", TerrainDesignationPriorityFeature.Install);
             TryInstall(runtime, "LocomotiveNumbering", TrainTuningFeature.Install);
-            TryInstall(runtime, "MapEditorThirdPartyMods", MapEditorThirdPartyFeature.Install);
+            if (m_settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.MapEditorThirdPartyMods))
+            {
+                TryInstall(runtime, "MapEditorThirdPartyMods", MapEditorThirdPartyFeature.Install);
+            }
             TryInstall(runtime, "AutoWorldDelivery", harmony => TweaksAutoShipDeliveryFeature.Install(harmony, resolver));
             TryInstall(runtime, "AutoExploration", harmony => AutoExplorationFeature.Install(harmony, resolver));
             TryInstall(runtime, "BattleScoreOnMap", TweaksBattleScoreFeature.Install);
@@ -151,7 +167,17 @@ namespace TajsCOI.Tweaks
             TryInstall(runtime, "StuckTruckRecovery", TweaksStuckTruckRecoveryFeature.Install);
             TweaksStuckTruckRecoveryFeature.SetResolver(resolver);
             TryInstall(runtime, "TransportThroughput", TweaksTransportThroughputFeature.Install);
-            TryInstall(runtime, "TransportPillarRules", TransportPillarRulesFeature.Install);
+            bool pillarRulesInstalled = TryInstall(runtime, "TransportPillarRules", TransportPillarRulesFeature.Install);
+            runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    TajsTweaksSettingsCatalog.ModId,
+                    "TransportPillarRules.ExactOccupancySeam",
+                    pillarRulesInstalled ? CompatibilityState.Compatible : CompatibilityState.Disabled,
+                    "EntityLayout.GetOccupiedTilesRelative(TileTransform) / OccupiedTileRelative.Constraint",
+                    pillarRulesInstalled ? "Validated ZipperProto layouts" : "pillar seam unavailable",
+                    pillarRulesInstalled
+                        ? "When enabled, only UsingPillar is stripped for the whitelisted zipper layout; preview and final placement share the same native occupied-tile seam."
+                        : "Fail-open; native pillar occupancy and every other placement constraint remain unchanged."));
             TryInstall(runtime, "ParkingHqOffload", TweaksParkingHqOffloadFeature.Install);
             TweaksParkingHqOffloadFeature.SetResolver(resolver);
             TryInstall(runtime, "KeepFullEmptyMarkers", TweaksKeepFullEmptyMarkerFeature.Install);
@@ -194,6 +220,14 @@ namespace TajsCOI.Tweaks
                               entity.TypeId.IndexOf(".Buildings.Waste.", StringComparison.Ordinal) >= 0,
                     OverclockingPatches.ReadBlueprintValues,
                     OverclockingPatches.ApplyBlueprintValues));
+            registry.Register(
+                new ConfigurationHandlerDescriptor(
+                    "TajsTweaks.TransportFlowLimit",
+                    TajsTweaksSettingsCatalog.ModId,
+                    1,
+                    entity => entity.TypeId.EndsWith("Transport", StringComparison.Ordinal),
+                    TransportFlowLimitFeature.ReadBlueprintValues,
+                    TransportFlowLimitFeature.ApplyBlueprintValues));
         }
 
         private static void RegisterShortcutMetadata(IShortcutRegistry registry)
@@ -497,6 +531,10 @@ namespace TajsCOI.Tweaks
             {
                 TweaksTerrainGridFeature.ApplySettings();
             }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.PolygonGridSize)
+            {
+                PolygonConstraintFeature.ConfigureGridSize(TajsTweaksRuntimeState.PolygonGridSize);
+            }
             if (change.Descriptor.Key == TajsTweaksSettingsCatalog.TerrainXRay)
             {
                 TweaksTerrainXRayFeature.ApplySettings();
@@ -544,6 +582,14 @@ namespace TajsCOI.Tweaks
             {
                 TrainTuningFeature.ApplyFromSettings(m_resolver);
             }
+
+            // Crew-rotation duration is the only station field validated as live-safe. All other
+            // station prototype fields retain their reload-required descriptor semantics so a
+            // changed setting cannot rewrite cached tier data or an already-paid upgrade.
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.TuningSpaceStationCrewRotationMultiplier)
+            {
+                m_spaceStationTuning.ApplyImmediateSetting(change.Descriptor.Key);
+            }
         }
 
         private static bool IsSandboxSettlementNeedKey(string key) =>
@@ -564,11 +610,11 @@ namespace TajsCOI.Tweaks
 
         private void OnRenderUpdateEnd(GameTime _)
         {
+            EnsureWorldVisibilityFilters();
             EnsureOverclockingFeature();
             EnsureEntityMetadataSelection();
             EnsureSafeAreaCleanup();
             EnsureBulkDeconstructionCancellation();
-            EnsureWorldVisibilityFilters();
             m_overclocking?.UpdateSelectionInput();
             m_metadataSelection?.UpdateInput();
             m_safeAreaCleanup?.UpdateInput();
@@ -600,6 +646,7 @@ namespace TajsCOI.Tweaks
             TryInstallResolved(m_runtime, "TerrainGrid", () => TweaksTerrainGridFeature.Install(m_resolver, m_settings, m_log));
             TryInstallResolved(m_runtime, "TerrainXRay", () => TweaksTerrainXRayFeature.Install(m_resolver, m_settings, m_log));
             TryInstallResolved(m_runtime, "EfficiencyOverlay", () => TweaksEfficiencyOverlayFeature.Install(m_resolver));
+            TryInstallResolved(m_runtime, "EntityMetadataInspector", InstallEntityMetadataInspector);
             TryInstallResolved(m_runtime, TransportNetworkVisualizerFeature.ComponentId, InitializeTransportNetworkVisualizer);
             TryInstall(m_runtime, "SteamAndExhaustStorage", harmony => TweaksSteamStorageFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "StorageOverrides", harmony => TweaksStorageFeature.Install(harmony, m_resolver));
@@ -641,8 +688,49 @@ namespace TajsCOI.Tweaks
                     thermalSafe = false;
                     tuningHarmony.UnpatchAll(tuningHarmony.Id);
                 }
-                InfrastructureTuningFeature.ApplyFromPrototypes(protosDb, thermalSafe);
+                m_infrastructureTuning.ApplyFromPrototypes(protosDb, thermalSafe);
                 ReportInfrastructureTuningCompatibility();
+            });
+            TryInstallResolved(m_runtime, "SpaceStationTuning", () =>
+            {
+                if (!m_resolver.TryResolve(out ProtosDb protosDb))
+                {
+                    throw new InvalidOperationException("ProtosDb is unavailable for space-station tuning.");
+                }
+
+                m_spaceStationTuning.ApplyFromPrototypes(protosDb);
+                ReportSpaceStationTuningCompatibility();
+            });
+            TryInstallResolved(m_runtime, "TransportCapacity", () =>
+            {
+                if (!m_resolver.TryResolve(out ProtosDb protosDb))
+                {
+                    throw new InvalidOperationException("ProtosDb is unavailable for transport capacity tuning.");
+                }
+
+                m_transportCapacity.ApplyFromPrototypes(protosDb);
+                ReportTransportCapacityCompatibility();
+            });
+            TryInstallResolved(m_runtime, "TransportFlowLimits", () =>
+            {
+                var flowHarmony = new Harmony(TransportFlowLimitFeature.HarmonyId);
+                TransportFlowLimitFeature.Install(flowHarmony, m_resolver);
+                m_runtime.ReportCompatibility(new CompatibilityReport(
+                    TajsTweaksSettingsCatalog.ModId,
+                    "TransportFlowLimits",
+                    CompatibilityState.Compatible,
+                    "Transport explicit IEntityWithPorts.ReceiveAsMuchAsFromPort(ProductQuantity, IoPortToken)",
+                    TransportFlowLimitFeature.ConfigKey,
+                    "Existing ordinary transports only; source/sink sandbox content remains excluded. Limits use simulation time and preserve native backpressure."));
+                m_runtime.ReportCompatibility(new CompatibilityReport(
+                    TajsTweaksSettingsCatalog.ModId,
+                    "TransportFlowLimitInspector",
+                    TransportFlowLimitInspectorPatch.IsInstalled ? CompatibilityState.Compatible : CompatibilityState.Degraded,
+                    "Native TransportInspector",
+                    TransportFlowLimitInspectorPatch.IsInstalled ? "#163 value editor" : "inspector seam unavailable",
+                    TransportFlowLimitInspectorPatch.IsInstalled
+                        ? "Live edits queue a serializable EntityId/value command; native transfer remains authoritative."
+                        : "Flow limits remain available through the copy/configuration and command seams."));
             });
             TryInstall(m_runtime, "SandboxAlwaysAllowBulldoze", BulldozeOverrideFeature.Install);
             m_runtime.ReportCompatibility(new CompatibilityReport(
@@ -741,9 +829,70 @@ namespace TajsCOI.Tweaks
                 InfrastructureTuningFeature.ThermalPatchAvailable);
         }
 
+        private void ReportSpaceStationTuningCompatibility()
+        {
+            foreach (SpaceStationTuningDescriptor descriptor in SpaceStationTuningFeature.Descriptors)
+            {
+                bool available = m_spaceStationTuning.IsAvailable(descriptor.Key);
+                string lifecycle = descriptor.Lifecycle switch
+                {
+                    SpaceStationFieldLifecycle.LiveFutureTick => "Live/future tick",
+                    SpaceStationFieldLifecycle.FutureUpgradeOnly => "Future station/upgrade calculations",
+                    _ => "Save/game reload required",
+                };
+                m_runtime.ReportCompatibility(new CompatibilityReport(
+                    TajsTweaksSettingsCatalog.ModId,
+                    "SpaceStationTuning." + descriptor.MemberName,
+                    available ? CompatibilityState.Compatible : CompatibilityState.Disabled,
+                    "SpaceStationProto." + descriptor.MemberName,
+                    available ? descriptor.Key : "member unavailable",
+                    available
+                        ? lifecycle + "; base captured once; reset restores exact base."
+                        : "Fail-open; this station property remains vanilla while other station properties continue independently."));
+            }
+        }
+
+        private void ReportTransportCapacityCompatibility()
+        {
+            ReportTransportCapacity(
+                "TruckCapacity",
+                TransportCapacityFeature.TruckCapacityKey,
+                "TruckProto.CapacityBase");
+            ReportTransportCapacity(
+                "ExcavatorCapacity",
+                TransportCapacityFeature.ExcavatorCapacityKey,
+                "ExcavatorProto.Capacity");
+            ReportTransportCapacity(
+                "TrainWagonCapacity",
+                TransportCapacityFeature.TrainWagonCapacityKey,
+                "CargoWagonProto.m_baseCapacity/Capacity/SubCarCapacity");
+            ReportTransportCapacity(
+                "CargoShipCapacity",
+                TransportCapacityFeature.CargoShipCapacityKey,
+                "CargoShipProto.CapacityMultiplier");
+            ReportTransportCapacity(
+                "CargoDepotCapacity",
+                TransportCapacityFeature.CargoDepotCapacityKey,
+                "CargoDepotModuleProto.Capacity");
+        }
+
+        private void ReportTransportCapacity(string id, string key, string target)
+        {
+            bool available = m_transportCapacity.IsAvailable(key);
+            m_runtime.ReportCompatibility(new CompatibilityReport(
+                TajsTweaksSettingsCatalog.ModId,
+                "TransportCapacity." + id,
+                available ? CompatibilityState.Compatible : CompatibilityState.Disabled,
+                target,
+                available ? key : "member unavailable",
+                available
+                    ? "Reload required; each prototype variant derives from its immutable native base and existing cargo is never truncated."
+                    : "Fail-open; this transport family's native capacity remains unchanged."));
+        }
+
         private void ReportTuning(string id, string key, string target, string details, bool seamAvailable = true)
         {
-            bool available = seamAvailable && InfrastructureTuningFeature.IsAvailable(key);
+            bool available = seamAvailable && m_infrastructureTuning.IsAvailable(key);
             m_runtime.ReportCompatibility(new CompatibilityReport(
                 TajsTweaksSettingsCatalog.ModId,
                 "InfrastructureTuning." + id,
@@ -789,8 +938,8 @@ namespace TajsCOI.Tweaks
                 "Native construction-cost multiplier; live changes affect future calculations.");
             ReportSandboxToggle("sandbox_design_mode", m_designMode is not null ? CompatibilityState.Compatible : CompatibilityState.Disabled, "IConstructionManager.EntityConstructionStateChanged", "Manager-backed post-command finalization; no saveable callback.");
             ReportSandboxToggle("sandbox_instant_cargo_ship", CompatibilityState.Disabled, "CargoShip turnaround prototype duration", "Fail-open; duration is cached and no safe command/runtime setter was validated.");
-            bool oreSortingAvailable = InfrastructureTuningFeature.IsAvailable(InfrastructureTuningFeature.OreSorterInputBufferKey) &&
-                                        InfrastructureTuningFeature.IsAvailable(InfrastructureTuningFeature.OreSorterThroughputKey);
+            bool oreSortingAvailable = m_infrastructureTuning.IsAvailable(InfrastructureTuningFeature.OreSorterInputBufferKey) &&
+                                        m_infrastructureTuning.IsAvailable(InfrastructureTuningFeature.OreSorterThroughputKey);
             ReportSandboxToggle("sandbox_fast_ore_sorting", oreSortingAvailable ? CompatibilityState.Compatible : CompatibilityState.Disabled, "OreSortingPlantProto buffers + QuantityPerDuration", "Reload-scoped coherent prototype adapter; cached plants are not rewritten mid-job.");
             bool storageClearAvailable = StorageEmptyPolicy.IsNativeClearAvailable();
             ReportSandboxToggle("sandbox_instant_storage_empty", storageClearAvailable ? CompatibilityState.Compatible : CompatibilityState.Disabled, "Storage.Cheat_ForceClear native command seam", storageClearAvailable ? "Explicit CONFIRM command only; native storage cleanup remains authoritative." : "Fail-open; the native destructive clear seam is unavailable.");
@@ -861,7 +1010,7 @@ namespace TajsCOI.Tweaks
             m_overclockingInitializationAttempted = true;
             try
             {
-                var feature = new TajsOverclockingFeature(m_resolver, m_settings, m_runtime);
+                var feature = new TajsOverclockingFeature(m_resolver, m_settings, m_runtime, CanSelectEntity);
                 if (TryInstall(m_runtime, "Overclocking", feature.Install))
                 {
                     m_overclocking = feature;
@@ -896,7 +1045,7 @@ namespace TajsCOI.Tweaks
                 {
                     throw new InvalidOperationException("The current scene has no entity manager or Core metadata service.");
                 }
-                m_metadataSelection = new EntityMetadataSelectionTool(entities, metadata);
+                m_metadataSelection = new EntityMetadataSelectionTool(entities, metadata, CanSelectEntity);
             }
             catch (Exception exception)
             {
@@ -930,7 +1079,7 @@ namespace TajsCOI.Tweaks
                         "The current scene has no entity manager, input scheduler, or products manager.");
                 }
 
-                m_safeAreaCleanup = new SafeAreaCleanupFeature(entities, scheduler, products);
+                m_safeAreaCleanup = new SafeAreaCleanupFeature(entities, scheduler, products, CanSelectEntity);
                 m_runtime.ReportCompatibility(
                     new CompatibilityReport(
                         TajsTweaksSettingsCatalog.ModId,
@@ -971,7 +1120,11 @@ namespace TajsCOI.Tweaks
                 }
 
                 m_resolver.TryResolve(out Mafi.Unity.Entities.EntitiesRenderingManager? rendering);
-                m_bulkDeconstructionCancellation = new BulkDeconstructionCancellationFeature(entities, scheduler, rendering);
+                m_bulkDeconstructionCancellation = new BulkDeconstructionCancellationFeature(
+                    entities,
+                    scheduler,
+                    rendering,
+                    CanSelectEntity);
                 m_runtime.ReportCompatibility(
                     new CompatibilityReport(
                         TajsTweaksSettingsCatalog.ModId,
@@ -1066,6 +1219,9 @@ namespace TajsCOI.Tweaks
                 m_worldVisibilityFilters.Indicator.IsVisible);
         }
 
+        private bool CanSelectEntity(int entityId) =>
+            m_worldVisibilityFilters?.Index.CanSelect(entityId) ?? true;
+
         private void ApplyDesignModeHudIndicator()
         {
             if (m_designMode is null || !m_resolver.TryResolve(out HudController? hud) || hud is null)
@@ -1119,7 +1275,11 @@ namespace TajsCOI.Tweaks
             m_transportNetworkVisualizer?.Dispose();
             m_transportNetworkVisualizer = null;
             m_difficulty?.Dispose();
-            InfrastructureTuningFeature.Reset();
+            m_infrastructureTuning.Dispose();
+            m_spaceStationTuning.Dispose();
+            m_transportCapacity.Dispose();
+            m_baseValueOverrides.Dispose();
+            TransportFlowLimitFeature.Reset();
             DiseaseScalingFeature.Reset();
             TweaksResourceDepositFeature.Dispose();
             TweaksStackerDesignationFeature.Dispose();
@@ -1848,8 +2008,9 @@ namespace TajsCOI.Tweaks
             {
                 case "activate":
                 case "start":
-                    m_transportNetworkVisualizer.Activate();
-                    return "Transport network visualizer active. Click a transport, connector, or endpoint; Escape/right-click exits.";
+                    return m_transportNetworkVisualizer.TryActivate()
+                        ? "Transport network visualizer active. Click a transport, connector, or endpoint; Escape/right-click exits."
+                        : "Transport network visualizer could not activate because another selection tool is already active.";
                 case "clear":
                     m_transportNetworkVisualizer.ClearSelection();
                     return "Transport network highlights cleared.";

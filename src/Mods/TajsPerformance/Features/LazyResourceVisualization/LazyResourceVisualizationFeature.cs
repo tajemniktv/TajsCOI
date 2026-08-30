@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using HarmonyLib;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
@@ -30,6 +31,7 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
         private static MethodInfo? s_initState;
         private static MethodInfo? s_forceSetActive;
         private static FieldInfo? s_rendererField;
+        private static int s_deferralDisabled;
 
         public string Id => "LazyResourceVisualization";
         public string ConfigKey => LazyResourceVisualizationSettings.EnableConfigKey;
@@ -164,6 +166,14 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
 
         private static bool SkipInitialBuild(object __instance)
         {
+            // If the renderer field/bookkeeping seam fails during first activation, permit the
+            // original init method through for every subsequent call. A process-wide fail-open
+            // switch is safer than allowing a single uninitialized overlay to remain hidden.
+            if (Volatile.Read(ref s_deferralDisabled) != 0)
+            {
+                return true;
+            }
+
             LazyState? state = null;
             try
             {
@@ -208,6 +218,7 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                     : __instance;
                 if (renderer is null)
                 {
+                    Interlocked.Exchange(ref s_deferralDisabled, 1);
                     return;
                 }
 
@@ -215,7 +226,10 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
             }
             catch
             {
-                // A reflection/state failure must not break the vanilla overlay activation.
+                // A reflection/state failure must not break the vanilla overlay activation. Let
+                // the original initState through before returning so the first activation still
+                // gets the native renderer build even when the private field changed shape.
+                Interlocked.Exchange(ref s_deferralDisabled, 1);
             }
         }
 
@@ -231,9 +245,10 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
 
         private static void EnsureInitializedRenderer(object renderer)
         {
+            LazyState? state = null;
             try
             {
-                LazyState state = s_states.GetValue(renderer, _ => new LazyState());
+                state = s_states.GetValue(renderer, _ => new LazyState());
                 if (!state.InitializationDeferred || state.Initialized || state.InitializationInProgress)
                 {
                     return;
@@ -251,17 +266,7 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                     // If deferred initialization fails, immediately replay the exact original
                     // init path. The one-shot flag lets its prefix pass through instead of
                     // deferring the fallback a second time.
-                    state.Initialized = false;
-                    state.InitializationDeferred = false;
-                    state.EagerFallbackRequested = true;
-                    try
-                    {
-                        s_initState!.Invoke(renderer, null);
-                    }
-                    catch
-                    {
-                        state.EagerFallbackRequested = false;
-                    }
+                    InvokeVanillaInitialization(renderer, state);
                 }
                 finally
                 {
@@ -270,7 +275,38 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
             }
             catch
             {
-                // A reflection/state failure must not break the vanilla overlay activation.
+                // If our bookkeeping/reflection path fails, replay the exact vanilla init path
+                // rather than allowing first activation to continue with an uninitialized
+                // renderer. This remains fail-open if the private target itself is unavailable.
+                Interlocked.Exchange(ref s_deferralDisabled, 1);
+                InvokeVanillaInitialization(renderer, state);
+            }
+        }
+
+        private static void InvokeVanillaInitialization(object renderer, LazyState? state)
+        {
+            if (s_initState is null)
+            {
+                return;
+            }
+
+            if (state is not null)
+            {
+                state.Initialized = false;
+                state.InitializationDeferred = false;
+                state.EagerFallbackRequested = true;
+            }
+
+            try
+            {
+                s_initState.Invoke(renderer, null);
+            }
+            catch
+            {
+                if (state is not null)
+                {
+                    state.EagerFallbackRequested = false;
+                }
             }
         }
 

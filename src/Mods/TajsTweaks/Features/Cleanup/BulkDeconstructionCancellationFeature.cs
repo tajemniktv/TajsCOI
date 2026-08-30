@@ -34,7 +34,7 @@ namespace TajsCOI.Tweaks.Features.Cleanup
         private readonly EntityRectangleSelectionTool m_selection;
         private readonly List<BulkDeconstructionSelectionEntry> m_pending = new();
         private readonly Queue<int> m_queued = new();
-        private readonly Dictionary<int, ulong> m_highlights = new();
+        private readonly PooledHighlightUtility<int, HighlightLease>? m_highlightPool;
         private bool m_truncated;
         private int m_lastStaleCount;
         private bool m_disposed;
@@ -42,18 +42,49 @@ namespace TajsCOI.Tweaks.Features.Cleanup
         internal BulkDeconstructionCancellationFeature(
             IEntitiesManager entities,
             IInputScheduler scheduler,
-            EntitiesRenderingManager? rendering = null)
+            EntitiesRenderingManager? rendering = null,
+            Func<int, bool>? canSelectId = null)
         {
             m_entities = entities ?? throw new ArgumentNullException(nameof(entities));
             m_scheduler = scheduler ?? throw new ArgumentNullException(nameof(scheduler));
             m_rendering = rendering;
+            m_highlightPool = m_rendering is null
+                ? null
+                : new PooledHighlightUtility<int, HighlightLease>(
+                    () => new HighlightLease(),
+                    (lease, id) =>
+                    {
+                        if (!m_entities.TryGetEntity<IStaticEntity>(new CoreEntityId(id), out IStaticEntity? entity) ||
+                            entity is null || !BulkDeconstructionCancellationPolicy.IsDeconstructing(entity) ||
+                            entity is not IRenderedEntity rendered)
+                        {
+                            throw new InvalidOperationException("The deconstruction highlight entity is unavailable.");
+                        }
+
+                        lease.Handle = m_rendering.AddHighlight(rendered, s_highlightColor);
+                        if (lease.Handle == 0)
+                        {
+                            throw new InvalidOperationException("The renderer returned an empty highlight handle.");
+                        }
+                    },
+                    lease =>
+                    {
+                        if (lease.Handle != 0)
+                        {
+                            m_rendering.RemoveHighlight(lease.Handle);
+                            lease.Handle = 0;
+                        }
+                    });
             m_selection = new EntityRectangleSelectionTool(
                 EnumerateCandidates,
                 BulkDeconstructionCancellationPolicy.IsDeconstructing,
                 OnSelectionCompleted,
                 UpdatePreviewHighlights,
                 IsInSelectionGeometry,
-                BulkDeconstructionCancellationLimits.MaxSelectedEntities);
+                BulkDeconstructionCancellationLimits.MaxSelectedEntities,
+                OnSelectionCancelled,
+                IsInTileBounds,
+                canSelectId);
         }
 
         internal bool IsActive => m_selection.IsActive;
@@ -94,6 +125,16 @@ namespace TajsCOI.Tweaks.Features.Cleanup
             ClearHighlights();
         }
 
+        private void OnSelectionCancelled()
+        {
+            // Mouse Escape/right-click also cancels the reviewed post-drag preview. The shared
+            // picker owns the transient drag state; this owner releases the pending value-only
+            // plan and its renderer handles.
+            m_pending.Clear();
+            m_truncated = false;
+            ClearHighlights();
+        }
+
         internal string BuildAreaPreview(SceneAreaBounds bounds)
         {
             ThrowIfDisposed();
@@ -102,10 +143,11 @@ namespace TajsCOI.Tweaks.Features.Cleanup
                 return "Area rejected: bounds must be ordered and no larger than 256x256 tiles.";
             }
 
-            m_selection.Deactivate();
-            IEnumerable<IStaticEntity> matches = EnumerateCandidates()
-                .Where(entity => IsInTileBounds(entity, bounds));
-            OnSelectionCompleted(matches.ToArray());
+            // The shared scene selector owns bounded candidate capture, stable IDs, and the
+            // temporary coordinator session for world-area callers as well as screen drags.
+            IStaticEntity[] matches = m_selection.SelectWorldRectangle(bounds).ToArray();
+            OnSelectionCompleted(matches);
+            m_truncated |= m_selection.LastCandidateSnapshotTruncated;
             return Status();
         }
 
@@ -164,6 +206,7 @@ namespace TajsCOI.Tweaks.Features.Cleanup
             }
             Deactivate();
             m_queued.Clear();
+            m_highlightPool?.Dispose();
             m_disposed = true;
         }
 
@@ -208,39 +251,21 @@ namespace TajsCOI.Tweaks.Features.Cleanup
             }
 
             var requested = new HashSet<int>(
-                matches.Where(BulkDeconstructionCancellationPolicy.IsDeconstructing)
+                matches.Where(entity => BulkDeconstructionCancellationPolicy.IsDeconstructing(entity) &&
+                                        entity is IRenderedEntity)
                     .Select(entity => entity.Id.Value));
-            foreach (int id in m_highlights.Keys.ToArray())
-            {
-                if (!requested.Contains(id))
-                {
-                    RemoveHighlight(id);
-                }
-            }
-
-            if (m_rendering is null)
+            if (m_highlightPool is null)
             {
                 return;
             }
-            foreach (IStaticEntity entity in matches)
+            try
             {
-                if (!BulkDeconstructionCancellationPolicy.IsDeconstructing(entity) ||
-                    m_highlights.ContainsKey(entity.Id.Value))
-                {
-                    continue;
-                }
-                try
-                {
-                    ulong handle = m_rendering.AddHighlight((IRenderedEntity)entity, s_highlightColor);
-                    if (handle != 0)
-                    {
-                        m_highlights[entity.Id.Value] = handle;
-                    }
-                }
-                catch
-                {
-                    // Preview highlighting is optional and must never affect selection.
-                }
+                m_highlightPool.Set(requested);
+            }
+            catch
+            {
+                // Preview highlighting is optional and must never affect selection.
+                m_highlightPool.Clear();
             }
         }
 
@@ -282,27 +307,12 @@ namespace TajsCOI.Tweaks.Features.Cleanup
 
         private void ClearHighlights()
         {
-            foreach (int id in m_highlights.Keys.ToArray())
-            {
-                RemoveHighlight(id);
-            }
-            m_highlights.Clear();
+            m_highlightPool?.Clear();
         }
 
-        private void RemoveHighlight(int id)
+        private sealed class HighlightLease
         {
-            if (!m_highlights.TryGetValue(id, out ulong handle))
-            {
-                return;
-            }
-            m_highlights.Remove(id);
-            try
-            {
-                m_rendering?.RemoveHighlight(handle);
-            }
-            catch
-            {
-            }
+            internal ulong Handle;
         }
 
         private static bool IsInSelectionGeometry(
