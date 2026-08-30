@@ -165,6 +165,40 @@ namespace TajsCOI.Tweaks
         internal static int OverclockAutoLowFill;
         internal static int OverclockAutoNeutralFill;
         internal static int OverclockAutoHighFill;
+        internal static bool SandboxDisableDiseaseEffects;
+        internal static bool SandboxInfiniteFocus;
+        internal static double SandboxFocusMultiplier = 1d;
+        internal static bool SandboxDisableAirPollutionEffects;
+        internal static bool SandboxDisableAirPollutionProduction;
+        internal static bool SandboxDisableWaterPollutionEffects;
+        internal static bool SandboxDisableWaterPollutionProduction;
+        internal static bool SandboxDisableShipPollution;
+        internal static bool SandboxDisableVehiclePollution;
+        internal static bool SandboxDisableTrainPollution;
+        internal static bool SandboxDisableFoodNeed;
+        internal static bool SandboxDisableSettlementNeeds;
+        internal static bool SandboxDisableSolidWaste;
+        internal static bool SandboxDisableBiowaste;
+        internal static bool SandboxDisableElectricityNeed;
+        internal static bool SandboxDisableCleanWaterNeed;
+        internal static bool SandboxDisableWastewater;
+        internal static bool SandboxDisableComputingNeed;
+        internal static bool SandboxInstantCargoShip;
+        internal static bool SandboxDesignMode;
+        internal static bool SandboxFreeResearch;
+        internal static bool SandboxNoConstructionCosts;
+        internal static bool SandboxFastOreSorting;
+        internal static bool SandboxInstantStorageEmpty;
+        internal static bool SandboxAlwaysAllowBulldoze;
+        internal static string SandboxBulldozeWhitelist = string.Empty;
+        internal static double TuningShipyardCargoMultiplier = 1d;
+        internal static double TuningTruckLoadDurationMultiplier = 1d;
+        internal static double TuningOreSorterBufferMultiplier = 1d;
+        internal static double TuningOreSorterThroughputMultiplier = 1d;
+        internal static double TuningShaftThroughputMultiplier = 1d;
+        internal static double TuningThermalStorageCapacityMultiplier = 1d;
+        internal static string DiseaseScalingPolicy = "vanilla";
+        internal static string DiseaseScalingCustomFractions = string.Empty;
 
         internal static void Load(ITajsSettings settings)
         {
@@ -337,6 +371,40 @@ namespace TajsCOI.Tweaks
             OverclockAutoLowFill = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockAutoLowFill);
             OverclockAutoNeutralFill = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockAutoNeutralFill);
             OverclockAutoHighFill = settings.Get<int>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.OverclockAutoHighFill);
+            SandboxDisableDiseaseEffects = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableDiseaseEffects);
+            SandboxInfiniteFocus = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxInfiniteFocus);
+            SandboxFocusMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxFocusMultiplier);
+            SandboxDisableAirPollutionEffects = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableAirPollutionEffects);
+            SandboxDisableAirPollutionProduction = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableAirPollutionProduction);
+            SandboxDisableWaterPollutionEffects = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableWaterPollutionEffects);
+            SandboxDisableWaterPollutionProduction = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableWaterPollutionProduction);
+            SandboxDisableShipPollution = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableShipPollution);
+            SandboxDisableVehiclePollution = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableVehiclePollution);
+            SandboxDisableTrainPollution = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableTrainPollution);
+            SandboxDisableFoodNeed = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableFoodNeed);
+            SandboxDisableSettlementNeeds = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableSettlementNeeds);
+            SandboxDisableSolidWaste = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableSolidWaste);
+            SandboxDisableBiowaste = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableBiowaste);
+            SandboxDisableElectricityNeed = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableElectricityNeed);
+            SandboxDisableCleanWaterNeed = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableCleanWaterNeed);
+            SandboxDisableWastewater = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableWastewater);
+            SandboxDisableComputingNeed = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDisableComputingNeed);
+            SandboxInstantCargoShip = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxInstantCargoShip);
+            SandboxDesignMode = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxDesignMode);
+            SandboxFreeResearch = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxFreeResearch);
+            SandboxNoConstructionCosts = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxNoConstructionCosts);
+            SandboxFastOreSorting = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxFastOreSorting);
+            SandboxInstantStorageEmpty = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxInstantStorageEmpty);
+            SandboxAlwaysAllowBulldoze = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxAlwaysAllowBulldoze);
+            SandboxBulldozeWhitelist = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.SandboxBulldozeWhitelist);
+            TuningShipyardCargoMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningShipyardCargoMultiplier);
+            TuningTruckLoadDurationMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningTruckLoadDurationMultiplier);
+            TuningOreSorterBufferMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningOreSorterBufferMultiplier);
+            TuningOreSorterThroughputMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningOreSorterThroughputMultiplier);
+            TuningShaftThroughputMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningShaftThroughputMultiplier);
+            TuningThermalStorageCapacityMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TuningThermalStorageCapacityMultiplier);
+            DiseaseScalingPolicy = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.DiseaseScalingPolicy);
+            DiseaseScalingCustomFractions = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.DiseaseScalingCustomFractions);
             s_mutedNotificationData = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.MutedNotifications);
             RebuildParsedValues();
         }
@@ -502,6 +570,30 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.TerrainXRay: TerrainXRay = value; break;
                 case TajsTweaksSettingsCatalog.Overclocking: Overclocking = value; break;
                 case TajsTweaksSettingsCatalog.OverclockTransportCapacityCompensation: OverclockTransportCapacityCompensation = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableDiseaseEffects: SandboxDisableDiseaseEffects = value; break;
+                case TajsTweaksSettingsCatalog.SandboxInfiniteFocus: SandboxInfiniteFocus = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableAirPollutionEffects: SandboxDisableAirPollutionEffects = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableAirPollutionProduction: SandboxDisableAirPollutionProduction = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableWaterPollutionEffects: SandboxDisableWaterPollutionEffects = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableWaterPollutionProduction: SandboxDisableWaterPollutionProduction = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableShipPollution: SandboxDisableShipPollution = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableVehiclePollution: SandboxDisableVehiclePollution = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableTrainPollution: SandboxDisableTrainPollution = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableFoodNeed: SandboxDisableFoodNeed = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableSettlementNeeds: SandboxDisableSettlementNeeds = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableSolidWaste: SandboxDisableSolidWaste = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableBiowaste: SandboxDisableBiowaste = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableElectricityNeed: SandboxDisableElectricityNeed = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableCleanWaterNeed: SandboxDisableCleanWaterNeed = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableWastewater: SandboxDisableWastewater = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDisableComputingNeed: SandboxDisableComputingNeed = value; break;
+                case TajsTweaksSettingsCatalog.SandboxInstantCargoShip: SandboxInstantCargoShip = value; break;
+                case TajsTweaksSettingsCatalog.SandboxDesignMode: SandboxDesignMode = value; break;
+                case TajsTweaksSettingsCatalog.SandboxFreeResearch: SandboxFreeResearch = value; break;
+                case TajsTweaksSettingsCatalog.SandboxNoConstructionCosts: SandboxNoConstructionCosts = value; break;
+                case TajsTweaksSettingsCatalog.SandboxFastOreSorting: SandboxFastOreSorting = value; break;
+                case TajsTweaksSettingsCatalog.SandboxInstantStorageEmpty: SandboxInstantStorageEmpty = value; break;
+                case TajsTweaksSettingsCatalog.SandboxAlwaysAllowBulldoze: SandboxAlwaysAllowBulldoze = value; break;
             }
         }
 
@@ -623,6 +715,34 @@ namespace TajsCOI.Tweaks
             {
                 GroundwaterRegenerationPercent = value;
             }
+            if (key == TajsTweaksSettingsCatalog.SandboxFocusMultiplier)
+            {
+                SandboxFocusMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningShipyardCargoMultiplier)
+            {
+                TuningShipyardCargoMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningTruckLoadDurationMultiplier)
+            {
+                TuningTruckLoadDurationMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningOreSorterBufferMultiplier)
+            {
+                TuningOreSorterBufferMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningOreSorterThroughputMultiplier)
+            {
+                TuningOreSorterThroughputMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningShaftThroughputMultiplier)
+            {
+                TuningShaftThroughputMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TuningThermalStorageCapacityMultiplier)
+            {
+                TuningThermalStorageCapacityMultiplier = value;
+            }
         }
 
         private static void SetText(string key, string value)
@@ -669,6 +789,9 @@ namespace TajsCOI.Tweaks
                     s_mutedNotificationData = value;
                     RebuildParsedValues();
                     break;
+                case TajsTweaksSettingsCatalog.DiseaseScalingPolicy: DiseaseScalingPolicy = value; break;
+                case TajsTweaksSettingsCatalog.SandboxBulldozeWhitelist: SandboxBulldozeWhitelist = value; break;
+                case TajsTweaksSettingsCatalog.DiseaseScalingCustomFractions: DiseaseScalingCustomFractions = value; break;
             }
         }
 

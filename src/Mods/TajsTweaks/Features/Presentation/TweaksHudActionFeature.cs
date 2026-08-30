@@ -95,6 +95,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
             internal UiLabel? Clock;
             internal IVisualElementScheduledItem? ClockSchedule;
             internal UiLabel? VisibilityIndicator;
+            internal UiLabel? DesignModeIndicator;
             internal string StructureFingerprint = string.Empty;
             internal string PolicyFingerprint = string.Empty;
             internal bool Enabled;
@@ -160,6 +161,11 @@ namespace TajsCOI.Tweaks.Features.Presentation
                     state.VisibilityIndicator.RemoveFromHierarchy();
                     state.VisibilityIndicator = null;
                 }
+                if (state.DesignModeIndicator is not null)
+                {
+                    state.DesignModeIndicator.RemoveFromHierarchy();
+                    state.DesignModeIndicator = null;
+                }
 
                 state.Enabled = false;
                 state.StructureFingerprint = string.Empty;
@@ -181,6 +187,8 @@ namespace TajsCOI.Tweaks.Features.Presentation
                     state.ClockSchedule = null;
                     state.VisibilityIndicator?.RemoveFromHierarchy();
                     state.VisibilityIndicator = null;
+                    state.DesignModeIndicator?.RemoveFromHierarchy();
+                    state.DesignModeIndicator = null;
                 }
             }
 
@@ -216,6 +224,33 @@ namespace TajsCOI.Tweaks.Features.Presentation
             else
             {
                 state.VisibilityIndicator.Hide();
+            }
+        }
+
+        internal static void ApplyDesignModeIndicator(HudController hud, string text, bool visible)
+        {
+            UiComponent? statusRoot = GetRoots(hud).FirstOrDefault(root => root is StatusBarHud);
+            if (statusRoot is null)
+            {
+                return;
+            }
+
+            RootState state = EnsureState(statusRoot);
+            if (state.DesignModeIndicator is null)
+            {
+                state.DesignModeIndicator = new UiLabel(string.Empty.AsLoc()).FontSize(11);
+                state.DesignModeIndicator.RootElement.pickingMode = PickingMode.Ignore;
+                statusRoot.Add(state.DesignModeIndicator);
+            }
+
+            state.DesignModeIndicator.Value((text ?? string.Empty).AsLoc());
+            if (visible)
+            {
+                state.DesignModeIndicator.Show();
+            }
+            else
+            {
+                state.DesignModeIndicator.Hide();
             }
         }
 

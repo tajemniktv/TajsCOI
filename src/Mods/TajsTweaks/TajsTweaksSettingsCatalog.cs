@@ -176,6 +176,45 @@ namespace TajsCOI.Tweaks
         internal const string OverclockAutoNeutralFill = "overclock_auto_neutral_fill_percent";
         internal const string OverclockAutoHighFill = "overclock_auto_high_fill_percent";
 
+        // Wave 7 sandbox controls. Every switch is opt-in and defaults to vanilla behavior.
+        internal const string SandboxDisableDiseaseEffects = "sandbox_disable_disease_effects";
+        internal const string SandboxInfiniteFocus = "sandbox_infinite_focus";
+        internal const string SandboxFocusMultiplier = "sandbox_focus_multiplier";
+        internal const string SandboxDisableAirPollutionEffects = "sandbox_disable_air_pollution_effects";
+        internal const string SandboxDisableAirPollutionProduction = "sandbox_disable_air_pollution_production";
+        internal const string SandboxDisableWaterPollutionEffects = "sandbox_disable_water_pollution_effects";
+        internal const string SandboxDisableWaterPollutionProduction = "sandbox_disable_water_pollution_production";
+        internal const string SandboxDisableShipPollution = "sandbox_disable_ship_pollution";
+        internal const string SandboxDisableVehiclePollution = "sandbox_disable_vehicle_pollution";
+        internal const string SandboxDisableTrainPollution = "sandbox_disable_train_pollution";
+        internal const string SandboxDisableFoodNeed = "sandbox_disable_food_need";
+        internal const string SandboxDisableSettlementNeeds = "sandbox_disable_settlement_needs";
+        internal const string SandboxDisableSolidWaste = "sandbox_disable_solid_waste";
+        internal const string SandboxDisableBiowaste = "sandbox_disable_biowaste";
+        internal const string SandboxDisableElectricityNeed = "sandbox_disable_electricity_need";
+        internal const string SandboxDisableCleanWaterNeed = "sandbox_disable_clean_water_need";
+        internal const string SandboxDisableWastewater = "sandbox_disable_wastewater";
+        internal const string SandboxDisableComputingNeed = "sandbox_disable_computing_need";
+
+        internal const string SandboxInstantCargoShip = "sandbox_instant_cargo_ship";
+        internal const string SandboxDesignMode = "sandbox_design_mode";
+        internal const string SandboxFreeResearch = "sandbox_free_research";
+        internal const string SandboxNoConstructionCosts = "sandbox_no_construction_costs";
+        internal const string SandboxFastOreSorting = "sandbox_fast_ore_sorting";
+        internal const string SandboxInstantStorageEmpty = "sandbox_instant_storage_empty";
+        internal const string SandboxAlwaysAllowBulldoze = "sandbox_always_allow_bulldoze";
+        internal const string SandboxBulldozeWhitelist = "sandbox_bulldoze_whitelist";
+
+        internal const string TuningShipyardCargoMultiplier = "tuning_shipyard_cargo_multiplier";
+        internal const string TuningTruckLoadDurationMultiplier = "tuning_truck_load_duration_multiplier";
+        internal const string TuningOreSorterBufferMultiplier = "tuning_ore_sorter_buffer_multiplier";
+        internal const string TuningOreSorterThroughputMultiplier = "tuning_ore_sorter_throughput_multiplier";
+        internal const string TuningShaftThroughputMultiplier = "tuning_shaft_throughput_multiplier";
+        internal const string TuningThermalStorageCapacityMultiplier = "tuning_thermal_storage_capacity_multiplier";
+
+        internal const string DiseaseScalingPolicy = "disease_scaling_policy";
+        internal const string DiseaseScalingCustomFractions = "disease_scaling_custom_fractions";
+
         private static readonly IReadOnlyList<SettingChoice> s_modes = new[]
         {
             new SettingChoice("vanilla", "Vanilla"),
@@ -255,6 +294,13 @@ namespace TajsCOI.Tweaks
         private static readonly IReadOnlyList<SettingChoice> s_efficiencyOverlayModes = new[]
         {
             new SettingChoice("percentage", "Percentage"), new SettingChoice("status", "Status"), new SettingChoice("compact", "Compact marker"),
+        };
+
+        private static readonly IReadOnlyList<SettingChoice> s_diseaseScalingPolicies = new[]
+        {
+            new SettingChoice("vanilla", "Vanilla distances"),
+            new SettingChoice("map_scaled", "Map-scaled distances"),
+            new SettingChoice("custom", "Custom fractions"),
         };
 
         private static readonly IReadOnlyList<SettingChoice> s_researchTreeLayouts = new[]
@@ -1984,6 +2030,47 @@ namespace TajsCOI.Tweaks
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced,
                 componentRequirement: Overclocking),
+
+            // Wave 7 — settlement/environment sandbox controls.
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableDiseaseEffects, "Disable disease effects", "Sandbox: suppresses disease health/mortality effects while preserving disease progression.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxInfiniteFocus, "Infinite focus points", "Sandbox: raises the native focus multiplier to a bounded high value; no new focus resource is created.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, SandboxFocusMultiplier, "Focus multiplier", "Sandbox: multiplier for focus-point production; 1 preserves vanilla and values are bounded to avoid overflow.", 1, 0, 1000, 0.1, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableAirPollutionEffects, "Disable air-pollution effects", "Sandbox: removes air-pollution health impact through the native pollution multiplier.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableAirPollutionProduction, "Disable air-pollution production", "Sandbox: reserved for a version-validated production seam; remains fail-open when unavailable.", false, "Sandbox", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableWaterPollutionEffects, "Disable water-pollution effects", "Sandbox: removes water-pollution health impact through the native pollution multiplier.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableWaterPollutionProduction, "Disable water-pollution production", "Sandbox: reserved for a version-validated wastewater production seam; remains fail-open when unavailable.", false, "Sandbox", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableShipPollution, "Disable ship pollution", "Sandbox: multiplies ship emissions at the authoritative emission calculation.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableVehiclePollution, "Disable vehicle pollution", "Sandbox: multiplies vehicle emissions at the authoritative emission calculation.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableTrainPollution, "Disable train pollution", "Sandbox: multiplies train emissions at the authoritative emission calculation.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableFoodNeed, "Disable food need", "Sandbox: removes settlement food consumption only.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableSettlementNeeds, "Disable settlement goods/services need", "Sandbox: removes settlement goods and services consumption while leaving food, electricity, water, and computing controls independent.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableSolidWaste, "Disable solid-waste generation", "Sandbox: skips settlement solid-waste conversion before the product is created.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableBiowaste, "Disable biowaste generation", "Sandbox: skips settlement biowaste conversion before the product is created.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableElectricityNeed, "Disable electricity need", "Sandbox: reserved for a version-validated settlement electricity-demand seam; remains fail-open when unavailable.", false, "Sandbox", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableCleanWaterNeed, "Disable clean-water need", "Sandbox: reserved for a version-validated settlement water-demand seam; remains fail-open when unavailable.", false, "Sandbox", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableWastewater, "Disable wastewater production", "Sandbox: reserved for a version-validated wastewater production seam; remains fail-open when unavailable.", false, "Sandbox", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDisableComputingNeed, "Disable computing need", "Sandbox: reserved for a version-validated computing-demand seam; remains fail-open when unavailable.", false, "Sandbox", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+
+            // Wave 7 — progression/construction sandbox controls.
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxInstantCargoShip, "Instant cargo-ship turnaround", "Sandbox: reserved for a version-validated cargo-ship turnaround seam; remains fail-open while turnaround duration is prototype-cached.", false, "Sandbox", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxDesignMode, "Layout design mode", "Sandbox: finalizes newly scheduled compatible construction/deconstruction after normal command processing.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxFreeResearch, "Free research", "Sandbox: sets the native research-step multiplier to zero for future research tasks.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxNoConstructionCosts, "No construction costs", "Sandbox: sets the native construction-cost multiplier to zero for future construction tasks.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxFastOreSorting, "Fast ore sorting", "Sandbox: uses the native ore-sorting property plus a bounded throughput seam when available.", false, "Sandbox", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxInstantStorageEmpty, "Instant storage empty", "Sandbox: reserved for an explicit destructive storage-empty command; remains fail-open until the command seam is version-validated.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Boolean(ModId, DisplayName, SandboxAlwaysAllowBulldoze, "Always allow bulldoze", "Sandbox: bypasses only the soft pre-bulldoze eligibility result for whitelisted entity classes; hard invariants remain protected.", false, "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.String(ModId, DisplayName, SandboxBulldozeWhitelist, "Bulldoze whitelist", "Comma-separated exact entity type names eligible for the soft bulldoze override. Leave empty for vanilla behavior; hard-invariant classes are always rejected.", "", "Sandbox", applyMode: SettingApplyMode.Immediate, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+
+            // Wave 7 — advanced infrastructure tuning.
+            SettingDescriptor.Float(ModId, DisplayName, TuningShipyardCargoMultiplier, "Shipyard cargo-buffer multiplier", "Advanced tuning: multiplier from the captured vanilla shipyard cargo buffer; requires reload to rebuild prototype buffers.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningTruckLoadDurationMultiplier, "Truck load-duration multiplier", "Advanced tuning: multiplier from the captured vanilla truck pickup duration.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningOreSorterBufferMultiplier, "Ore-sorter buffer multiplier", "Advanced tuning: multiplier from captured ore-sorter input/output buffers.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningOreSorterThroughputMultiplier, "Ore-sorter throughput multiplier", "Advanced tuning: coherent multiplier for ore-sorter quantity-per-duration and displayed rate.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningShaftThroughputMultiplier, "Shaft-throughput multiplier", "Advanced tuning: bounded mechanical-shaft throughput multiplier.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(ModId, DisplayName, TuningThermalStorageCapacityMultiplier, "Thermal-storage capacity multiplier", "Advanced tuning: bounded thermal capacity multiplier; reductions defer until stored heat discharges.", 1, 0.1, 20, 0.1, "Infrastructure", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+
+            SettingDescriptor.Choice(ModId, DisplayName, DiseaseScalingPolicy, "Disease progression distance", "Selects vanilla, map-scaled, or custom disease-distance policy. Existing unlocked diseases are never relocked.", "vanilla", s_diseaseScalingPolicies, "Difficulty", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.String(ModId, DisplayName, DiseaseScalingCustomFractions, "Disease custom fractions", "Comma-separated bounded fractions (0..1) used only by the custom disease-distance policy.", "", "Difficulty", applyMode: SettingApplyMode.ReloadSave, flags: SettingFlags.Advanced | SettingFlags.Experimental, componentRequirement: DiseaseScalingPolicy),
         };
 
         internal static void RegisterAll(ITajsSettings settings)
