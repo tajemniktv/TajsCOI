@@ -13,6 +13,7 @@ using Mafi.Core.Input;
 using Mafi.Serialization;
 using TajsCOI.Tweaks.Features.Difficulty;
 using TajsCOI.Tweaks.Features.Overclocking;
+using TajsCOI.Tweaks.Features.Storage;
 using Xunit;
 using Assert = Xunit.Assert;
 
@@ -27,6 +28,7 @@ namespace TajsCOI.Tests.RuntimeContracts
             Assert.True(typeof(InputCommand).IsAssignableFrom(typeof(TajsDifficultyResetCmd)));
             Assert.True(typeof(InputCommand).IsAssignableFrom(typeof(TajsOverclockSetRateCmd)));
             Assert.True(typeof(InputCommand).IsAssignableFrom(typeof(TajsOverclockPolicyCmd)));
+            Assert.True(typeof(InputCommand).IsAssignableFrom(typeof(TajsStorageInstantEmptyCmd)));
 
             Assert.Equal(
                 new[] { typeof(string), typeof(string), typeof(bool) },
@@ -63,6 +65,12 @@ namespace TajsCOI.Tests.RuntimeContracts
                     .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
                     .Where(field => !field.IsStatic)
                     .Select(field => field.FieldType));
+            Assert.Equal(
+                new[] { typeof(EntityId), typeof(bool) },
+                typeof(TajsStorageInstantEmptyCmd)
+                    .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Where(field => !field.IsStatic)
+                    .Select(field => field.FieldType));
             Assert.DoesNotContain(
                 typeof(TajsDifficultySetCmd).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
                 field => typeof(GameDifficultyConfig).IsAssignableFrom(field.FieldType));
@@ -88,6 +96,16 @@ namespace TajsCOI.Tests.RuntimeContracts
                 typeof(void),
                 isStatic: false,
                 typeof(TajsDifficultyResetCmd));
+
+            Type storageProcessor = typeof(TajsStorageConfigurationCommandsProcessor);
+            Assert.Contains(typeof(ICommandProcessor<TajsStorageInstantEmptyCmd>), storageProcessor.GetInterfaces());
+            Assert.Contains(typeof(IAction<TajsStorageInstantEmptyCmd>), storageProcessor.GetInterfaces());
+            RuntimeContractAssertions.RequireMethod(
+                storageProcessor,
+                nameof(IAction<TajsStorageInstantEmptyCmd>.Invoke),
+                typeof(void),
+                isStatic: false,
+                typeof(TajsStorageInstantEmptyCmd));
 
             Type overclockProcessor = typeof(TajsOverclockCommandsProcessor);
             Assert.Contains(typeof(ICommandProcessor<TajsOverclockSetRateCmd>), overclockProcessor.GetInterfaces());
@@ -129,6 +147,11 @@ namespace TajsCOI.Tests.RuntimeContracts
             Assert.DoesNotContain(
                 typeof(TajsDifficultyResetCmd).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
                 field => field.FieldType == typeof(GameDifficultyConfig));
+
+            TajsStorageInstantEmptyCmd empty = new(new EntityId(42), confirmed: true);
+            TajsStorageInstantEmptyCmd restoredEmpty = RoundTrip(empty, TajsStorageInstantEmptyCmd.Serialize, TajsStorageInstantEmptyCmd.Deserialize);
+            Assert.Equal(empty.StorageId, restoredEmpty.StorageId);
+            Assert.Equal(empty.Confirmed, restoredEmpty.Confirmed);
         }
 
         private static T RoundTrip<T>(

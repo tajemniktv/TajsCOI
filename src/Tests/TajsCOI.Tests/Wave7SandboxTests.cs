@@ -1,11 +1,16 @@
 using System;
 using System.Linq;
+using System.Reflection;
+using Mafi.Core;
+using Mafi;
 using TajsCOI.Common.Tuning;
 using TajsCOI.Tweaks.Features.Difficulty;
 using TajsCOI.Tweaks.Features.InfrastructureTuning;
 using TajsCOI.Tweaks.Features.ProgressionSandbox;
 using TajsCOI.Tweaks.Features.Sandbox;
+using TajsCOI.Tweaks.Features.Storage;
 using Xunit;
+using Assert = Xunit.Assert;
 
 namespace TajsCOI.Tests
 {
@@ -41,6 +46,19 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void BaseValueOverrideConvertsDiscreteQuantityWithoutCompounding()
+        {
+            Quantity quantity = 8.Quantity();
+            var service = new BaseValueOverrideService();
+
+            Assert.True(service.TryRegister("quantity", () => quantity, next => quantity = next, 0.Quantity(), 100.Quantity()));
+            Assert.True(service.TrySetMultiplier("quantity", 1.5));
+            Assert.Equal(12, quantity.Value);
+            Assert.True(service.TryReset("quantity"));
+            Assert.Equal(8, quantity.Value);
+        }
+
+        [Fact]
         public void DiseaseScalingPreservesTierOrderAndInclusiveEligibility()
         {
             int[] scaled = DiseaseScalingPolicy.Compute(
@@ -49,7 +67,7 @@ namespace TajsCOI.Tests
                 DiseaseScalingMode.MapScaled);
 
             Assert.Equal(0, scaled[0]);
-            Assert.True(scaled.Zip(scaled.Skip(1), (left, right) => right > left).All(x => x));
+            Assert.True(Enumerable.Zip(scaled, scaled.Skip(1), (left, right) => right > left).All(x => x));
             Assert.True(DiseaseScalingPolicy.IsEligible(scaled[3], scaled[3]));
             Assert.False(DiseaseScalingPolicy.IsEligible(scaled[3] - 1, scaled[3]));
         }
@@ -80,8 +98,41 @@ namespace TajsCOI.Tests
         {
             Assert.False(StorageEmptyPolicy.IsAuthorized(true, false));
             Assert.True(StorageEmptyPolicy.IsAuthorized(true, true));
+            Assert.True(StorageEmptyPolicy.IsNativeClearAvailable());
             Assert.False(BulldozeOverrideFeature.IsWhitelistedType(typeof(FakeBridge), nameof(FakeBridge)));
             Assert.True(BulldozeOverrideFeature.IsWhitelistedType(typeof(FakeBuilding), nameof(FakeBuilding)));
+        }
+
+        [Fact]
+        public void SandboxOutputOwnersAreIndependentPerAffectedOutput()
+        {
+            string[] owners =
+            {
+                SandboxControlsFeature.SolidWasteOwner,
+                SandboxControlsFeature.BiowasteOwner,
+                SandboxControlsFeature.FocusInfiniteOwner,
+                SandboxControlsFeature.FocusMultiplierOwner,
+            };
+
+            Assert.Equal(owners.Length, owners.Distinct(StringComparer.Ordinal).Count());
+            Assert.DoesNotContain(SandboxControlsFeature.SolidWasteOwner, owners.Skip(1));
+            Assert.DoesNotContain(SandboxControlsFeature.BiowasteOwner, owners.Skip(2));
+            Assert.True(SandboxControlsFeature.ShouldSuppressWasteOutput(WasteOutput.Solid, disableSolidWaste: true, disableBiowaste: false));
+            Assert.False(SandboxControlsFeature.ShouldSuppressWasteOutput(WasteOutput.Biowaste, disableSolidWaste: true, disableBiowaste: false));
+            Assert.False(SandboxControlsFeature.ShouldSuppressWasteOutput(WasteOutput.Solid, disableSolidWaste: false, disableBiowaste: true));
+            Assert.True(SandboxControlsFeature.ShouldSuppressWasteOutput(WasteOutput.Biowaste, disableSolidWaste: false, disableBiowaste: true));
+        }
+
+        [Fact]
+        public void InstantStorageEmptyIsAConfirmedValueOnlyInputCommand()
+        {
+            Assert.True(typeof(Mafi.Core.Input.InputCommand).IsAssignableFrom(typeof(TajsStorageInstantEmptyCmd)));
+            Assert.Equal(
+                new[] { typeof(EntityId), typeof(bool) },
+                typeof(TajsStorageInstantEmptyCmd)
+                    .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Where(field => !field.IsStatic)
+                    .Select(field => field.FieldType));
         }
 
         private sealed class FakeBridge { }
