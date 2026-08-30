@@ -31,6 +31,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         private readonly UiTextField m_groupName;
         private readonly UiTextField m_rate;
         private readonly IVisualElementScheduledItem? m_refreshSchedule;
+        private int m_lastValidRate = 100;
+        private string? m_statusOverride;
 
         internal TajsOverclockingWindow(TajsOverclockingFeature feature, UiRoot uiRoot)
             : base("Overclocking groups".AsLoc())
@@ -85,7 +87,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             string name = m_groupName.GetText().Trim();
             OverclockGroup group = m_feature.CreateGroup(name);
             m_groupName.Text(string.Empty);
-            m_status.Value(("Created group " + group.Id + ".").AsLoc());
+            SetStatus("Created group " + group.Id + ".");
         }
 
         private void RefreshNow()
@@ -96,10 +98,11 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
 
             m_groups.Clear();
-            m_status.Value(
-                (m_feature.Groups.Count == 0
-                    ? "No named groups. Global default is 100%."
-                    : m_feature.Groups.Count + " named group(s); global default is 100%.").AsLoc());
+            string defaultStatus = m_feature.Groups.Count == 0
+                ? "No named groups. Global default is 100%."
+                : m_feature.Groups.Count + " named group(s); global default is 100%.";
+            m_status.Value((m_statusOverride ?? defaultStatus).AsLoc());
+            m_statusOverride = null;
 
             foreach (OverclockGroup group in m_feature.Groups.OrderBy(value => value.Id))
             {
@@ -116,13 +119,11 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 row.Add(
                     MakeButton(
                         "Set default",
-                        () =>
-                            m_feature.QueueSetGroupDefault(group.Id, ReadRate(), out _)));
+                        () => SetGroupDefault(group.Id)));
                 row.Add(
                     MakeButton(
                         "Apply override",
-                        () =>
-                            m_feature.QueueApplyGroupToMembers(group.Id, ReadRate(), out _)));
+                        () => ApplyGroupOverride(group.Id)));
                 row.Add(
                     MakeButton(
                         group.Auto ? "Manual" : "Auto",
@@ -133,11 +134,49 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
         }
 
-        private int ReadRate()
+        private void SetGroupDefault(int groupId)
         {
-            return int.TryParse(m_rate.GetText().Trim().TrimEnd('%'), out int value)
-                ? value
-                : 100;
+            if (TryReadRate(out int rate))
+            {
+                m_feature.QueueSetGroupDefault(groupId, rate, out string message);
+                SetStatus(message);
+            }
+        }
+
+        private void ApplyGroupOverride(int groupId)
+        {
+            if (TryReadRate(out int rate))
+            {
+                m_feature.QueueApplyGroupToMembers(groupId, rate, out string message);
+                SetStatus(message);
+            }
+        }
+
+        private bool TryReadRate(out int rate)
+        {
+            int minimum = TajsTweaksRuntimeState.OverclockMinPercent;
+            int maximum = TajsTweaksRuntimeState.OverclockMaxPercent;
+            if (OverclockingInspectorPatch.TryParseRequestedRate(
+                    m_rate.GetText(),
+                    minimum,
+                    maximum,
+                    out int parsed,
+                    out string error))
+            {
+                m_lastValidRate = parsed;
+                rate = parsed;
+                return true;
+            }
+
+            rate = m_lastValidRate;
+            SetStatus("Invalid rate: " + error + " Keeping " + m_lastValidRate + "%.");
+            return false;
+        }
+
+        private void SetStatus(string message)
+        {
+            m_statusOverride = message;
+            m_status.Value(message.AsLoc());
         }
     }
 }

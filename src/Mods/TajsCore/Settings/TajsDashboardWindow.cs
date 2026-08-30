@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Linq;
 using Mafi;
 using Mafi.Core.Console;
+using Mafi.Core.Entities.Blueprints;
 using Mafi.Localization;
 using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
@@ -21,6 +22,7 @@ using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
 using TajsCOI.Common.Shortcuts;
 using TajsCOI.Common.Ui;
+using TajsCOI.Core.Blueprints;
 using UnityEngine.UIElements;
 using Button = Mafi.Unity.UiToolkit.Library.Button;
 using Column = Mafi.Unity.UiToolkit.Library.Column;
@@ -109,6 +111,7 @@ namespace TajsCOI.Core.Settings
         private readonly GameConsoleCommandsExecutor m_consoleCommands;
         private readonly ISettingsProfileService m_profiles;
         private readonly IEntityMetadataService m_metadata;
+        private readonly BlueprintsLibrary m_blueprints;
         private readonly ScrollColumn m_pageContent;
         private readonly Column m_dashboardShell;
         private Column m_sidebar = null!;
@@ -147,7 +150,8 @@ namespace TajsCOI.Core.Settings
             IShortcutRegistry shortcuts,
             ILocalizationService localization,
             ISettingsProfileService profiles,
-            IEntityMetadataService metadata)
+            IEntityMetadataService metadata,
+            BlueprintsLibrary blueprints)
             : base("TajsCOI Dashboard".AsLoc())
         {
             m_settings = settings;
@@ -157,6 +161,7 @@ namespace TajsCOI.Core.Settings
             m_consoleCommands = consoleCommands;
             m_profiles = profiles ?? throw new ArgumentNullException(nameof(profiles));
             m_metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
+            m_blueprints = blueprints ?? throw new ArgumentNullException(nameof(blueprints));
             m_pageContent = new ScrollColumn().Fill().AlignItemsStretch().Gap(5.pt());
             m_dashboardShell = new Column(6.pt()).Fill().AlignItemsStretch();
             m_minimizeButton = new ButtonIcon(
@@ -433,6 +438,7 @@ namespace TajsCOI.Core.Settings
             AddPageButton(pageNavigation, DashboardPage.Performance, "Performance");
             AddPageButton(pageNavigation, DashboardPage.Tweaks, "Tweaks");
             AddPageButton(pageNavigation, DashboardPage.SaveLoad, "Save & Load");
+            AddPageButton(pageNavigation, DashboardPage.Blueprints, "Blueprints");
             AddPageButton(pageNavigation, DashboardPage.Memory, "Memory");
             AddPageButton(pageNavigation, DashboardPage.Rendering, "Rendering");
             AddPageButton(pageNavigation, DashboardPage.Compatibility, "Compatibility");
@@ -491,6 +497,7 @@ namespace TajsCOI.Core.Settings
                 DashboardPage.Performance => "Assets/Unity/UserInterface/General/UptimeStats.svg",
                 DashboardPage.Tweaks => "Assets/Unity/UserInterface/General/Configure.svg",
                 DashboardPage.SaveLoad => "Assets/Unity/UserInterface/General/Save.svg",
+                DashboardPage.Blueprints => "Assets/Unity/UserInterface/General/Blueprint.svg",
                 DashboardPage.Memory => "Assets/Unity/UserInterface/General/Package.svg",
                 DashboardPage.Rendering => "Assets/Unity/UserInterface/General/Layers.svg",
                 DashboardPage.Compatibility => "Assets/Unity/UserInterface/General/Handshake.svg",
@@ -670,6 +677,12 @@ namespace TajsCOI.Core.Settings
                         AddSaveLoadPage(LoadSettings());
                     }
                     break;
+                case DashboardPage.Blueprints:
+                    // The native library loads lazily and can finish asynchronously. Rebuild on
+                    // every visit/refresh so a completed load never leaves stale row snapshots.
+                    CurrentPage.Clear();
+                    AddBlueprintsPage();
+                    break;
                 case DashboardPage.Memory:
                     if (m_builtPages.Add(m_selectedPage))
                     {
@@ -746,6 +759,14 @@ namespace TajsCOI.Core.Settings
             m_logsPage = new LogsPageView();
             CurrentPage.Add(m_logsPage.Root);
             m_builtPages.Add(DashboardPage.Logs);
+        }
+
+        private void AddBlueprintsPage()
+        {
+            CurrentPage.Add(
+                TajsDashboardUi.SectionHeader("Blueprints"),
+                new Label("Organize, inspect, and share native blueprint-library items without retaining live objects across dashboard rebuilds.".AsLoc()).FontSize(12),
+                TajsDashboardBlueprintsPanel.Build(m_blueprints, QueueRefresh));
         }
 
         private void EnsureSelectedCategory(IReadOnlyList<SettingSnapshot> settings)
@@ -1924,6 +1945,7 @@ namespace TajsCOI.Core.Settings
             Performance,
             Tweaks,
             SaveLoad,
+            Blueprints,
             Memory,
             Rendering,
             Compatibility,

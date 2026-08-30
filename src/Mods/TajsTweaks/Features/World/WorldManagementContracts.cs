@@ -31,7 +31,9 @@ namespace TajsCOI.Tweaks.Features.World
             string status,
             bool owned,
             double? knownQuantity,
-            string? prototypeId = null)
+            string? prototypeId = null,
+            string? alias = null,
+            string? note = null)
         {
             Id = id;
             Kind = kind;
@@ -42,6 +44,8 @@ namespace TajsCOI.Tweaks.Features.World
             Owned = owned;
             KnownQuantity = knownQuantity;
             PrototypeId = prototypeId?.Trim() ?? string.Empty;
+            Alias = alias?.Trim() ?? string.Empty;
+            Note = note?.Trim() ?? string.Empty;
         }
 
         internal int Id { get; }
@@ -53,6 +57,8 @@ namespace TajsCOI.Tweaks.Features.World
         internal bool Owned { get; }
         internal double? KnownQuantity { get; }
         internal string PrototypeId { get; }
+        internal string Alias { get; }
+        internal string Note { get; }
 
         internal string SafeField(string field) =>
             field switch
@@ -62,6 +68,8 @@ namespace TajsCOI.Tweaks.Features.World
                 "name" => Name,
                 "status" => Status,
                 "prototype" => PrototypeId,
+                "alias" => Alias,
+                "note" => Note,
                 "x" => X.ToString(CultureInfo.InvariantCulture),
                 "y" => Y.ToString(CultureInfo.InvariantCulture),
                 _ => string.Empty,
@@ -100,7 +108,12 @@ namespace TajsCOI.Tweaks.Features.World
             return discovered
                 .Where(row => row is not null)
                 .GroupBy(row => row.Id)
-                .Select(group => group.OrderBy(row => row.Name, StringComparer.OrdinalIgnoreCase).First())
+                // Prefer the richest metadata projection when duplicate discovery sources
+                // report the same ID; fall back to a stable name ordering for ties.
+                .Select(group => group
+                    .OrderByDescending(row => row.Alias.Length + row.Note.Length)
+                    .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
+                    .First())
                 .OrderBy(row => row.Id)
                 .ToArray();
         }
@@ -120,6 +133,8 @@ namespace TajsCOI.Tweaks.Features.World
             {
                 rows = rows.Where(row =>
                     row.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    row.Alias.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    row.Note.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0 ||
                     row.Status.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0 ||
                     row.PrototypeId.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0 ||
                     row.Id.ToString(CultureInfo.InvariantCulture).IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0);

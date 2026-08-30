@@ -2,7 +2,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using TajsCOI.Core.Blueprints;
 using TajsCOI.Core.Flow;
 using TajsCOI.Core.Production;
@@ -133,6 +136,47 @@ namespace TajsCOI.Tests
             Assert.True(store.Write(updated, BlueprintWriteMode.Update).Success);
             Assert.Equal("Factory", store.Snapshot()[0].Name);
             Assert.Equal("Factories", store.Snapshot()[0].Folder);
+        }
+
+        [Fact]
+        public void PortableBlueprintEnvelopeValidatesContentAndRecycleBinPersistsValueOnly()
+        {
+            const string nativePayload = "B4:test";
+            string hash;
+            using (SHA256 sha = SHA256.Create())
+            {
+                hash = string.Concat(sha.ComputeHash(Encoding.UTF8.GetBytes(nativePayload)).Select(value => value.ToString("x2")));
+            }
+
+            var envelope = new BlueprintPortableEnvelope
+            {
+                StableId = "native:" + hash,
+                ContentHash = hash,
+                NativePayload = nativePayload,
+                ItemKind = "blueprint",
+                Name = "Factory",
+                FolderPath = "Factories",
+                NativeGameVersion = "0.8.7b",
+            };
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI.BlueprintRecycleTests", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var store = new BlueprintRecycleBinStore(Path.Combine(root, "recycle.json"));
+                Assert.True(store.TryAdd(envelope, out string addError), addError);
+                Assert.True(store.Save(out string saveError), saveError);
+
+                var loaded = new BlueprintRecycleBinStore(Path.Combine(root, "recycle.json"));
+                Assert.True(loaded.Load(out string loadError), loadError);
+                Assert.Single(loaded.Snapshot());
+                Assert.Equal("Factories", loaded.Snapshot()[0].FolderPath);
+
+                envelope.NativePayload = "B7:changed";
+                Assert.False(loaded.TryAdd(envelope, out _));
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
         }
 
         [Fact]

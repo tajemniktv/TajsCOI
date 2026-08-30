@@ -43,7 +43,7 @@ namespace TajsCOI.Tests.RuntimeContracts
         {
             var rows = new[]
             {
-                new WorldEntitySnapshot(2, WorldEntityKind.Mine, "Iron mine", 8, 4, "active", true, 10, "iron"),
+                new WorldEntitySnapshot(2, WorldEntityKind.Mine, "Iron mine", 8, 4, "active", true, 10, "iron", "North pit", "Primary extraction"),
                 new WorldEntitySnapshot(2, WorldEntityKind.Mine, "Duplicate", 8, 4, "active", true, 10, "iron"),
                 new WorldEntitySnapshot(3, WorldEntityKind.Settlement, "Harbor", 1, 2, "unrepaired", false, null, ""),
             };
@@ -54,6 +54,12 @@ namespace TajsCOI.Tests.RuntimeContracts
             Assert.Equal(2, snapshot.Count);
             Assert.Single(result);
             Assert.Equal(2, result[0].Id);
+
+            IReadOnlyList<WorldEntitySnapshot> aliasResult = WorldEntityBrowser.Query(
+                snapshot,
+                new WorldEntityQuery { Search = "north pit" });
+            Assert.Single(aliasResult);
+            Assert.Equal("Primary extraction", aliasResult[0].Note);
         }
 
         [Fact]

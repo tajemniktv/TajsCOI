@@ -20,6 +20,10 @@ native entity ID plus a prototype fingerprint, so recycled IDs do not inherit ol
 Metadata is supplementary: other suite modules may display it, but gameplay remains valid without
 the sidecar.
 
+The dashboard's Blueprints page lists the native library with searchable folders, blueprint detail
+stats, editable names/descriptions, versioned portable export/import previews, and an explicit
+recycle-bin restore/purge workflow. Native blueprint persistence remains owned by Captain of Industry.
+
 Settings profiles are available through `tajs_profile_capture`, `tajs_profile_preview`,
 `tajs_profile_apply`, and the duplicate/rename/delete/import/export commands. Only descriptors
 explicitly marked profile-safe are captured or applied; every entry is validated before any

@@ -49,5 +49,11 @@ validated native APIs without replacing the game's authorities.
   per-vehicle bulk commands remain available for simple operations; task progress and
   cancellation read native task state rather than a private success counter.
 - The world browser keeps a discovered-only snapshot and now exposes the existing pure
-  kind/sort query (including distance) directly in the management window. It never stores
-  world-map entity references between refreshes.
+  kind/sort query (including distance) directly in the management window. Entity aliases and
+  notes are included in the snapshot, search, and row display without retaining world-map
+  entity references between refreshes.
+- Core's dashboard now exposes the native blueprint library through a scene-owned table. It
+  shows folder/blueprint detail summaries, forwards metadata edits through `BlueprintsLibrary`,
+  wraps native payloads in a versioned Tajs envelope for portable sharing, and stores explicit
+  delete/restore/purge entries as value-only sidecar payloads. Preview parses without mutating
+  the native library; import and purge require explicit actions.

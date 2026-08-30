@@ -262,6 +262,25 @@ namespace TajsCOI.Tweaks
                     {
                         continue;
                     }
+                    string prototypeId = TryReadPrototypeId(entity);
+                    string alias = string.Empty;
+                    string note = string.Empty;
+                    if (entity is IEntity typedEntity)
+                    {
+                        try
+                        {
+                            var identity = new EntityMetadataIdentity(typedEntity.Id.Value, "proto:" + typedEntity.Prototype.Id.Value);
+                            if (m_metadata.TryGetEntityMetadata(identity, out EntityMetadataRecord? metadata) && metadata is not null)
+                            {
+                                alias = metadata.Alias;
+                                note = metadata.Note;
+                            }
+                        }
+                        catch
+                        {
+                            // Optional metadata must never make the discovered-only snapshot unavailable.
+                        }
+                    }
                     WorldEntityKind kind = entity switch
                     {
                         WorldMapVillage => WorldEntityKind.Settlement,
@@ -284,7 +303,9 @@ namespace TajsCOI.Tweaks
                             entity is WorldMapRepairableEntity repairable && repairable.IsUnderConstruction ? "under construction" : "discovered",
                             entity.IsOwnedByPlayer,
                             quantity,
-                            TryReadPrototypeId(entity)));
+                            prototypeId,
+                            alias,
+                            note));
                 }
 
                 IReadOnlyList<WorldEntitySnapshot> snapshot = WorldEntityBrowser.Snapshot(live);
@@ -304,7 +325,17 @@ namespace TajsCOI.Tweaks
                 foreach (WorldEntitySnapshot row in rows)
                 {
                     Row tableRow = MakeRow(index++);
-                    tableRow.Add(new Label(row.Name.AsLoc()).Width(new Px(260f)));
+                    Column title = new Column(1.pt()).Width(new Px(260f)).MinWidth(0.px()).FlexShrink(1);
+                    title.Add(new Label(row.Name.AsLoc()));
+                    if (row.Alias.Length != 0)
+                    {
+                        title.Add(new Label(("Alias: " + row.Alias).AsLoc()).FontSize(10));
+                    }
+                    if (row.Note.Length != 0)
+                    {
+                        title.Add(new Label(("Note: " + row.Note).AsLoc()).FontSize(10));
+                    }
+                    tableRow.Add(title);
                     string details = row.Kind + "  " + row.Status;
                     if (row.KnownQuantity.HasValue)
                     {

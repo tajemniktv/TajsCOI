@@ -111,8 +111,36 @@ namespace TajsCOI.Core.Settings
             foreach (EntityMetadataGroup group in groups)
             {
                 Label feedback = new Label().FontSize(11).Hide();
+                TextField groupName = new TextField().Text(group.Name).Placeholder("Group name".AsLoc()).MaxWidth(190.px());
+                TextField groupOrder = new TextField().Text(group.Order.ToString(CultureInfo.InvariantCulture)).Placeholder("Order".AsLoc()).MaxWidth(75.px());
+                TextField groupColor = new TextField().Text(group.Color).Placeholder("Color".AsLoc()).MaxWidth(105.px());
                 Row actions = new Row(2.pt()).AlignItemsCenter();
                 actions.Add(
+                    groupName,
+                    groupOrder,
+                    groupColor,
+                    TajsDashboardUi.ActionButton(
+                        Button.Area,
+                        "Save group",
+                        "Assets/Unity/UserInterface/General/Save.svg",
+                        () =>
+                        {
+                            if (!int.TryParse(groupOrder.GetText(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int order) || order < 0)
+                            {
+                                feedback.Value("Group order must be a non-negative integer.".AsLoc()).Show();
+                                return;
+                            }
+
+                            if (metadata.TryUpdateGroup(group.GroupId, groupName.GetText(), order, groupColor.GetText(), group.Locked, out string error))
+                            {
+                                feedback.Value("Group updated.".AsLoc()).Show();
+                                queueRefresh();
+                            }
+                            else
+                            {
+                                feedback.Value(("Group was not updated: " + error).AsLoc()).Show();
+                            }
+                        }),
                     TajsDashboardUi.ActionButton(
                         Button.Area,
                         "Pick rectangle",
