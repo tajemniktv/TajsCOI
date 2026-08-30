@@ -60,6 +60,29 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void TrainMultipliersAreIndependentBoundedImmediateSettings()
+        {
+            string[] keys =
+            {
+                TajsTweaksSettingsCatalog.TrainSlopeMultiplier,
+                TajsTweaksSettingsCatalog.TrainFuelMultiplier,
+                TajsTweaksSettingsCatalog.TrainPollutionMultiplier,
+            };
+
+            Assert.All(
+                keys,
+                key =>
+                {
+                    SettingDescriptor descriptor = TajsTweaksSettingsCatalog.All.Single(item => item.Key == key);
+                    Assert.Equal(1d, descriptor.DefaultValue);
+                    Assert.Equal(0.1d, descriptor.Minimum);
+                    Assert.Equal(3d, descriptor.Maximum);
+                    Assert.Equal(SettingApplyMode.Immediate, descriptor.ApplyMode);
+                    Assert.Equal(SettingScope.Global, descriptor.Scope);
+                });
+        }
+
+        [Fact]
         public void HudActionPolicyUsesStableIdsAndUnknownActionsRemainVisible()
         {
             IReadOnlyDictionary<string, HudActionPreference> policy = HudActionPolicyCodec.Parse("calendar.speed.0=2:false:true;status.food.0=0:true:false");

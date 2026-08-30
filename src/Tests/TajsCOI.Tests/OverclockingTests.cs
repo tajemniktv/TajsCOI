@@ -181,5 +181,29 @@ namespace TajsCOI.Tests
             Assert.Contains(typeof(ICommandProcessor<TajsOverclockPolicyCmd>), interfaces);
             Assert.Contains(typeof(Mafi.IAction<TajsOverclockPolicyCmd>), interfaces);
         }
+
+        [Theory]
+        [InlineData("125", 125)]
+        [InlineData("125%", 125)]
+        [InlineData(" 125 % ", 125)]
+        public void InspectorRateEntryUsesSharedBoundedEditorParsing(string input, int expected)
+        {
+            Assert.True(
+                OverclockingInspectorPatch.TryParseRequestedRate(input, 100, 300, out int value, out string error),
+                error);
+            Assert.Equal(expected, value);
+        }
+
+        [Theory]
+        [InlineData("125.5")]
+        [InlineData("125,5")]
+        [InlineData("301")]
+        [InlineData("125%%")]
+        public void InspectorRateEntryRejectsMalformedOrOutOfRangeValues(string input)
+        {
+            Assert.False(
+                OverclockingInspectorPatch.TryParseRequestedRate(input, 100, 300, out _, out string error));
+            Assert.False(string.IsNullOrWhiteSpace(error));
+        }
     }
 }

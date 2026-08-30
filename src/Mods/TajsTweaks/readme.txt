@@ -16,7 +16,17 @@ Current feature:
   storage is excluded.
 - Optional world operations, ship preload/auto-delivery, and native management windows for
   repairs, mines/rigs, settlements, ship cargo, and fleet status/order/scrap/replacement.
+  Fleet replacement tasks use COI's durable native VehiclesReplacer workflow with explicit
+  logistics-zone, depot, assignee, and unassigned-only filters; progress survives save/reload.
   All world, vehicle, and depot mutations use normal game commands/jobs.
+- The world entity browser is discovered-only and supports type filtering plus deterministic
+  name/type/status/ID/coordinate/distance sorting; focusing an entry uses the native map view.
+- Optional train tuning exposes independently bounded climbing, fuel-use, and pollution
+  multipliers (1.0 preserves each native base; one replaceable modifier per property). The
+  legacy Efficient fuel/Climbing power profile remains as a convenience when those controls are
+  left at their vanilla defaults.
+  Locomotive numbering uses COI's type-digit ranges (101-200 through 901-1000), reports
+  duplicates, and never changes train routing or consist membership.
 - The optional terrain-grid toolbar toggle uses the game's native counted grid activator,
   remembers its enabled preference across gameplay-scene recreation, and remains independent
   while switching tools and overlays.
@@ -56,8 +66,15 @@ Console commands:
 - tajs_fleet_order <prototype-id> <count> CONFIRM
 - tajs_fleet_scrap_type <prototype-id> <count> CONFIRM [assigned-only|unassigned-first|any]
 - tajs_fleet_replace_type <source-id> <target-id> <count> CONFIRM [assigned-only|unassigned-first|any]
+- tajs_fleet_replace_task <source-id> <target-id> <zone-id> <count> CONFIRM [unassigned-only] [depot-id] [assignee-id]
+- tajs_fleet_tasks
+- tajs_fleet_task_cancel <task-id> CONFIRM
 - tajs_fleet_apply <scrap|replace> <comma-separated IDs> CONFIRM [target-prototype-id]
 - tajs_fleet_cancel <scrap|replace> <comma-separated IDs> CONFIRM
+- tajs_locomotive_list [search]
+- tajs_train_status
+- tajs_locomotive_set <entity-id> <native-number>
+- tajs_locomotive_assign_unique [sequential|random]
 - tajs_hud_status
 - tajs_hud_reset
 - tajs_difficulty (points to the native COI Difficulty Settings window)

@@ -17,6 +17,7 @@ using Mafi.Core.Population;
 using Mafi.Localization;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
+using TajsCOI.Common.Settings;
 using UnityEngine;
 using EntityId = Mafi.Core.EntityId;
 using UiButton = Mafi.Unity.UiToolkit.Library.Button;
@@ -115,6 +116,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             internal UiTextField Input = null!;
             internal PendingPolicy? Pending;
             internal bool InputEditing;
+            internal string InputError = string.Empty;
         }
 
         private static readonly Dictionary<object, State> s_states = new();
@@ -243,7 +245,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             int current = s_states.TryGetValue(inspector, out State? state) && state.Pending is not null
                 ? state.Pending.DisplayPercent(TajsOverclockingFeature.Current, entity!.Id)
                 : TajsOverclockingFeature.Current.GetPercent(entity!.Id);
-            QueueExact(inspector, current + delta);
+            QueueExact(inspector, current + delta, out _);
         }
 
         private static void Reset(object inspector)
@@ -255,6 +257,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 if (s_states.TryGetValue(inspector, out State? state))
                 {
                     state.Pending = PendingPolicy.Reset();
+                    state.InputError = string.Empty;
                     Refresh(inspector);
                 }
             }
@@ -277,6 +280,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 if (state is not null)
                 {
                     state.Pending = PendingPolicy.AutoMode(enabled);
+                    state.InputError = string.Empty;
                     Refresh(inspector);
                 }
             }
@@ -304,7 +308,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             try
             {
                 TajsOverclockingFeature feature = TajsOverclockingFeature.Current;
-                if (state.InputEditing)
+                if (state.InputEditing || state.InputError.Length != 0)
                 {
                     return;
                 }
@@ -323,6 +327,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 state.Rate.Value((displayed + "%").AsLoc());
                 state.Slider.Range(policy.MinPercent, policy.MaxPercent).Value(displayed);
                 state.Input.Text(displayed.ToString());
+                state.Input.MarkAsError(false, string.Empty.AsLoc());
+                state.InputError = string.Empty;
                 string group = policy.GroupId < 0 ? string.Empty : " / group " + policy.GroupId;
                 state.Mode.Value((requested is not null ? "Pending" : (policy.Auto ? "Auto" : "Manual") + group).AsLoc());
                 state.Costs.Value(FormatCosts(state.Entity).AsLoc());
@@ -377,8 +383,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
                 TextField input = new UiTextField()
                     .Text(current.ToString())
-                    .CharLimit(5)
-                    .PositiveIntegersOnly();
+                    // Let the shared editor parser handle whitespace and an optional '%' suffix;
+                    // filtering keystrokes here would make pasted/culture-aware input behave
+                    // differently from dashboard and storage editors.
+                    .CharLimit(10);
                 input.RootElement.style.width = 62f;
                 input.RootElement.style.flexShrink = 0f;
                 Row rateRow = new Row(3.pt()).AlignItemsCenter();
@@ -415,7 +423,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     s_addPanelMethods[inspector.GetType()].Invoke(inspector, new object[] { new UiComponent[] { panel } });
                 }
 
-                slider.OnValueChanged((_, newValue) =>
+                slider.OnValueChanged((ignoredSliderIndex, newValue) =>
                 {
                     int minimum = policy.MinPercent;
                     int maximum = policy.MaxPercent;
@@ -436,24 +444,49 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
                     input.Text(value.ToString());
                     rate.Value((value + "%").AsLoc());
-                    QueueExact(inspector, value);
+                    QueueExact(inspector, value, out _);
                 });
                 input.OnEditEnd(text =>
                 {
                     state.InputEditing = false;
-                    if (int.TryParse(text.Trim().TrimEnd('%'), out int value))
+                    int minimum = policy.MinPercent;
+                    int maximum = policy.MaxPercent;
+                    if (TajsOverclockingFeature.Current is TajsOverclockingFeature currentFeature &&
+                        TryGetEntity(inspector, out IEntity? currentEntity))
                     {
-                        QueueExact(inspector, value);
+                        OverclockEffectivePolicy currentPolicy =
+                            currentFeature.GetEffectivePolicy(currentEntity!.Id.Value);
+                        minimum = currentPolicy.MinPercent;
+                        maximum = currentPolicy.MaxPercent;
                     }
-                    else
+
+                    if (!TryParseRequestedRate(text, minimum, maximum, out int value, out string error))
                     {
-                        Refresh(inspector);
+                        state.InputError = error;
+                        state.Input.MarkAsError(true, error.AsLoc());
+                        state.Mode.Value(("Invalid: " + error).AsLoc());
+                        return;
+                    }
+
+                    state.InputError = string.Empty;
+                    state.Input.MarkAsError(false, string.Empty.AsLoc());
+                    if (!QueueExact(inspector, value, out string queueError) && queueError.Length != 0)
+                    {
+                        state.InputError = queueError;
+                        state.Input.MarkAsError(true, queueError.AsLoc());
+                        state.Mode.Value(("Not queued: " + queueError).AsLoc());
                     }
                 });
-                input.OnFocus(() => state.InputEditing = true);
+                input.OnFocus(() =>
+                {
+                    state.InputEditing = true;
+                    state.InputError = string.Empty;
+                    state.Input.MarkAsError(false, string.Empty.AsLoc());
+                });
                 input.OnEscape(() =>
                 {
                     state.InputEditing = false;
+                    state.InputError = string.Empty;
                     Refresh(inspector);
                 });
                 Refresh(inspector);
@@ -465,22 +498,67 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
         }
 
-        private static void QueueExact(object inspector, int percent)
+        internal static bool TryParseRequestedRate(
+            string? text,
+            int minimum,
+            int maximum,
+            out int value,
+            out string error)
         {
+            value = default;
+            error = string.Empty;
+            if (minimum > maximum)
+            {
+                error = "The overclock range is unavailable.";
+                return false;
+            }
+
+            int defaultValue = Math.Max(minimum, Math.Min(maximum, 100));
+            SettingDescriptor descriptor = SettingDescriptor.Integer(
+                "TajsTweaks",
+                "TajsTweaks",
+                "overclock_rate",
+                "Overclock rate",
+                "Requested machine rate.",
+                defaultValue,
+                minimum,
+                maximum,
+                1,
+                valueFormat: SettingValueFormat.Percentage);
+            if (!SettingValueEditorFormatting.TryParse(
+                    descriptor,
+                    text,
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    out object normalized,
+                    out error))
+            {
+                return false;
+            }
+
+            value = (int)normalized;
+            return true;
+        }
+
+        private static bool QueueExact(object inspector, int percent, out string message)
+        {
+            message = string.Empty;
             if (TajsOverclockingFeature.Current is not TajsOverclockingFeature feature ||
                 !TryGetEntity(inspector, out IEntity? entity))
             {
-                return;
+                message = "Overclocking is unavailable in this scene.";
+                return false;
             }
 
-            if (!feature.QueueSetManual(entity!.Id, percent, out _))
+            if (!feature.QueueSetManual(entity!.Id, percent, out message))
             {
                 Refresh(inspector);
-                return;
+                return false;
             }
 
             if (s_states.TryGetValue(inspector, out State? state))
             {
+                state.InputError = string.Empty;
+                state.Input.MarkAsError(false, string.Empty.AsLoc());
                 OverclockEffectivePolicy policy = feature.GetEffectivePolicy(entity.Id.Value);
                 int clamped = OverclockingMath.ClampPercent(percent, policy.MinPercent, policy.MaxPercent);
                 state.Pending = PendingPolicy.Manual(clamped);
@@ -489,6 +567,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 state.Input.Text(clamped.ToString());
                 state.Mode.Value("Pending".AsLoc());
             }
+
+            return true;
         }
 
         private static string FormatCosts(IEntity entity)

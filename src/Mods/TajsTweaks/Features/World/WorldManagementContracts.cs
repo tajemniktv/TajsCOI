@@ -76,6 +76,7 @@ namespace TajsCOI.Tweaks.Features.World
         Id,
         X,
         Y,
+        Distance,
     }
 
     internal sealed class WorldEntityQuery
@@ -131,6 +132,7 @@ namespace TajsCOI.Tweaks.Features.World
                 WorldEntitySortField.Id => row => row.Id,
                 WorldEntitySortField.X => row => row.X,
                 WorldEntitySortField.Y => row => row.Y,
+                WorldEntitySortField.Distance => row => (long)row.X * row.X + (long)row.Y * row.Y,
                 _ => row => row.Name,
             };
 

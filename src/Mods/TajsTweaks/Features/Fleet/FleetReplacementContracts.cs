@@ -17,7 +17,8 @@ namespace TajsCOI.Tweaks.Features.Fleet
             int? depotId,
             int? zoneId,
             int? assigneeId,
-            int maxCount)
+            int maxCount,
+            ulong? zoneMask = null)
         {
             SourcePrototypeId = sourcePrototypeId?.Trim() ?? string.Empty;
             TargetPrototypeId = targetPrototypeId?.Trim() ?? string.Empty;
@@ -26,6 +27,7 @@ namespace TajsCOI.Tweaks.Features.Fleet
             ZoneId = zoneId;
             AssigneeId = assigneeId;
             MaxCount = Math.Max(0, maxCount);
+            ZoneMask = zoneMask;
         }
 
         internal string SourcePrototypeId { get; }
@@ -35,11 +37,13 @@ namespace TajsCOI.Tweaks.Features.Fleet
         internal int? ZoneId { get; }
         internal int? AssigneeId { get; }
         internal int MaxCount { get; }
+        internal ulong? ZoneMask { get; }
     }
 
     internal readonly struct FleetVehicleSnapshot
     {
-        internal FleetVehicleSnapshot(int id, string prototypeId, bool assigned, int? depotId, int? zoneId, int? assigneeId)
+        internal FleetVehicleSnapshot(int id, string prototypeId, bool assigned, int? depotId, int? zoneId, int? assigneeId,
+            ulong zoneMask = 0)
         {
             Id = id;
             PrototypeId = prototypeId?.Trim() ?? string.Empty;
@@ -47,6 +51,7 @@ namespace TajsCOI.Tweaks.Features.Fleet
             DepotId = depotId;
             ZoneId = zoneId;
             AssigneeId = assigneeId;
+            ZoneMask = zoneMask;
         }
 
         internal int Id { get; }
@@ -55,6 +60,7 @@ namespace TajsCOI.Tweaks.Features.Fleet
         internal int? DepotId { get; }
         internal int? ZoneId { get; }
         internal int? AssigneeId { get; }
+        internal ulong ZoneMask { get; }
     }
 
     internal static class FleetReplacementPlanner
@@ -81,7 +87,11 @@ namespace TajsCOI.Tweaks.Features.Fleet
             {
                 query = query.Where(vehicle => vehicle.DepotId == filter.DepotId);
             }
-            if (filter.ZoneId.HasValue)
+            if (filter.ZoneMask.HasValue)
+            {
+                query = query.Where(vehicle => (vehicle.ZoneMask & filter.ZoneMask.Value) != 0UL);
+            }
+            else if (filter.ZoneId.HasValue)
             {
                 query = query.Where(vehicle => vehicle.ZoneId == filter.ZoneId);
             }

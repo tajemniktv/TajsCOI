@@ -44,5 +44,39 @@ namespace TajsCOI.Tests
             TajsStorageAdvancedState.ClearCapacityOverride(entityId);
             Assert.Null(TajsStorageAdvancedState.GetCapacityOverride(entityId));
         }
+
+        [Theory]
+        [InlineData("0", 0)]
+        [InlineData("25%", 25)]
+        [InlineData(" 100 ", 100)]
+        public void StorageThresholdEntryUsesSharedNumericEditor(string input, int expected)
+        {
+            Assert.True(
+                TajsStorageAdvancedFeature.TryParsePercentText(input, out int value, out string error),
+                error);
+            Assert.Equal(expected, value);
+        }
+
+        [Theory]
+        [InlineData("1", 1)]
+        [InlineData("100000", 100000)]
+        public void StorageCapacityEntryAcceptsPositiveWholeUnits(string input, int expected)
+        {
+            Assert.True(
+                TajsStorageAdvancedFeature.TryParseCapacity(input, out int value, out string error),
+                error);
+            Assert.Equal(expected, value);
+        }
+
+        [Theory]
+        [InlineData("-1")]
+        [InlineData("101%")]
+        [InlineData("1.5")]
+        [InlineData("1,234.5")]
+        public void StorageNumericEditorsRejectInvalidValues(string input)
+        {
+            Assert.False(TajsStorageAdvancedFeature.TryParsePercentText(input, out _, out _));
+            Assert.False(TajsStorageAdvancedFeature.TryParseCapacity(input, out _, out _));
+        }
     }
 }

@@ -10,11 +10,13 @@ using Mafi;
 using Mafi.Core;
 using Mafi.Core.Game;
 using Mafi.Core.Input;
+using Mafi.Core.Vehicles;
 using Mafi.Serialization;
 using TajsCOI.Tweaks.Features.Difficulty;
 using TajsCOI.Tweaks.Features.Overclocking;
 using TajsCOI.Tweaks.Features.Storage;
 using TajsCOI.Tweaks.Features.TransportFlowLimits;
+using TajsCOI.Tweaks.Features.Trains;
 using Xunit;
 using Assert = Xunit.Assert;
 
@@ -31,6 +33,7 @@ namespace TajsCOI.Tests.RuntimeContracts
             Assert.True(typeof(InputCommand).IsAssignableFrom(typeof(TajsOverclockPolicyCmd)));
             Assert.True(typeof(InputCommand).IsAssignableFrom(typeof(TajsStorageInstantEmptyCmd)));
             Assert.True(typeof(InputCommand).IsAssignableFrom(typeof(TransportFlowLimitCmd)));
+            Assert.True(typeof(InputCommand).IsAssignableFrom(typeof(TrainNumberCmd)));
 
             Assert.Equal(
                 new[] { typeof(string), typeof(string), typeof(bool) },
@@ -79,6 +82,16 @@ namespace TajsCOI.Tests.RuntimeContracts
             Assert.Equal(
                 new[] { typeof(EntityId), typeof(string) },
                 typeof(TransportFlowLimitCmd)
+                    .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Where(field => !field.IsStatic)
+                    .Select(field => field.FieldType));
+            Assert.Equal(
+                new[]
+                {
+                    typeof(TrainNumberOperation), typeof(EntityId), typeof(int),
+                    typeof(LocomotiveNumberAssignment), typeof(int),
+                },
+                typeof(TrainNumberCmd)
                     .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
                     .Where(field => !field.IsStatic)
                     .Select(field => field.FieldType));
@@ -143,7 +156,27 @@ namespace TajsCOI.Tests.RuntimeContracts
                 isStatic: false,
                 typeof(TransportFlowLimitCmd));
 
+            Type trainProcessor = typeof(TrainNumberCommandsProcessor);
+            Assert.Contains(typeof(ICommandProcessor<TrainNumberCmd>), trainProcessor.GetInterfaces());
+            Assert.Contains(typeof(IAction<TrainNumberCmd>), trainProcessor.GetInterfaces());
+            RuntimeContractAssertions.RequireMethod(
+                trainProcessor,
+                nameof(IAction<TrainNumberCmd>.Invoke),
+                typeof(void),
+                isStatic: false,
+                typeof(TrainNumberCmd));
+
             RuntimeContractAssertions.RequireConstructor(typeof(ChangeGameDifficultyCmd), typeof(GameDifficultyConfig));
+            RuntimeContractAssertions.RequireConstructor(
+                typeof(AddVehicleReplacementTaskCmd),
+                typeof(Mafi.Core.Entities.Dynamic.DynamicEntityProto.ID),
+                typeof(Mafi.Core.Entities.Dynamic.DynamicEntityProto.ID),
+                typeof(LogisticsZoneId),
+                typeof(EntityId?),
+                typeof(bool),
+                typeof(EntityId?),
+                typeof(int));
+            RuntimeContractAssertions.RequireConstructor(typeof(RemoveVehicleReplacementTaskCmd), typeof(uint));
             Assert.Contains(typeof(ICommandProcessor<ChangeGameDifficultyCmd>), typeof(GameDifficultyApplier).GetInterfaces());
         }
 
@@ -176,6 +209,18 @@ namespace TajsCOI.Tests.RuntimeContracts
             Assert.Equal(flow.TargetId, restoredFlow.TargetId);
             Assert.True(restoredFlow.TryReadLimit(out double restoredLimit));
             Assert.Equal(12.5d, restoredLimit);
+
+            TrainNumberCmd train = TrainNumberCmd.Set(new EntityId(29), 301);
+            TrainNumberCmd restoredTrain = RoundTrip(train, TrainNumberCmd.Serialize, TrainNumberCmd.Deserialize);
+            Assert.Equal(train.Operation, restoredTrain.Operation);
+            Assert.Equal(train.TargetId, restoredTrain.TargetId);
+            Assert.Equal(train.Number, restoredTrain.Number);
+
+            TrainNumberCmd assign = TrainNumberCmd.AssignUnique(LocomotiveNumberAssignment.Random, 1234);
+            TrainNumberCmd restoredAssign = RoundTrip(assign, TrainNumberCmd.Serialize, TrainNumberCmd.Deserialize);
+            Assert.Equal(assign.Operation, restoredAssign.Operation);
+            Assert.Equal(assign.Assignment, restoredAssign.Assignment);
+            Assert.Equal(assign.RandomSeed, restoredAssign.RandomSeed);
         }
 
         private static T RoundTrip<T>(

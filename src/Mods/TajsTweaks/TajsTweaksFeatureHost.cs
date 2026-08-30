@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 using HarmonyLib;
 using Mafi;
 using Mafi.Core;
@@ -24,6 +25,8 @@ using Mafi.Core.Prototypes;
 using Mafi.Core.PropertiesDb;
 using Mafi.Core.SaveGame;
 using Mafi.Core.Terrain;
+using Mafi.Core.Trains;
+using Mafi.Core.Vehicles;
 using Mafi.Core.Vehicles.Commands;
 using Mafi.Core.Vehicles.Trucks;
 using Mafi.Core.World;
@@ -578,9 +581,13 @@ namespace TajsCOI.Tweaks
                 m_worldVisibilityFilters?.ApplyPersistedPolicy(TajsTweaksRuntimeState.WorldVisibilityHiddenCategories);
                 ApplyWorldVisibilityHudIndicator();
             }
-            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.TrainTuningProfile)
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.TrainTuningProfile ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.TrainSlopeMultiplier ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.TrainFuelMultiplier ||
+                change.Descriptor.Key == TajsTweaksSettingsCatalog.TrainPollutionMultiplier)
             {
                 TrainTuningFeature.ApplyFromSettings(m_resolver);
+                ReportTrainTuningCompatibility();
             }
 
             // Crew-rotation duration is the only station field validated as live-safe. All other
@@ -653,7 +660,11 @@ namespace TajsCOI.Tweaks
             TryInstall(m_runtime, "StorageInspectorControls", harmony => TajsStorageAdvancedFeature.Install(harmony, m_resolver));
             TryInstall(m_runtime, "MineDepletedTint", MineDepletedTintFeature.Install);
             TryInstall(m_runtime, "WorldMapViewport", WorldMapViewportFeature.Install);
-            TryInstallResolved(m_runtime, "TrainTuning", () => TrainTuningFeature.ApplyFromSettings(m_resolver));
+            TryInstallResolved(m_runtime, "TrainTuning", () =>
+            {
+                TrainTuningFeature.ApplyFromSettings(m_resolver);
+                ReportTrainTuningCompatibility();
+            });
             TryInstallResolved(m_runtime, "SandboxProgressionProperties", () =>
             {
                 if (!m_resolver.TryResolve(out IPropertiesDb propertiesDb))
@@ -922,6 +933,36 @@ namespace TajsCOI.Tweaks
             ReportSandboxToggle("sandbox_disable_clean_water_need", CompatibilityState.Disabled, "No independent clean-water seam", "Fail-open because water demand also owns wastewater generation.");
             ReportSandboxToggle("sandbox_disable_wastewater", CompatibilityState.Disabled, "No independent wastewater production seam", "Fail-open to avoid coupling clean-water demand and wastewater.");
             ReportSandboxToggle("sandbox_disable_computing_need", CompatibilityState.Disabled, "No narrow computing PopNeed seam", "Fail-open until a version-validated demand adapter exists.");
+        }
+
+        private void ReportTrainTuningCompatibility()
+        {
+            ReportTrainPropertyCompatibility(
+                "Climbing",
+                TrainTuningFeature.SlopeAvailable,
+                "TrainSlopeDifficultyMultiplier",
+                "Native slope difficulty multiplier; independent bounded setting and replaceable owner modifier.");
+            ReportTrainPropertyCompatibility(
+                "Fuel",
+                TrainTuningFeature.FuelAvailable,
+                "TrainsFuelConsumptionMultiplier",
+                "Native train fuel-use multiplier; independent bounded setting and replaceable owner modifier.");
+            ReportTrainPropertyCompatibility(
+                "Pollution",
+                TrainTuningFeature.PollutionAvailable,
+                "TrainsPollutionMultiplier",
+                "Native train-emissions multiplier; independent bounded setting and replaceable owner modifier.");
+        }
+
+        private void ReportTrainPropertyCompatibility(string id, bool available, string target, string details)
+        {
+            m_runtime.ReportCompatibility(new CompatibilityReport(
+                TajsTweaksSettingsCatalog.ModId,
+                "TrainTuning." + id,
+                available ? CompatibilityState.Compatible : CompatibilityState.Disabled,
+                target,
+                available ? target : "property unavailable",
+                available ? details : "Fail-open; this train property remains at its native value."));
         }
 
         private void ReportProgressionCompatibility()
@@ -2580,6 +2621,227 @@ namespace TajsCOI.Tweaks
         }
 
         [ConsoleCommand(
+            documentation: "Creates a durable native replacement task with optional zone, depot, assignee, and unassigned-only filters.",
+            customCommandName: "tajs_fleet_replace_task")]
+        public string FleetReplaceTask(
+            string? sourcePrototypeId,
+            string? targetPrototypeId,
+            string zoneId,
+            string count,
+            string confirmation,
+            string unassignedOnly = "false",
+            string depotId = "",
+            string assigneeId = "")
+        {
+            if (!TajsTweaksRuntimeState.FleetManager)
+            {
+                return "Fleet manager is disabled.";
+            }
+            if (!string.Equals(confirmation, "CONFIRM", StringComparison.Ordinal))
+            {
+                return "No replacement task was queued. Repeat with confirmation=CONFIRM after reviewing the exact filter scope.";
+            }
+            if (!int.TryParse(count, NumberStyles.Integer, CultureInfo.InvariantCulture, out int requested) || requested <= 0)
+            {
+                return "Usage: tajs_fleet_replace_task <source-prototype-id> <target-prototype-id> <zone-id> <count> CONFIRM [unassigned-only] [depot-id] [assignee-id]";
+            }
+            requested = Math.Min(requested, TajsTweaksRuntimeState.FleetBatchLimit);
+            if (!bool.TryParse(unassignedOnly, out bool onlyUnassigned) ||
+                !int.TryParse(zoneId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedZoneId) || parsedZoneId < 0 ||
+                !m_resolver.TryResolve(out IInputScheduler scheduler) ||
+                !m_resolver.TryResolve(out ProtosDb protos) ||
+                !m_resolver.TryResolve(out LogisticsZonesManager zones) ||
+                !m_resolver.TryResolve(out IEntitiesManager entities))
+            {
+                return "Usage: tajs_fleet_replace_task <source-prototype-id> <target-prototype-id> <zone-id> <count> CONFIRM [unassigned-only] [depot-id] [assignee-id]";
+            }
+
+            string sourceId = (sourcePrototypeId ?? string.Empty).Trim();
+            string targetId = (targetPrototypeId ?? string.Empty).Trim();
+            if (!protos.TryGetProto<DrivingEntityProto>(new DynamicEntityProto.ID(sourceId), out DrivingEntityProto source) ||
+                !protos.TryGetProto<DrivingEntityProto>(new DynamicEntityProto.ID(targetId), out DrivingEntityProto target) ||
+                !target.IsUnlockedAndAvailable || source.Id == target.Id)
+            {
+                return "Fleet manager: source/target prototypes are missing, identical, or the replacement is unavailable.";
+            }
+            if (!zones.TryGetZone(new LogisticsZoneId(parsedZoneId), out LogisticsZone zone) || zone.IsDestroyed)
+            {
+                return "Fleet manager: logistics zone " + parsedZoneId + " is missing or destroyed; no task was queued.";
+            }
+            if (parsedZoneId != 0 && !string.IsNullOrWhiteSpace(assigneeId))
+            {
+                return "Fleet manager: COI's native assignee task scope supersedes logistics-zone scope; choose one scope per task.";
+            }
+
+            EntityId? parsedDepotId = null;
+            if (!string.IsNullOrWhiteSpace(depotId))
+            {
+                if (!int.TryParse(depotId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int depotValue) ||
+                    !entities.TryGetEntity<VehicleDepotBase>(new EntityId(depotValue), out VehicleDepotBase depot) ||
+                    depot.IsDestroyed || !depot.CanAcceptForUpgrade(source, target))
+                {
+                    return "Fleet manager: the selected replacement depot is missing, destroyed, or cannot accept this prototype pair.";
+                }
+                parsedDepotId = new EntityId(depotValue);
+            }
+            else if (!entities.GetAllEntitiesOfType<VehicleDepotBase>()
+                         .Any(candidate => !candidate.IsDestroyed && candidate.IsEnabled && candidate.CanAcceptForUpgrade(source, target)))
+            {
+                return "Fleet manager: no enabled depot can accept this source/replacement prototype pair; no task was queued.";
+            }
+
+            EntityId? parsedAssigneeId = null;
+            if (!string.IsNullOrWhiteSpace(assigneeId))
+            {
+                if (!int.TryParse(assigneeId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int assigneeValue) ||
+                    !entities.TryGetEntity<IEntityAssignedWithVehicles>(new EntityId(assigneeValue), out IEntityAssignedWithVehicles assignee) ||
+                    assignee.IsDestroyed)
+                {
+                    return "Fleet manager: the selected assignee is missing or destroyed; no task was queued.";
+                }
+                parsedAssigneeId = new EntityId(assigneeValue);
+            }
+            if (onlyUnassigned && parsedAssigneeId.HasValue)
+            {
+                return "Fleet manager: unassigned-only cannot be combined with an assignee scope in the native workflow.";
+            }
+
+            Vehicle[] vehicles = entities.GetAllEntitiesOfType<Vehicle>()
+                .Where(vehicle => vehicle is not null && !vehicle.IsDestroyed && vehicle.IsSpawned &&
+                                  !vehicle.IsOnWayToDepotForScrap && !vehicle.IsOnWayToDepotForReplacement && !vehicle.ReplaceQueued)
+                .ToArray();
+            FleetVehicleSnapshot[] snapshots = vehicles
+                .Select(vehicle =>
+                {
+                    IEntityAssignedWithVehicles? assignee = vehicle.AssignedTo.ValueOrNull;
+                    LogisticsZone? assignedZone = vehicle.AssignedZone.ValueOrNull;
+                    return new FleetVehicleSnapshot(
+                        vehicle.Id.Value,
+                        vehicle.Prototype.Id.Value,
+                        vehicle.AssignedTo.HasValue,
+                        null,
+                        assignedZone?.Id.Value,
+                        assignee?.Id.Value,
+                        vehicle.ZoneMask);
+                })
+                .ToArray();
+            ulong? zoneMask = parsedAssigneeId.HasValue ? null : zone.Mask;
+            FleetReplacementFilterSnapshot filter = new(
+                sourceId,
+                targetId,
+                onlyUnassigned ? "unassigned" : string.Empty,
+                null,
+                parsedAssigneeId.HasValue ? null : parsedZoneId,
+                parsedAssigneeId?.Value,
+                requested,
+                zoneMask);
+            int estimated = FleetReplacementPlanner.Match(
+                    snapshots,
+                    filter,
+                    vehicle => !parsedAssigneeId.HasValue || vehicle.AssigneeId == parsedAssigneeId.Value.Value)
+                .Count;
+            if (estimated == 0)
+            {
+                return "Fleet manager: no eligible vehicles match the requested replacement task filters; no task was queued.";
+            }
+
+            try
+            {
+                scheduler.ScheduleInputCmd(
+                    new AddVehicleReplacementTaskCmd(
+                        source.Id,
+                        target.Id,
+                        zone.Id,
+                        parsedDepotId,
+                        onlyUnassigned,
+                        parsedAssigneeId,
+                        requested));
+                return "Fleet replacement task queued: estimated=" + estimated + "/" + requested +
+                       ", source=" + source.Id.Value + " -> " + target.Id.Value +
+                       ", zone=" + zone.Id.Value +
+                       ", unassigned-only=" + onlyUnassigned +
+                       (parsedDepotId.HasValue ? ", depot=" + parsedDepotId.Value.Value : string.Empty) +
+                       (parsedAssigneeId.HasValue ? ", assignee=" + parsedAssigneeId.Value.Value : string.Empty) + ".";
+            }
+            catch (Exception exception)
+            {
+                m_log.Exception(exception, "Fleet replacement task failed open.");
+                return "Fleet manager: replacement task was not queued; the native vehicle workflow remains active.";
+            }
+        }
+
+        [ConsoleCommand(
+            documentation: "Lists active and recently finished native fleet replacement tasks.",
+            customCommandName: "tajs_fleet_tasks")]
+        public string FleetTasks()
+        {
+            if (!TajsTweaksRuntimeState.FleetManager)
+            {
+                return "Fleet manager is disabled.";
+            }
+            if (!m_resolver.TryResolve(out VehiclesReplacer replacer))
+            {
+                return "Fleet replacement tasks are unavailable in this scene.";
+            }
+
+            try
+            {
+                var lines = new List<string>();
+                foreach (VehicleReplacementTask task in replacer.ActiveReplacementTasks)
+                {
+                    lines.Add(FormatReplacementTask(task, "active"));
+                }
+                var finished = new List<VehicleReplacementTask>();
+                foreach (VehicleReplacementTask task in replacer.FinishedReplacementTasks)
+                {
+                    finished.Add(task);
+                }
+                for (int index = finished.Count - 1; index >= 0 && finished.Count - index <= 8; index--)
+                {
+                    lines.Add(FormatReplacementTask(finished[index], "finished"));
+                }
+                return lines.Count == 0
+                    ? "Fleet replacement tasks: none."
+                    : "Fleet replacement tasks:\n" + string.Join("\n", lines);
+            }
+            catch (Exception exception)
+            {
+                m_log.Exception(exception, "Fleet replacement task listing failed open.");
+                return "Fleet replacement tasks are unavailable in this scene.";
+            }
+        }
+
+        [ConsoleCommand(
+            documentation: "Cancels a native fleet replacement task after explicit confirmation.",
+            customCommandName: "tajs_fleet_task_cancel")]
+        public string FleetTaskCancel(string taskId, string confirmation)
+        {
+            if (!TajsTweaksRuntimeState.FleetManager)
+            {
+                return "Fleet manager is disabled.";
+            }
+            if (!string.Equals(confirmation, "CONFIRM", StringComparison.Ordinal) ||
+                !uint.TryParse(taskId, NumberStyles.None, CultureInfo.InvariantCulture, out uint parsedTaskId) ||
+                !m_resolver.TryResolve(out IInputScheduler scheduler))
+            {
+                return "Usage: tajs_fleet_task_cancel <task-id> CONFIRM";
+            }
+            scheduler.ScheduleInputCmd(new RemoveVehicleReplacementTaskCmd(parsedTaskId));
+            return "Fleet replacement task cancellation queued: " + parsedTaskId + ".";
+        }
+
+        private static string FormatReplacementTask(VehicleReplacementTask task, string status)
+        {
+            string assignee = task.Assignee.ValueOrNull is IEntity entity ? ", assignee=" + entity.Id.Value : string.Empty;
+            string depot = task.VehicleDepot.ValueOrNull is VehicleDepotBase depotEntity ? ", depot=" + depotEntity.Id.Value : string.Empty;
+            int remaining = task.Limit > 0 ? Math.Max(0, task.Limit - task.VehiclesReplaced) : task.ActiveReplacements.Count;
+            return "#" + task.TaskId + " " + status + " " + task.CurrentProto.Id.Value + " -> " + task.ReplacementProto.Id.Value +
+                   " state=" + task.State + " replaced=" + task.VehiclesReplaced + "/" + task.Limit +
+                   " active=" + task.ActiveReplacements.Count + " remaining=" + remaining +
+                   " zone=" + task.LogisticsZone.Id.Value + " unassigned-only=" + task.UnassignedOnly + depot + assignee;
+        }
+
+        [ConsoleCommand(
             documentation: "Cancels bounded pending scrap or replacement requests using normal vehicle commands.",
             customCommandName: "tajs_fleet_cancel")]
         public string FleetCancel(string operation, string vehicleIds, string confirmation)
@@ -2621,6 +2883,93 @@ namespace TajsCOI.Tweaks
                 }
             }
             return "Fleet cancellation commands queued: " + changed + ".";
+        }
+
+        [ConsoleCommand(
+            documentation: "Lists live locomotives by native number, prototype, train name, or entity ID.",
+            customCommandName: "tajs_locomotive_list")]
+        public string LocomotiveList(string? search = null)
+        {
+            if (!m_resolver.TryResolve(out IEntitiesManager entities))
+            {
+                return "Locomotive list is unavailable in this scene.";
+            }
+
+            return TrainTuningFeature.FormatList(entities.GetAllEntitiesOfType<Locomotive>(), search);
+        }
+
+        [ConsoleCommand(
+            documentation: "Shows native effective train properties alongside the configured multipliers.",
+            customCommandName: "tajs_train_status")]
+        public string TrainStatus()
+        {
+            if (!m_resolver.TryResolve(out TrainsManager trains))
+            {
+                return "Train tuning is unavailable in this scene.";
+            }
+
+            double slopeMultiplier = TrainModifierPolicy.ResolveMultiplier(
+                TajsTweaksRuntimeState.TrainSlopeMultiplier,
+                TrainModifierProperty.Climbing,
+                TajsTweaksRuntimeState.TrainTuningProfile);
+            double fuelMultiplier = TrainModifierPolicy.ResolveMultiplier(
+                TajsTweaksRuntimeState.TrainFuelMultiplier,
+                TrainModifierProperty.Fuel,
+                TajsTweaksRuntimeState.TrainTuningProfile);
+            double pollutionMultiplier = TrainModifierPolicy.ResolveMultiplier(
+                TajsTweaksRuntimeState.TrainPollutionMultiplier,
+                TrainModifierProperty.Pollution,
+                TajsTweaksRuntimeState.TrainTuningProfile);
+            return "Train properties: slope effective=" + trains.SlopeDifficultyMultiplier +
+                   " (base 30%, configured x" + slopeMultiplier.ToString("0.##", CultureInfo.InvariantCulture) +
+                   "), fuel effective=" + trains.FuelConsumptionMultiplier +
+                   " (base 100%, configured x" + fuelMultiplier.ToString("0.##", CultureInfo.InvariantCulture) +
+                   "), pollution effective=" + trains.PollutionMultiplier +
+                   " (base 100%, configured x" + pollutionMultiplier.ToString("0.##", CultureInfo.InvariantCulture) + ").";
+        }
+
+        [ConsoleCommand(
+            documentation: "Queues a native-range locomotive number change by entity ID.",
+            customCommandName: "tajs_locomotive_set")]
+        public string LocomotiveSetNumber(string locomotiveId, string number)
+        {
+            if (!int.TryParse(locomotiveId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int id) ||
+                !int.TryParse(number, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedNumber) ||
+                !m_resolver.TryResolve(out IInputScheduler scheduler))
+            {
+                return "Usage: tajs_locomotive_set <entity-id> <native-number>";
+            }
+
+            scheduler.ScheduleInputCmd(TrainNumberCmd.Set(new EntityId(id), parsedNumber));
+            return "Locomotive number command queued for entity " + id.ToString(CultureInfo.InvariantCulture) + ".";
+        }
+
+        [ConsoleCommand(
+            documentation: "Queues unique native-range numbers for the live locomotive fleet.",
+            customCommandName: "tajs_locomotive_assign_unique")]
+        public string LocomotiveAssignUnique(string mode = "sequential")
+        {
+            LocomotiveNumberAssignment assignment;
+            if (string.Equals(mode, "random", StringComparison.OrdinalIgnoreCase))
+            {
+                assignment = LocomotiveNumberAssignment.Random;
+            }
+            else if (string.Equals(mode, "sequential", StringComparison.OrdinalIgnoreCase))
+            {
+                assignment = LocomotiveNumberAssignment.Sequential;
+            }
+            else
+            {
+                return "Usage: tajs_locomotive_assign_unique [sequential|random]";
+            }
+
+            if (!m_resolver.TryResolve(out IInputScheduler scheduler))
+            {
+                return "Locomotive numbering is unavailable in this scene.";
+            }
+
+            scheduler.ScheduleInputCmd(TrainNumberCmd.AssignUnique(assignment, Environment.TickCount));
+            return "Unique locomotive-number assignment queued in " + mode.ToLowerInvariant() + " mode.";
         }
 
         [ConsoleCommand(

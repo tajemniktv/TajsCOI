@@ -41,3 +41,13 @@ The native 0.8.7b Harmony seams, renderer widgets, and game-specific entity
 adapters remain intentionally fail-open integration work. These contracts keep
 the simulation read-only and avoid retaining scene objects; they can be wired to
 validated native APIs without replacing the game's authorities.
+
+## Management-surface adoption follow-up
+
+- Fleet replacement tasks use the native `VehiclesReplacer` command/task model when a
+  caller needs a durable zone, depot, assignee, or unassigned-only scope. The existing
+  per-vehicle bulk commands remain available for simple operations; task progress and
+  cancellation read native task state rather than a private success counter.
+- The world browser keeps a discovered-only snapshot and now exposes the existing pure
+  kind/sort query (including distance) directly in the management window. It never stores
+  world-map entity references between refreshes.

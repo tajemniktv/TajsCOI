@@ -44,6 +44,9 @@ namespace TajsCOI.Tweaks
         internal const string TrainSoundVolume = "train_sound_volume";
         internal const string TrainSoundRange = "train_sound_range";
         internal const string TrainTuningProfile = "train_tuning_profile";
+        internal const string TrainSlopeMultiplier = "train_slope_multiplier";
+        internal const string TrainFuelMultiplier = "train_fuel_multiplier";
+        internal const string TrainPollutionMultiplier = "train_pollution_multiplier";
         internal const string LocomotiveNumbering = "locomotive_numbering";
 
         internal const string DefaultsUnit = "defaults_unit";
@@ -671,9 +674,48 @@ namespace TajsCOI.Tweaks
                 DisplayName,
                 TrainTuningProfile,
                 "Train tuning profile",
-                "Replaces the native train slope, fuel, and pollution property values as one profile; vanilla removes the modifier.",
+                "Legacy convenience profile. The independent train multipliers below take precedence when changed from their vanilla defaults.",
                 "vanilla",
                 s_trainTuningProfiles,
+                "Trains",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                TrainSlopeMultiplier,
+                "Train climbing multiplier",
+                "Multiplier applied to the native train slope difficulty property; 1 preserves the current game base value.",
+                1,
+                0.1,
+                3,
+                0.05,
+                "Trains",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                TrainFuelMultiplier,
+                "Train fuel-use multiplier",
+                "Multiplier applied to the native train fuel-consumption property; 1 preserves the current game base value.",
+                1,
+                0.1,
+                3,
+                0.05,
+                "Trains",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                TrainPollutionMultiplier,
+                "Train pollution multiplier",
+                "Multiplier applied to the native train-emissions property; 1 preserves the current game base value.",
+                1,
+                0.1,
+                3,
+                0.05,
                 "Trains",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced | SettingFlags.Experimental),

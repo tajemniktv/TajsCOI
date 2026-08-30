@@ -18,6 +18,39 @@ namespace TajsCOI.Core.Blueprints
 
         public bool IsReady => m_library.LibraryStatus != BlueprintsLibrary.Status.LoadingInProgress;
 
+        /// <summary>
+        /// Parses a portable native blueprint/folder payload without adding it to the library.
+        /// The returned item is a detached parse result and must not be retained as authoritative
+        /// state; callers should invoke <see cref="TryImport"/> after presenting the preview.
+        /// </summary>
+        public bool TryPreview(string nativePayload, out IBlueprintItem? item, out string error)
+        {
+            item = null;
+            if (!IsReady)
+            {
+                error = "Blueprint library is still loading.";
+                return false;
+            }
+
+            try
+            {
+                if (!m_library.TryParseFromString(nativePayload ?? string.Empty, out string parseError, out IBlueprintItem result))
+                {
+                    error = string.IsNullOrWhiteSpace(parseError) ? "Native blueprint payload was rejected." : parseError;
+                    return false;
+                }
+
+                item = result;
+                error = string.Empty;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "Native blueprint preview failed: " + ex.Message;
+                return false;
+            }
+        }
+
         public bool TryImport(IBlueprintsFolder targetFolder, string nativePayload, out IBlueprintItem? item, out string error)
         {
             if (targetFolder is null) throw new ArgumentNullException(nameof(targetFolder));

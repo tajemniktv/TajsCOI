@@ -44,6 +44,9 @@ namespace TajsCOI.Tweaks
         internal static double MachineSoundRange;
         internal static double TrainSoundVolume;
         internal static double TrainSoundRange;
+        internal static double TrainSlopeMultiplier = 1d;
+        internal static double TrainFuelMultiplier = 1d;
+        internal static double TrainPollutionMultiplier = 1d;
 
         internal static string DefaultsUnit = "vanilla";
         internal static string DefaultsLoose = "vanilla";
@@ -245,6 +248,9 @@ namespace TajsCOI.Tweaks
             TrainSoundVolume = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainSoundVolume);
             TrainSoundRange = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainSoundRange);
             TrainTuningProfile = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainTuningProfile);
+            TrainSlopeMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainSlopeMultiplier);
+            TrainFuelMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainFuelMultiplier);
+            TrainPollutionMultiplier = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.TrainPollutionMultiplier);
             LocomotiveNumbering = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.LocomotiveNumbering);
 
             DefaultsUnit = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.DefaultsUnit);
@@ -728,6 +734,18 @@ namespace TajsCOI.Tweaks
             if (key == TajsTweaksSettingsCatalog.TrainSoundRange)
             {
                 TrainSoundRange = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TrainSlopeMultiplier)
+            {
+                TrainSlopeMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TrainFuelMultiplier)
+            {
+                TrainFuelMultiplier = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.TrainPollutionMultiplier)
+            {
+                TrainPollutionMultiplier = value;
             }
             if (key == TajsTweaksSettingsCatalog.EfficiencyOverlayUpdateSeconds)
             {

@@ -61,6 +61,9 @@ namespace TajsCOI.Tweaks
         private readonly ButtonText m_preloadTab;
         private readonly ButtonText m_browserTab;
         private readonly TextField m_browserSearch;
+        private readonly TextField m_browserKind;
+        private readonly TextField m_browserSort;
+        private readonly TextField m_browserDescending;
         private readonly Label m_preloadFeedback;
         private readonly Column m_preloadPending;
         private readonly Column m_preloadCargo;
@@ -108,6 +111,9 @@ namespace TajsCOI.Tweaks
             m_preloadContent = new Column(6.pt()).AlignItemsStretch();
             m_browserContent = new Column(4.pt()).AlignItemsStretch();
             m_browserSearch = new TextField().Placeholder("Search discovered entities".AsLoc()).MaxWidth(new Px(360f));
+            m_browserKind = new TextField().Text("all").Placeholder("Type: all/mine/...".AsLoc()).MaxWidth(new Px(150f));
+            m_browserSort = new TextField().Text("name").Placeholder("Sort: name/id/x/y/distance".AsLoc()).MaxWidth(new Px(170f));
+            m_browserDescending = new TextField().Text("false").Placeholder("Descending true/false".AsLoc()).MaxWidth(new Px(135f));
             m_repairsScroll = MakeScroll(m_repairsContent);
             m_minesScroll = MakeScroll(m_minesContent);
             m_settlementsScroll = MakeScroll(m_settlementsContent);
@@ -126,6 +132,11 @@ namespace TajsCOI.Tweaks
             m_preloadPending = new Column(2.pt()).AlignItemsStretch();
             m_preloadCargo = new Column(2.pt()).AlignItemsStretch();
             m_browserContent.Add(m_browserSearch);
+            Row browserFilters = new Row(4.pt()).AlignItemsCenter();
+            browserFilters.Add(m_browserKind);
+            browserFilters.Add(m_browserSort);
+            browserFilters.Add(m_browserDescending);
+            m_browserContent.Add(browserFilters);
             BuildPreloadPanel();
             SwitchTab(0);
             RootElement.schedule.Execute(RefreshAll).Every(2000L);
@@ -178,6 +189,11 @@ namespace TajsCOI.Tweaks
                 m_settlementsContent.Clear();
                 m_browserContent.Clear();
                 m_browserContent.Add(m_browserSearch);
+                Row browserFilters = new Row(4.pt()).AlignItemsCenter();
+                browserFilters.Add(m_browserKind);
+                browserFilters.Add(m_browserSort);
+                browserFilters.Add(m_browserDescending);
+                m_browserContent.Add(browserFilters);
                 int repairs = 0;
                 int mines = 0;
                 int settlements = 0;
@@ -242,6 +258,10 @@ namespace TajsCOI.Tweaks
                         continue;
                     }
                     IWorldMapEntity entity = location.Entity.Value;
+                    if (entity.IsDestroyed)
+                    {
+                        continue;
+                    }
                     WorldEntityKind kind = entity switch
                     {
                         WorldMapVillage => WorldEntityKind.Settlement,
@@ -249,7 +269,9 @@ namespace TajsCOI.Tweaks
                         WorldMapCargoShipWreck => WorldEntityKind.Wreck,
                         _ => WorldEntityKind.Other,
                     };
-                    double? quantity = entity is WorldMapMine mine && mine.QuantityAvailable.HasValue
+                    double? quantity = entity is WorldMapMine mine && mine.QuantityAvailable.HasValue &&
+                                       !double.IsNaN(mine.QuantityAvailable.Value.Value) &&
+                                       !double.IsInfinity(mine.QuantityAvailable.Value.Value)
                         ? mine.QuantityAvailable.Value.Value
                         : null;
                     live.Add(
@@ -266,15 +288,33 @@ namespace TajsCOI.Tweaks
                 }
 
                 IReadOnlyList<WorldEntitySnapshot> snapshot = WorldEntityBrowser.Snapshot(live);
+                WorldEntityKind? queryKind = ParseBrowserKind(m_browserKind.GetText());
+                WorldEntitySortField sort = ParseBrowserSort(m_browserSort.GetText());
+                bool descending = bool.TryParse(m_browserDescending.GetText(), out bool parsedDescending) && parsedDescending;
                 IReadOnlyList<WorldEntitySnapshot> rows = WorldEntityBrowser.Query(
                     snapshot,
-                    new WorldEntityQuery { Search = m_browserSearch.GetText(), SortBy = WorldEntitySortField.Name });
+                    new WorldEntityQuery
+                    {
+                        Search = m_browserSearch.GetText(),
+                        Kind = queryKind,
+                        SortBy = sort,
+                        Descending = descending,
+                    });
                 int index = 0;
                 foreach (WorldEntitySnapshot row in rows)
                 {
                     Row tableRow = MakeRow(index++);
                     tableRow.Add(new Label(row.Name.AsLoc()).Width(new Px(260f)));
-                    tableRow.Add(new Label((row.Kind + "  " + row.Status).AsLoc()).Width(new Px(210f)));
+                    string details = row.Kind + "  " + row.Status;
+                    if (row.KnownQuantity.HasValue)
+                    {
+                        details += "  qty " + row.KnownQuantity.Value.ToString("G", CultureInfo.CurrentCulture);
+                    }
+                    if (row.Owned)
+                    {
+                        details += "  owned";
+                    }
+                    tableRow.Add(new Label(details.AsLoc()).Width(new Px(260f)));
                     tableRow.Add(new Label(("(" + row.X + ", " + row.Y + ")").AsLoc()).Width(new Px(120f)));
                     var focus = new ButtonText(Button.General, "Focus".AsLoc(), () => TryFocus(row.Id));
                     focus.Width(new Px(90f));
@@ -290,6 +330,33 @@ namespace TajsCOI.Tweaks
             {
                 m_browserContent.Add(new Label("World entity browser is unavailable in this scene.".AsLoc()));
             }
+        }
+
+        private static WorldEntityKind? ParseBrowserKind(string? text)
+        {
+            return (text ?? string.Empty).Trim().ToLowerInvariant() switch
+            {
+                "settlement" or "settlements" or "village" => WorldEntityKind.Settlement,
+                "mine" or "mines" => WorldEntityKind.Mine,
+                "fleet" or "fleets" => WorldEntityKind.Fleet,
+                "wreck" or "wrecks" => WorldEntityKind.Wreck,
+                "other" => WorldEntityKind.Other,
+                _ => null,
+            };
+        }
+
+        private static WorldEntitySortField ParseBrowserSort(string? text)
+        {
+            return (text ?? string.Empty).Trim().ToLowerInvariant() switch
+            {
+                "kind" or "type" => WorldEntitySortField.Kind,
+                "status" => WorldEntitySortField.Status,
+                "id" => WorldEntitySortField.Id,
+                "x" => WorldEntitySortField.X,
+                "y" => WorldEntitySortField.Y,
+                "distance" or "dist" => WorldEntitySortField.Distance,
+                _ => WorldEntitySortField.Name,
+            };
         }
 
         private static string TryReadPrototypeId(IWorldMapEntity entity)

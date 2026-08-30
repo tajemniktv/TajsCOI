@@ -49,11 +49,17 @@ namespace TajsCOI.Tweaks
         private readonly UiRoot m_uiRoot;
         private readonly Column m_groups;
         private readonly Label m_status;
+        private readonly Label m_taskStatus;
         private readonly DataTableModel<VehicleGroup> m_groupTable;
         private readonly TextField m_source;
         private readonly TextField m_target;
         private readonly TextField m_count;
         private readonly TextField m_policy;
+        private readonly TextField m_taskZone;
+        private readonly TextField m_taskDepot;
+        private readonly TextField m_taskAssignee;
+        private readonly TextField m_taskUnassigned;
+        private readonly TextField m_taskId;
         private readonly IVisualElementScheduledItem? m_refreshSchedule;
         private float m_lastActivityTime;
         private float m_nextRefreshTime;
@@ -133,8 +139,46 @@ namespace TajsCOI.Tweaks
             header.Add(MakeButton("Refresh", ManualRefresh));
             panel.Add(header);
 
+            Row taskHeader = new Row(5.pt()).AlignItemsCenter();
+            taskHeader.Add(new Label("Durable replacement task".AsLoc()).FontBold());
+            m_taskZone = new TextField().Text("0").Placeholder("Zone ID".AsLoc()).MaxWidth(new Px(85f));
+            m_taskDepot = new TextField().Placeholder("Depot ID (optional)".AsLoc()).MaxWidth(new Px(125f));
+            m_taskAssignee = new TextField().Placeholder("Assignee ID (optional)".AsLoc()).MaxWidth(new Px(135f));
+            m_taskUnassigned = new TextField().Text("false").Placeholder("Unassigned only".AsLoc()).MaxWidth(new Px(125f));
+            m_taskId = new TextField().Placeholder("Task ID".AsLoc()).MaxWidth(new Px(85f));
+            m_taskZone.OnEditEnd(_ => MarkActivity());
+            m_taskDepot.OnEditEnd(_ => MarkActivity());
+            m_taskAssignee.OnEditEnd(_ => MarkActivity());
+            m_taskUnassigned.OnEditEnd(_ => MarkActivity());
+            m_taskId.OnEditEnd(_ => MarkActivity());
+            taskHeader.Add(m_taskZone, m_taskDepot, m_taskAssignee, m_taskUnassigned);
+            taskHeader.Add(
+                MakeButton(
+                    "Queue task",
+                    () => ConfirmAndRun(
+                        "task",
+                        () => m_host.FleetReplaceTask(
+                            m_source.GetText(),
+                            m_target.GetText(),
+                            m_taskZone.GetText(),
+                            m_count.GetText(),
+                            "CONFIRM",
+                            m_taskUnassigned.GetText(),
+                            m_taskDepot.GetText(),
+                            m_taskAssignee.GetText()))));
+            taskHeader.Add(m_taskId);
+            taskHeader.Add(
+                MakeButton(
+                    "Cancel task",
+                    () => ConfirmAndRun(
+                        "cancel-task",
+                        () => m_host.FleetTaskCancel(m_taskId.GetText(), "CONFIRM"))));
+            panel.Add(taskHeader);
+
             m_status = new Label(string.Empty.AsLoc());
             panel.Add(m_status);
+            m_taskStatus = new Label(string.Empty.AsLoc()).FontSize(11);
+            panel.Add(m_taskStatus);
             m_groups = new Column(3.pt()).AlignItemsStretch();
             var scroll = new ScrollColumn();
             scroll.Add(m_groups);
@@ -261,10 +305,12 @@ namespace TajsCOI.Tweaks
                     (vehicles.Length + " vehicles | assigned " + assigned + " | scrap " + scrap +
                      " | replacement " + replacements + " | queued " + queued + " | problems " + problems +
                      " | batch limit " + TajsTweaksRuntimeState.FleetBatchLimit).AsLoc());
+                m_taskStatus.Value(m_host.FleetTasks().AsLoc());
             }
             catch
             {
                 m_status.Value("Fleet state is unavailable in this scene.".AsLoc());
+                m_taskStatus.Value("Fleet replacement tasks are unavailable in this scene.".AsLoc());
             }
         }
 

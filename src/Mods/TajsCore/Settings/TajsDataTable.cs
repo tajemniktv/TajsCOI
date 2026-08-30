@@ -27,6 +27,7 @@ namespace TajsCOI.Core.Settings
         {
             private readonly IReadOnlyList<DataTableColumn<TRow>> m_columns;
             private readonly IReadOnlyList<Label> m_cells;
+            private readonly string[] m_values;
 
             internal RowVisual(
                 IReadOnlyList<DataTableColumn<TRow>> columns,
@@ -51,6 +52,7 @@ namespace TajsCOI.Core.Settings
                     cells.Add(cell);
                 }
                 m_cells = cells;
+                m_values = new string[columns.Count];
                 Add(content);
             }
 
@@ -58,7 +60,14 @@ namespace TajsCOI.Core.Settings
             {
                 for (int index = 0; index < m_columns.Count; index++)
                 {
-                    m_cells[index].Value(m_columns[index].FormatCell(row.Value).AsLoc());
+                    string value = m_columns[index].FormatCell(row.Value) ?? string.Empty;
+                    if (string.Equals(m_values[index], value, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    m_values[index] = value;
+                    m_cells[index].Value(value.AsLoc());
                 }
             }
 

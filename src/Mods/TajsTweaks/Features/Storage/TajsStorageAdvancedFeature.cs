@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -20,6 +21,7 @@ using Mafi.Localization;
 using Mafi.Unity.Ui.Library;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
+using TajsCOI.Common.Settings;
 using TajsCOI.Tweaks.Configuration;
 using UnityEngine.UIElements;
 using UiButton = Mafi.Unity.UiToolkit.Library.Button;
@@ -744,10 +746,9 @@ namespace TajsCOI.Tweaks.Features.Storage
                 return;
             }
 
-            string text = state.Capacity.GetText()?.Trim() ?? string.Empty;
-            if (!int.TryParse(text, out int capacity) || capacity <= 0)
+            if (!TryParseCapacity(state.Capacity.GetText(), out int capacity, out string parseError))
             {
-                SetStatus(state, "Enter a positive whole-number capacity.", important: true);
+                SetStatus(state, parseError, important: true);
                 return;
             }
 
@@ -767,16 +768,69 @@ namespace TajsCOI.Tweaks.Features.Storage
             out Percent value,
             out string error)
         {
-            string text = field.GetText()?.Trim() ?? string.Empty;
-            if (!int.TryParse(text, out int parsed) || parsed < 0 || parsed > 100)
+            if (!TryParsePercentText(field.GetText(), out int parsed, out error))
             {
                 value = Percent.Zero;
-                error = "Enter a whole percentage from 0 to 100.";
                 return false;
             }
 
             value = parsed.Percent();
             error = string.Empty;
+            return true;
+        }
+
+        internal static bool TryParsePercentText(string? text, out int value, out string error)
+        {
+            SettingDescriptor descriptor = SettingDescriptor.Integer(
+                "TajsTweaks",
+                "TajsTweaks",
+                "storage_threshold",
+                "Storage threshold",
+                "Storage logistics threshold.",
+                0,
+                0,
+                100,
+                1,
+                valueFormat: SettingValueFormat.Percentage);
+            if (!SettingValueEditorFormatting.TryParse(
+                    descriptor,
+                    text,
+                    CultureInfo.CurrentCulture,
+                    out object normalized,
+                    out error))
+            {
+                value = default;
+                return false;
+            }
+
+            value = (int)normalized;
+            return true;
+        }
+
+        internal static bool TryParseCapacity(string? text, out int value, out string error)
+        {
+            SettingDescriptor descriptor = SettingDescriptor.Integer(
+                "TajsTweaks",
+                "TajsTweaks",
+                "storage_capacity",
+                "Storage capacity",
+                "Storage capacity override.",
+                1,
+                1,
+                int.MaxValue,
+                1);
+            if (!SettingValueEditorFormatting.TryParse(
+                    descriptor,
+                    text,
+                    CultureInfo.CurrentCulture,
+                    out object normalized,
+                    out error))
+            {
+                value = default;
+                return false;
+            }
+
+            value = (int)normalized;
             return true;
         }
 
