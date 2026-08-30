@@ -18,7 +18,7 @@ namespace TajsCOI.Tweaks.Features.MapEditor
 
         internal string Id { get; }
         internal string Version { get; }
-        internal bool IsValid => Id.Length > 0 && Version.Length > 0;
+        internal bool IsValid => !string.IsNullOrEmpty(Id) && !string.IsNullOrEmpty(Version);
     }
 
     internal readonly struct MapEditorModDecision
@@ -33,6 +33,24 @@ namespace TajsCOI.Tweaks.Features.MapEditor
         internal MapEditorModManifest Manifest { get; }
         internal bool Compatible { get; }
         internal string Reason { get; }
+    }
+
+    internal static class MapEditorModSelection
+    {
+        internal static bool IsCompatible(
+            MapEditorModManifest requested,
+            IEnumerable<MapEditorModManifest> available)
+        {
+            if (!requested.IsValid)
+            {
+                return false;
+            }
+
+            return (available ?? Array.Empty<MapEditorModManifest>()).Any(candidate =>
+                candidate.IsValid &&
+                string.Equals(candidate.Id, requested.Id, StringComparison.Ordinal) &&
+                string.Equals(candidate.Version, requested.Version, StringComparison.Ordinal));
+        }
     }
 
     /// <summary>Temporary manifest-only context; resolver/mod instances are deliberately excluded.</summary>

@@ -42,7 +42,8 @@ namespace TajsCOI.Tweaks.Features.Cleanup
             m_selection = new EntityRectangleSelectionTool(
                 EnumerateCandidates,
                 CanSelect,
-                OnSelectionCompleted);
+                OnSelectionCompleted,
+                maxCandidates: SafeAreaCleanupLimits.MaxSelectedEntities);
         }
 
         internal bool IsActive => m_selection.IsActive;

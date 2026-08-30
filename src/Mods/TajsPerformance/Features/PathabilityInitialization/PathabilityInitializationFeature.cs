@@ -219,6 +219,13 @@ namespace TajsCOI.Performance.Features.PathabilityInitialization
                 State state = s_states.GetValue(__instance, _ => new State());
                 lock (state.Gate)
                 {
+                    if (state.Failed)
+                    {
+                        // The candidate has already failed for this provider. Let the exact
+                        // vanilla method run on subsequent queries instead of retrying a
+                        // reflection/thread-sensitive deferred pass forever.
+                        return true;
+                    }
                     if (state.Initialized)
                     {
                         state.SkippedDuplicateCalls++;
@@ -273,9 +280,10 @@ namespace TajsCOI.Performance.Features.PathabilityInitialization
                 return;
             }
 
+            State? state = null;
             try
             {
-                State state = s_states.GetValue(__instance, _ => new State());
+                state = s_states.GetValue(__instance, _ => new State());
                 lock (state.Gate)
                 {
                     while (state.Initializing)
@@ -313,8 +321,38 @@ namespace TajsCOI.Performance.Features.PathabilityInitialization
             catch
             {
                 // A reflection or first-query failure must not throw from the pathfinding query.
-                // Leave the candidate disabled for this provider; vanilla remains the fallback
-                // for all subsequent calls that can initialize their own state.
+                // Mark the candidate terminally failed and replay the exact vanilla pass once;
+                // this prevents an uninitialized provider and avoids repeated expensive retries.
+                try
+                {
+                    if (state is null)
+                    {
+                        return;
+                    }
+                    lock (state.Gate)
+                    {
+                        state.Failed = true;
+                        state.Deferred = false;
+                        state.Initialized = false;
+                    }
+                    s_forceOriginal = true;
+                    s_computeInitialBlocking.Invoke(__instance, null);
+                    s_updateChangedTiles.Invoke(__instance, null);
+                    lock (state.Gate)
+                    {
+                        state.Failed = false;
+                        state.Initialized = true;
+                    }
+                }
+                catch
+                {
+                    // Leave Failed=true so future calls use the vanilla path without another
+                    // candidate retry. A partially unavailable provider remains fail-open.
+                }
+                finally
+                {
+                    s_forceOriginal = false;
+                }
             }
         }
 
@@ -324,6 +362,7 @@ namespace TajsCOI.Performance.Features.PathabilityInitialization
             internal bool Deferred;
             internal bool Initializing;
             internal bool Initialized;
+            internal bool Failed;
             internal long SkippedDuplicateCalls;
         }
 

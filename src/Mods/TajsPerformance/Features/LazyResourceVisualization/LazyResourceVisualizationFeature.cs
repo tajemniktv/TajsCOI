@@ -39,8 +39,11 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
             TargetSet? targets = FindTargets();
             MethodInfo? skip = AccessTools.Method(typeof(LazyResourceVisualizationFeature), nameof(SkipInitialBuild));
             MethodInfo? ensure = AccessTools.Method(typeof(LazyResourceVisualizationFeature), nameof(EnsureInitialized));
+            MethodInfo? ensureForceSetActive = AccessTools.Method(typeof(LazyResourceVisualizationFeature), nameof(EnsureForceSetActive));
             return targets is not null && skip is not null && ensure is not null &&
+                   ensureForceSetActive is not null &&
                    ProcessHarmonyPatchOwnership.HasExpected(Harmony.GetPatchInfo(targets.InitState)?.Prefixes, HarmonyId, skip) &&
+                   ProcessHarmonyPatchOwnership.HasExpected(Harmony.GetPatchInfo(targets.ForceSetActive)?.Prefixes, HarmonyId, ensureForceSetActive) &&
                    targets.Activators.All(x => ProcessHarmonyPatchOwnership.HasExpected(
                        Harmony.GetPatchInfo(x)?.Prefixes,
                        HarmonyId,
@@ -54,6 +57,7 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                 "initState(), ForceSetActive(bool), and Activator.Show/ShowExactly/ShowAll() compatibility set");
             MethodInfo skip = AccessTools.Method(typeof(LazyResourceVisualizationFeature), nameof(SkipInitialBuild))!;
             MethodInfo ensure = AccessTools.Method(typeof(LazyResourceVisualizationFeature), nameof(EnsureInitialized))!;
+            MethodInfo ensureForceSetActive = AccessTools.Method(typeof(LazyResourceVisualizationFeature), nameof(EnsureForceSetActive))!;
 
             lock (s_installGate)
             {
@@ -75,6 +79,7 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                 try
                 {
                     harmony.Patch(targets.InitState, prefix: new HarmonyMethod(skip));
+                    harmony.Patch(targets.ForceSetActive, prefix: new HarmonyMethod(ensureForceSetActive));
                     foreach (MethodInfo activator in targets.Activators)
                     {
                         harmony.Patch(activator, prefix: new HarmonyMethod(ensure));
@@ -83,6 +88,7 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                 catch (Exception exception)
                 {
                     harmony.Unpatch(targets.InitState, HarmonyPatchType.Prefix, HarmonyId);
+                    harmony.Unpatch(targets.ForceSetActive, HarmonyPatchType.Prefix, HarmonyId);
                     foreach (MethodInfo activator in targets.Activators)
                     {
                         harmony.Unpatch(activator, HarmonyPatchType.Prefix, HarmonyId);
@@ -114,6 +120,12 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                     return true;
                 }
 
+                if (state.EagerFallbackRequested)
+                {
+                    state.EagerFallbackRequested = false;
+                    return true;
+                }
+
                 if (state.InitializationDeferred)
                 {
                     return false;
@@ -138,12 +150,36 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
         {
             try
             {
-                object? renderer = s_rendererField?.GetValue(__instance);
+                object? renderer = s_rendererField?.DeclaringType?.IsInstanceOfType(__instance) == true
+                    ? s_rendererField.GetValue(__instance)
+                    : __instance;
                 if (renderer is null)
                 {
                     return;
                 }
 
+                EnsureInitializedRenderer(renderer);
+            }
+            catch
+            {
+                // A reflection/state failure must not break the vanilla overlay activation.
+            }
+        }
+
+        private static void EnsureForceSetActive(object __instance, bool isActive)
+        {
+            if (!isActive)
+            {
+                return;
+            }
+
+            EnsureInitialized(__instance);
+        }
+
+        private static void EnsureInitializedRenderer(object renderer)
+        {
+            try
+            {
                 LazyState state = s_states.GetValue(renderer, _ => new LazyState());
                 if (!state.InitializationDeferred || state.Initialized || state.InitializationInProgress)
                 {
@@ -159,10 +195,20 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                 }
                 catch
                 {
-                    // The activation itself must remain vanilla-safe after a failed deferred init.
-                    // Clearing the state lets a later initState call take the eager path.
+                    // If deferred initialization fails, immediately replay the exact original
+                    // init path. The one-shot flag lets its prefix pass through instead of
+                    // deferring the fallback a second time.
                     state.Initialized = false;
                     state.InitializationDeferred = false;
+                    state.EagerFallbackRequested = true;
+                    try
+                    {
+                        s_initState!.Invoke(renderer, null);
+                    }
+                    catch
+                    {
+                        state.EagerFallbackRequested = false;
+                    }
                 }
                 finally
                 {
@@ -238,6 +284,7 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
             internal bool InitializationDeferred;
             internal bool Initialized;
             internal bool InitializationInProgress;
+            internal bool EagerFallbackRequested;
         }
 
         /// <summary>

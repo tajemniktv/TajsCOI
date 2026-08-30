@@ -29,7 +29,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             m_selection = new EntityRectangleSelectionTool(
                 () => EnumerateCandidates(m_entities),
                 entity => m_feature.CanControl(entity.Id),
-                OnSelectionCompleted);
+                OnSelectionCompleted,
+                maxCandidates: SceneSelectionLimits.MaxInteractiveCandidates);
         }
 
         internal bool IsActive => m_selection.IsActive;

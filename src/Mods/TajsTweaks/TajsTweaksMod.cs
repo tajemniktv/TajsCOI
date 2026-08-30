@@ -5,7 +5,9 @@
 #region
 
 using Mafi.Core.Mods;
+using HarmonyLib;
 using TajsCOI.Tweaks.Features.Difficulty;
+using TajsCOI.Tweaks.Features.MapEditor;
 
 #endregion
 
@@ -24,6 +26,18 @@ namespace TajsCOI.Tweaks
             // creates its difficulty controls. It only widens native percent option arrays; all
             // live-save changes remain owned by TajsDifficultyFeature.
             TajsDifficultyOptionCatalog.ApplyExtendedOptions();
+
+            // Map-editor preservation must be ready on the main menu, before a gameplay-scoped
+            // feature host exists. Installation is process-idempotent and fail-open on unsupported
+            // game versions; the host retries/reporting path remains available in gameplay scenes.
+            try
+            {
+                MapEditorThirdPartyFeature.InstallProcess();
+            }
+            catch
+            {
+                // The native menu seam is optional; vanilla map-editor startup remains intact.
+            }
         }
 
         public override void RegisterPrototypes(ProtoRegistrator registrator)

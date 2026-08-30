@@ -12,3 +12,8 @@ or the simulation calendar; its presentation policy is applied after the vanilla
 weather render callback. Its scene-owned backend captures `LightController.State`,
 direction, `RenderSettings` ambient values, and `QualitySettings` shadow values once
 per scene/light recreation, then restores those exact values at reset/termination.
+
+`LightingBackend` is the sole writer. Its `VanillaSnapshot` is captured once per scene/light,
+`BaseLightingPolicy` (#64) and `TimeOfDayPresentation` (#81) are composed into an immutable
+`EffectiveState`, and `RestoreVanilla()` uses the same backend path to return to the captured
+values. The policies are visual-only; simulation time and weather/fog ownership remain vanilla.

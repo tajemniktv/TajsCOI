@@ -31,7 +31,8 @@ namespace TajsCOI.Tweaks.Features.EntityMetadata
             m_selection = new EntityRectangleSelectionTool(
                 () => EnumerateCandidates(entities),
                 entity => !entity.IsDestroyed,
-                ApplyGroup);
+                ApplyGroup,
+                maxCandidates: SceneSelectionLimits.MaxInteractiveCandidates);
         }
 
         internal bool IsActive => m_selection.IsActive;

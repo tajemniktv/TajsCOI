@@ -51,6 +51,11 @@ namespace TajsCOI.Tweaks.Features.Selection
 
         internal string Activate(string instruction)
         {
+            if (!SceneSelectionCoordinator.TryActivate(this))
+            {
+                IsActive = false;
+                return "Another selection tool is already active.";
+            }
             IsActive = true;
             m_dragging = false;
             m_candidateSnapshot.Clear();
@@ -108,6 +113,7 @@ namespace TajsCOI.Tweaks.Features.Selection
         internal void Deactivate()
         {
             IsActive = false;
+            SceneSelectionCoordinator.Deactivate(this);
             m_dragging = false;
             m_candidateSnapshot.Clear();
             LastCandidateSnapshotTruncated = CandidateSnapshotTruncated;

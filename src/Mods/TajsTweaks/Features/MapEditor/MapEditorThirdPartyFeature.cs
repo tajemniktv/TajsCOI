@@ -4,8 +4,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using HarmonyLib;
+using Mafi;
 using Mafi.Collections.ImmutableCollections;
 using Mafi.Core.Game;
 using Mafi.Core.Mods;
@@ -20,9 +22,20 @@ namespace TajsCOI.Tweaks.Features.MapEditor
     /// </summary>
     internal static class MapEditorThirdPartyFeature
     {
+        private const string HarmonyId = "TajsCOI.Tweaks.MapEditorThirdPartyMods";
         private static readonly ModdedMapEditorContext s_context = new();
         private static FieldInfo? s_mainField;
         private static bool s_installed;
+
+        /// <summary>
+        ///     Installs from the data-only mod constructor so the first main-menu map-editor
+        ///     click is covered. This is an ordinary Main/MainMenuScreen transition hook and has
+        ///     no dependency on the optional bootstrap assembly.
+        /// </summary>
+        internal static void InstallProcess()
+        {
+            Install(new Harmony(HarmonyId));
+        }
 
         internal static void Install(Harmony harmony)
         {
@@ -32,17 +45,33 @@ namespace TajsCOI.Tweaks.Features.MapEditor
             }
             MethodInfo target = AccessTools.Method(typeof(MainMenuScreen), "onMapEditorClick")
                                 ?? throw new MissingMethodException(typeof(MainMenuScreen).FullName, "onMapEditorClick");
+            MethodInfo transition = AccessTools.Method(typeof(Mafi.Unity.Main), "GoToMainMenu")
+                                     ?? throw new MissingMethodException(typeof(Mafi.Unity.Main).FullName, "GoToMainMenu");
+            MethodInfo tryLoadMods = AccessTools.Method(typeof(Mafi.Unity.Main), "TryLoadMods")
+                                     ?? throw new MissingMethodException(typeof(Mafi.Unity.Main).FullName, "TryLoadMods");
             s_mainField = AccessTools.Field(typeof(MainMenuScreen), "m_main")
                           ?? throw new MissingFieldException(typeof(MainMenuScreen).FullName, "m_main");
-            harmony.Patch(target, prefix: new HarmonyMethod(typeof(MapEditorThirdPartyFeature), nameof(Prefix)));
+            try
+            {
+                harmony.Patch(target, prefix: new HarmonyMethod(typeof(MapEditorThirdPartyFeature), nameof(Prefix)));
+                harmony.Patch(transition, postfix: new HarmonyMethod(typeof(MapEditorThirdPartyFeature), nameof(ClearContext)));
+                harmony.Patch(tryLoadMods, prefix: new HarmonyMethod(typeof(MapEditorThirdPartyFeature), nameof(PrefixTryLoadMods)));
+            }
+            catch
+            {
+                // Do not leave a half-installed process patch if a version-specific transition
+                // seam changes. The caller's normal compatibility path can retry fail-open.
+                harmony.Unpatch(target, HarmonyPatchType.All, harmony.Id);
+                harmony.Unpatch(transition, HarmonyPatchType.All, harmony.Id);
+                harmony.Unpatch(tryLoadMods, HarmonyPatchType.All, harmony.Id);
+                throw;
+            }
             s_installed = true;
         }
 
         internal static void Reset()
         {
             s_context.Clear();
-            s_mainField = null;
-            s_installed = false;
         }
 
         private static bool Prefix(MainMenuScreen __instance)
@@ -53,11 +82,43 @@ namespace TajsCOI.Tweaks.Features.MapEditor
             }
             try
             {
-                ImmutableArray<AvailableModData> available = main.AvailableMods;
-                s_context.Begin(BuildManifests(available));
-                IReadOnlyList<MapEditorModManifest> compatible = s_context.Resolve(_ => true);
-                if (compatible.Count == 0 || !main.TryLoadMods(available, includeMissingCoreMods: true, out ImmutableArray<LoadedModData> loadedMods, out _))
+                LoadedModData[] loadedThirdParty = main.LoadedMods
+                    .Where(mod => mod?.Manifest is not null && !mod.Manifest.IsCoreMod && !mod.Manifest.IsDlcMod)
+                    .ToArray();
+                if (loadedThirdParty.Length == 0)
                 {
+                    // Preserve vanilla behavior when there is no active third-party content to
+                    // carry into the editor.
+                    s_context.Clear();
+                    return true;
+                }
+
+                ImmutableArray<AvailableModData> availableThirdParty = main.AvailableThirdPartyMods;
+                MapEditorModManifest[] availableManifests = BuildManifests(availableThirdParty).ToArray();
+                s_context.Begin(BuildManifests(loadedThirdParty));
+                IReadOnlyList<MapEditorModManifest> compatible = s_context.Resolve(
+                    manifest => MapEditorModSelection.IsCompatible(manifest, availableManifests));
+                foreach (MapEditorModDecision decision in s_context.Decisions.Where(decision => !decision.Compatible))
+                {
+                    Log.Warning(
+                        "Map editor skipped third-party mod '" + decision.Manifest.Id + "': " + decision.Reason + ".");
+                }
+                if (compatible.Count == 0)
+                {
+                    s_context.Clear();
+                    return true;
+                }
+
+                HashSet<string> compatibleIds = new(compatible.Select(mod => mod.Id), StringComparer.Ordinal);
+                ImmutableArray<AvailableModData> selectedThirdParty = availableThirdParty
+                    .Where(mod => mod?.Manifest is not null && compatibleIds.Contains(mod.Manifest.Id))
+                    .ToImmutableArray();
+                ImmutableArray<AvailableModData> selected = main.AvailableMods
+                    .SelectCoreAndDlcMods()
+                    .Concat(selectedThirdParty);
+                if (!main.TryLoadMods(selected, includeMissingCoreMods: true, out ImmutableArray<LoadedModData> loadedMods, out _))
+                {
+                    s_context.Clear();
                     return true;
                 }
                 main.StartMapEditor(Mafi.Collections.ImmutableCollections.ImmutableArray<IConfig>.Empty, loadedMods);
@@ -65,8 +126,44 @@ namespace TajsCOI.Tweaks.Features.MapEditor
             }
             catch
             {
+                s_context.Clear();
                 return true;
             }
+        }
+
+        private static void ClearContext()
+        {
+            s_context.Clear();
+        }
+
+        private static void PrefixTryLoadMods(
+            Mafi.Unity.Main __instance,
+            ref ImmutableArray<AvailableModData> modsToLoad)
+        {
+            if (!s_context.IsActive || modsToLoad.Any(mod => mod?.Manifest is not null &&
+                                                              !mod.Manifest.IsCoreMod &&
+                                                              !mod.Manifest.IsDlcMod))
+            {
+                return;
+            }
+
+            HashSet<string> compatibleIds = new(
+                s_context.Decisions.Where(decision => decision.Compatible).Select(decision => decision.Manifest.Id),
+                StringComparer.Ordinal);
+            if (compatibleIds.Count == 0)
+            {
+                return;
+            }
+
+            ImmutableArray<AvailableModData> selectedThirdParty = __instance.AvailableThirdPartyMods
+                .Where(mod => mod?.Manifest is not null && compatibleIds.Contains(mod.Manifest.Id))
+                .ToImmutableArray();
+            if (selectedThirdParty.IsEmpty)
+            {
+                return;
+            }
+
+            modsToLoad = modsToLoad.Concat(selectedThirdParty);
         }
 
         private static IEnumerable<MapEditorModManifest> BuildManifests(Mafi.Collections.ImmutableCollections.ImmutableArray<AvailableModData> available)
@@ -74,6 +171,17 @@ namespace TajsCOI.Tweaks.Features.MapEditor
             foreach (AvailableModData mod in available)
             {
                 if (mod?.Manifest is not null)
+                {
+                    yield return new MapEditorModManifest(mod.Manifest.Id, mod.Manifest.Version.ToString());
+                }
+            }
+        }
+
+        private static IEnumerable<MapEditorModManifest> BuildManifests(IEnumerable<LoadedModData> loaded)
+        {
+            foreach (LoadedModData mod in loaded ?? Array.Empty<LoadedModData>())
+            {
+                if (mod?.Manifest is not null && !mod.Manifest.IsCoreMod && !mod.Manifest.IsDlcMod)
                 {
                     yield return new MapEditorModManifest(mod.Manifest.Id, mod.Manifest.Version.ToString());
                 }

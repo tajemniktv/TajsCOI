@@ -21,7 +21,7 @@ namespace TajsCOI.Visuals.Features.Lighting
     /// </summary>
     internal sealed class LightingBackend
     {
-        private sealed class Snapshot
+        private sealed class VanillaSnapshot
         {
             internal LightController.State ControllerState;
             internal Vector3 EulerAngles;
@@ -47,7 +47,7 @@ namespace TajsCOI.Visuals.Features.Lighting
         private readonly HashSet<string> m_reportedProperties = new(StringComparer.Ordinal);
         private WeakReference<LightController>? m_lightController;
         private WeakReference<Light>? m_light;
-        private Snapshot? m_snapshot;
+        private VanillaSnapshot? m_snapshot;
         private int m_sceneHandle = -1;
         private int m_lightInstanceId;
         private LightingPolicy m_basePolicy = LightingPolicy.Identity;
@@ -70,6 +70,16 @@ namespace TajsCOI.Visuals.Features.Lighting
         internal LightingPolicy EffectivePolicy => LightingPolicy.Combine(
             m_basePolicy,
             m_phasePolicy ?? LightingPolicy.Identity);
+
+        internal LightingPolicy BaseLightingPolicy => m_basePolicy;
+
+        internal LightingPolicy? TimeOfDayPresentation => m_phasePolicy;
+
+        internal LightingEffectiveState EffectiveState => new(
+            m_basePolicy,
+            m_phasePolicy,
+            EffectivePolicy,
+            IsInitialized);
 
         internal void SetBasePolicy(LightingPolicy policy) => m_basePolicy = policy.Sanitized();
 
@@ -294,6 +304,11 @@ namespace TajsCOI.Visuals.Features.Lighting
             }
         }
 
+        /// <summary>
+        ///     Restores the captured vanilla snapshot through the backend's sole write path.
+        /// </summary>
+        internal void RestoreVanilla() => Restore();
+
         private void Capture(LightController controller, Light light)
         {
             LightController.State controllerState;
@@ -427,7 +442,7 @@ namespace TajsCOI.Visuals.Features.Lighting
                     "Ambient values could not be captured for restore.");
             }
 
-            m_snapshot = new Snapshot
+            m_snapshot = new VanillaSnapshot
             {
                 ControllerState = controllerState,
                 EulerAngles = eulerAngles,
