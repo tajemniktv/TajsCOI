@@ -80,6 +80,11 @@ namespace TajsCOI.Common.Tuning
             return false;
         }
 
+        public bool TryUnregister(string key)
+        {
+            return !string.IsNullOrWhiteSpace(key) && m_registrations.Remove(key);
+        }
+
         public void Clear() => m_registrations.Clear();
 
         public bool TryRegister<T>(
@@ -276,6 +281,28 @@ namespace TajsCOI.Common.Tuning
             }
             catch
             {
+                if (value is not null)
+                {
+                    Type type = value.GetType();
+                    foreach (string memberName in new[] { "Value", "Ticks" })
+                    {
+                        try
+                        {
+                            object? member = type.GetProperty(memberName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(value) ??
+                                             type.GetField(memberName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(value);
+                            if (member is not null && !ReferenceEquals(member, value))
+                            {
+                                result = Convert.ToDouble(member, CultureInfo.InvariantCulture);
+                                return true;
+                            }
+                        }
+                        catch
+                        {
+                            // Try the next known discrete wrapper shape.
+                        }
+                    }
+                }
+
                 result = 0d;
                 return false;
             }
@@ -302,8 +329,8 @@ namespace TajsCOI.Common.Tuning
         private static object ConvertValue(double value, Type type)
         {
             if (type == typeof(double)) return value;
-            if (type == typeof(float)) return (float)value;
-            if (type == typeof(decimal)) return (decimal)value;
+            if (type == typeof(float)) return checked((float)value);
+            if (type == typeof(decimal)) return checked((decimal)value);
             if (type == typeof(byte)) return checked((byte)Math.Round(value, MidpointRounding.AwayFromZero));
             if (type == typeof(sbyte)) return checked((sbyte)Math.Round(value, MidpointRounding.AwayFromZero));
             if (type == typeof(short)) return checked((short)Math.Round(value, MidpointRounding.AwayFromZero));

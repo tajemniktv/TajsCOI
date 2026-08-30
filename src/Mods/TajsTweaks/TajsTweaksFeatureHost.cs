@@ -9,6 +9,7 @@ using System.Linq;
 using HarmonyLib;
 using Mafi;
 using Mafi.Core;
+using Mafi.Core.Buildings.Storages;
 using Mafi.Core.Buildings.VehicleDepots;
 using Mafi.Core.Console;
 using Mafi.Core.Entities;
@@ -405,10 +406,9 @@ namespace TajsCOI.Tweaks
             {
                 ProgressionSandboxFeature.ApplyNativeProperties(progressionProperties);
             }
-            if (IsInfrastructureTuningKey(change.Descriptor.Key) && m_resolver.TryResolve(out ProtosDb tuningPrototypes))
-            {
-                InfrastructureTuningFeature.ApplyFromPrototypes(tuningPrototypes);
-            }
+            // Prototype tuning is deliberately reload-scoped. Cached jobs/buffers do not
+            // re-evaluate these values safely during a live save, so no runtime mutation occurs
+            // when a reload-required setting is edited.
             if (change.Descriptor.Key == TajsTweaksSettingsCatalog.SandboxBulldozeWhitelist)
             {
                 // The Harmony seam is always installed; changing the whitelist only updates the
@@ -562,15 +562,6 @@ namespace TajsCOI.Tweaks
             key == TajsTweaksSettingsCatalog.SandboxFreeResearch ||
             key == TajsTweaksSettingsCatalog.SandboxNoConstructionCosts;
 
-        private static bool IsInfrastructureTuningKey(string key) =>
-            key == TajsTweaksSettingsCatalog.TuningShipyardCargoMultiplier ||
-            key == TajsTweaksSettingsCatalog.TuningTruckLoadDurationMultiplier ||
-            key == TajsTweaksSettingsCatalog.TuningOreSorterBufferMultiplier ||
-            key == TajsTweaksSettingsCatalog.TuningOreSorterThroughputMultiplier ||
-            key == TajsTweaksSettingsCatalog.TuningShaftThroughputMultiplier ||
-            key == TajsTweaksSettingsCatalog.TuningThermalStorageCapacityMultiplier ||
-            key == TajsTweaksSettingsCatalog.SandboxFastOreSorting;
-
         private void OnRenderUpdateEnd(GameTime _)
         {
             EnsureOverclockingFeature();
@@ -639,7 +630,18 @@ namespace TajsCOI.Tweaks
                 {
                     throw new InvalidOperationException("ProtosDb is unavailable for infrastructure tuning.");
                 }
-                InfrastructureTuningFeature.ApplyFromPrototypes(protosDb);
+                var tuningHarmony = new Harmony(InfrastructureTuningFeature.HarmonyId);
+                bool thermalSafe = true;
+                try
+                {
+                    InfrastructureTuningFeature.InstallThermalCapacity(tuningHarmony);
+                }
+                catch
+                {
+                    thermalSafe = false;
+                    tuningHarmony.UnpatchAll(tuningHarmony.Id);
+                }
+                InfrastructureTuningFeature.ApplyFromPrototypes(protosDb, thermalSafe);
                 ReportInfrastructureTuningCompatibility();
             });
             TryInstall(m_runtime, "SandboxAlwaysAllowBulldoze", BulldozeOverrideFeature.Install);
@@ -648,8 +650,9 @@ namespace TajsCOI.Tweaks
                 "SandboxProgressionUnsupported",
                 CompatibilityState.Degraded,
                 "Native research/construction multipliers and manager-backed design mode are available; cached prototype controls remain reload-scoped",
-                "instant cargo-ship turnaround, instant storage empty confirmation command, shaft throughput runtime update",
+                "instant cargo-ship turnaround and shaft throughput runtime update",
                 "Those seams are intentionally fail-open until a supported command/prototype setter is available."));
+            ReportProgressionCompatibility();
             TryInstallResolved(m_runtime, "SandboxSettlementNeeds", () =>
             {
                 if (!m_resolver.TryResolve(out IPropertiesDb propertiesDb))
@@ -696,6 +699,13 @@ namespace TajsCOI.Tweaks
                     }
                 });
             TryInstallResolved(m_runtime, TajsDifficultyFeature.ComponentId, InitializeDifficulty);
+            m_runtime.ReportCompatibility(new CompatibilityReport(
+                TajsTweaksSettingsCatalog.ModId,
+                "DiseaseScaling.NativeDifficultyBackend",
+                CompatibilityState.Degraded,
+                "Native DifficultySettingsWindow / AdvancedSettingsTab",
+                "Issue #169 remains open",
+                "DiseaseScalingPolicy is reload-scoped in TajsTweaks until the native difficulty backend integration is completed; no duplicate writable editor is installed."));
             TryInstallResolved(m_runtime, "DiseaseScaling", () =>
             {
                 if (!m_resolver.TryResolve(out TerrainManager terrainManager))
@@ -723,12 +733,17 @@ namespace TajsCOI.Tweaks
             ReportTuning("OreSorterBuffers", InfrastructureTuningFeature.OreSorterInputBufferKey, "OreSortingPlantProto.InputBufferCapacity/OutputBuffersCapacity", "Reload required; buffers and throughput are kept as one adapter.");
             ReportTuning("OreSorterThroughput", InfrastructureTuningFeature.OreSorterThroughputKey, "OreSortingPlantProto.QuantityPerDuration", "Reload required; cached plant state is not rewritten mid-job.");
             ReportTuning("ShaftThroughput", InfrastructureTuningFeature.ShaftThroughputKey, "ShaftManager.MAX_SHAFT_THROUGHPUT", "New shafts only; existing shaft buffers retain their captured capacity.");
-            ReportTuning("ThermalStorageCapacity", InfrastructureTuningFeature.ThermalStorageCapacityKey, "ThermalStorageProto.Capacity", "Reload required; reductions cannot strand stored heat.");
+            ReportTuning(
+                "ThermalStorageCapacity",
+                InfrastructureTuningFeature.ThermalStorageCapacityKey,
+                "ThermalStorageProto.Capacity",
+                "Reload required; reductions cannot strand stored heat.",
+                InfrastructureTuningFeature.ThermalPatchAvailable);
         }
 
-        private void ReportTuning(string id, string key, string target, string details)
+        private void ReportTuning(string id, string key, string target, string details, bool seamAvailable = true)
         {
-            bool available = InfrastructureTuningFeature.IsAvailable(key);
+            bool available = seamAvailable && InfrastructureTuningFeature.IsAvailable(key);
             m_runtime.ReportCompatibility(new CompatibilityReport(
                 TajsTweaksSettingsCatalog.ModId,
                 "InfrastructureTuning." + id,
@@ -740,17 +755,18 @@ namespace TajsCOI.Tweaks
 
         private void ReportSandboxToggleCompatibility()
         {
-            ReportSandboxToggle("sandbox_disable_settlement_needs", CompatibilityState.Compatible, "SettlementConsumptionMultiplier", "Native demand multiplier; live re-evaluation supported.");
-            ReportSandboxToggle("sandbox_disable_food_need", CompatibilityState.Compatible, "FoodConsumptionMultiplier", "Native food-demand multiplier; live re-evaluation supported.");
-            ReportSandboxToggle("sandbox_disable_disease_effects", CompatibilityState.Compatible, "DiseaseEffectsMultiplier", "Native disease-effects multiplier; existing disease state is preserved.");
-            ReportSandboxToggle("sandbox_disable_air_pollution_effects", CompatibilityState.Compatible, "AirPollutionMultiplier", "Native air-pollution effects multiplier.");
-            ReportSandboxToggle("sandbox_disable_water_pollution_effects", CompatibilityState.Compatible, "WaterPollutionMultiplier", "Native water-pollution effects multiplier.");
-            ReportSandboxToggle("sandbox_disable_ship_pollution", CompatibilityState.Compatible, "ShipsPollutionMultiplier", "Native ship-emission multiplier.");
-            ReportSandboxToggle("sandbox_disable_vehicle_pollution", CompatibilityState.Compatible, "VehiclesPollutionMultiplier", "Native vehicle-emission multiplier.");
-            ReportSandboxToggle("sandbox_disable_train_pollution", CompatibilityState.Compatible, "TrainsPollutionMultiplier", "Native train-emission multiplier.");
-            ReportSandboxToggle("sandbox_disable_solid_waste", CompatibilityState.Compatible, "Settlement.TransformProductIntoWaste landfill branch", "Narrow source-amount restoration; unrelated biomass/recycling branches remain native.");
-            ReportSandboxToggle("sandbox_disable_biowaste", CompatibilityState.Compatible, "Settlement.TransformProductIntoWaste biomass branch", "Narrow source-amount restoration; unrelated landfill/recycling branches remain native.");
-            ReportSandboxToggle("sandbox_infinite_focus", CompatibilityState.Degraded, "FocusPointsMultiplier", "Finite bounded 1000x focus multiplier; native capacity remains authoritative.");
+            ReportSandboxToggle("sandbox_disable_settlement_needs", NativeState(SandboxControlsFeature.SettlementNeedsAvailable), "SettlementConsumptionMultiplier", "Native demand multiplier; live re-evaluation supported.");
+            ReportSandboxToggle("sandbox_disable_food_need", NativeState(SandboxControlsFeature.FoodNeedAvailable), "FoodConsumptionMultiplier", "Native food-demand multiplier; live re-evaluation supported.");
+            ReportSandboxToggle("sandbox_disable_disease_effects", NativeState(SandboxControlsFeature.DiseaseEffectsAvailable), "DiseaseEffectsMultiplier", "Native disease-effects multiplier; existing disease state is preserved.");
+            ReportSandboxToggle("sandbox_disable_air_pollution_effects", NativeState(SandboxControlsFeature.AirEffectsAvailable), "AirPollutionMultiplier", "Native air-pollution effects multiplier.");
+            ReportSandboxToggle("sandbox_disable_water_pollution_effects", NativeState(SandboxControlsFeature.WaterEffectsAvailable), "WaterPollutionMultiplier", "Native water-pollution effects multiplier.");
+            ReportSandboxToggle("sandbox_disable_ship_pollution", NativeState(SandboxControlsFeature.ShipPollutionAvailable), "ShipsPollutionMultiplier", "Native ship-emission multiplier.");
+            ReportSandboxToggle("sandbox_disable_vehicle_pollution", NativeState(SandboxControlsFeature.VehiclePollutionAvailable), "VehiclesPollutionMultiplier", "Native vehicle-emission multiplier.");
+            ReportSandboxToggle("sandbox_disable_train_pollution", NativeState(SandboxControlsFeature.TrainPollutionAvailable), "TrainsPollutionMultiplier", "Native train-emission multiplier.");
+            ReportSandboxToggle("sandbox_disable_solid_waste", SandboxControlsFeature.SolidWasteAvailable ? CompatibilityState.Compatible : CompatibilityState.Disabled, "Settlement.TransformProductIntoWaste landfill branch", "Narrow accumulator restoration; unrelated biomass/recycling branches remain native.");
+            ReportSandboxToggle("sandbox_disable_biowaste", SandboxControlsFeature.BiowasteAvailable ? CompatibilityState.Compatible : CompatibilityState.Disabled, "Settlement.TransformProductIntoWaste biomass branch", "Narrow accumulator restoration; unrelated landfill/recycling branches remain native.");
+            ReportSandboxToggle("sandbox_infinite_focus", SandboxControlsFeature.FocusAvailable ? CompatibilityState.Degraded : CompatibilityState.Disabled, "FocusPointsMultiplier", "Finite bounded 1000x focus multiplier; native capacity remains authoritative.");
+            ReportSandboxToggle("sandbox_focus_multiplier", SandboxControlsFeature.FocusAvailable ? CompatibilityState.Degraded : CompatibilityState.Disabled, "FocusPointsMultiplier", "Finite bounded focus multiplier; 1 restores the native calculation path.");
             ReportSandboxToggle("sandbox_disable_air_pollution_production", CompatibilityState.Disabled, "No global 0.8.7b production property", "Fail-open; broad recipe/output deletion is unsafe.");
             ReportSandboxToggle("sandbox_disable_water_pollution_production", CompatibilityState.Disabled, "No global 0.8.7b production property", "Fail-open; broad recipe/output deletion is unsafe.");
             ReportSandboxToggle("sandbox_disable_electricity_need", CompatibilityState.Disabled, "No narrow settlement electricity PopNeed seam", "Fail-open until a version-validated demand adapter exists.");
@@ -758,6 +774,30 @@ namespace TajsCOI.Tweaks
             ReportSandboxToggle("sandbox_disable_wastewater", CompatibilityState.Disabled, "No independent wastewater production seam", "Fail-open to avoid coupling clean-water demand and wastewater.");
             ReportSandboxToggle("sandbox_disable_computing_need", CompatibilityState.Disabled, "No narrow computing PopNeed seam", "Fail-open until a version-validated demand adapter exists.");
         }
+
+        private void ReportProgressionCompatibility()
+        {
+            ReportSandboxToggle(
+                "sandbox_free_research",
+                ProgressionSandboxFeature.ResearchAvailable ? CompatibilityState.Compatible : CompatibilityState.Disabled,
+                "ResearchStepsMultiplier",
+                "Native research-cost multiplier; live changes affect future calculations.");
+            ReportSandboxToggle(
+                "sandbox_no_construction_costs",
+                ProgressionSandboxFeature.ConstructionAvailable ? CompatibilityState.Compatible : CompatibilityState.Disabled,
+                "ConstructionCostsMultiplier",
+                "Native construction-cost multiplier; live changes affect future calculations.");
+            ReportSandboxToggle("sandbox_design_mode", m_designMode is not null ? CompatibilityState.Compatible : CompatibilityState.Disabled, "IConstructionManager.EntityConstructionStateChanged", "Manager-backed post-command finalization; no saveable callback.");
+            ReportSandboxToggle("sandbox_instant_cargo_ship", CompatibilityState.Disabled, "CargoShip turnaround prototype duration", "Fail-open; duration is cached and no safe command/runtime setter was validated.");
+            bool oreSortingAvailable = InfrastructureTuningFeature.IsAvailable(InfrastructureTuningFeature.OreSorterInputBufferKey) &&
+                                        InfrastructureTuningFeature.IsAvailable(InfrastructureTuningFeature.OreSorterThroughputKey);
+            ReportSandboxToggle("sandbox_fast_ore_sorting", oreSortingAvailable ? CompatibilityState.Compatible : CompatibilityState.Disabled, "OreSortingPlantProto buffers + QuantityPerDuration", "Reload-scoped coherent prototype adapter; cached plants are not rewritten mid-job.");
+            bool storageClearAvailable = StorageEmptyPolicy.IsNativeClearAvailable();
+            ReportSandboxToggle("sandbox_instant_storage_empty", storageClearAvailable ? CompatibilityState.Compatible : CompatibilityState.Disabled, "Storage.Cheat_ForceClear native command seam", storageClearAvailable ? "Explicit CONFIRM command only; native storage cleanup remains authoritative." : "Fail-open; the native destructive clear seam is unavailable.");
+        }
+
+        private static CompatibilityState NativeState(bool available) =>
+            available ? CompatibilityState.Compatible : CompatibilityState.Disabled;
 
         private void ReportSandboxToggle(string key, CompatibilityState state, string target, string details)
         {
@@ -1117,6 +1157,31 @@ namespace TajsCOI.Tweaks
             documentation: "Shows supported difficulty values and lifecycle classifications.",
             customCommandName: "tajs_difficulty_status")]
         public string DifficultyStatus() => m_difficulty?.Status() ?? "Native difficulty settings are unavailable in this scene.";
+
+        [ConsoleCommand(
+            documentation: "Queues an explicitly confirmed instant clear for one storage through the native storage cleanup path.",
+            customCommandName: "tajs_storage_empty")]
+        public string EmptyStorage(string? storageId, string? confirmation = null)
+        {
+            if (!TajsTweaksRuntimeState.SandboxInstantStorageEmpty)
+            {
+                return "Instant storage empty is disabled.";
+            }
+
+            if (!int.TryParse(storageId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int id) ||
+                confirmation != "CONFIRM")
+            {
+                return "No storage changed. Usage: tajs_storage_empty <storage-id> CONFIRM";
+            }
+
+            if (!m_resolver.TryResolve(out IInputScheduler scheduler))
+            {
+                return "Storage empty: current scene input services are unavailable.";
+            }
+
+            scheduler.ScheduleInputCmd(new TajsStorageInstantEmptyCmd(new EntityId(id), confirmed: true));
+            return "Instant storage-empty command queued for storage " + id + ".";
+        }
 
         [ConsoleCommand(
             documentation: "Refills all groundwater deposits to native capacity; available only in sandbox mode.",

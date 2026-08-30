@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using Mafi;
@@ -23,8 +24,14 @@ namespace TajsCOI.Tweaks.Features.Difficulty
         private static readonly DiseaseThresholdCache s_cache = new();
         private static readonly FieldInfo? s_fleetField = typeof(PopsHealthManager).GetField(
             "m_fleetManager", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo? s_diseasesField = typeof(PopsHealthManager).GetField(
+            "m_diseasesWithoutCustomTrigger", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo? s_randomField = typeof(PopsHealthManager).GetField(
+            "m_random", BindingFlags.Instance | BindingFlags.NonPublic);
         private static IReadOnlyList<int> s_thresholds = DiseaseScalingPolicy.VanillaThresholds;
+        private static DiseaseScalingMode s_mode = DiseaseScalingMode.Vanilla;
         private static bool s_configured;
+        private static bool s_installed;
 
         internal static IReadOnlyList<int> Thresholds => s_thresholds;
 
@@ -32,6 +39,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
         {
             s_configured = false;
             s_thresholds = DiseaseScalingPolicy.VanillaThresholds;
+            s_mode = DiseaseScalingMode.Vanilla;
             s_cache.Reset();
         }
 
@@ -51,6 +59,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             {
                 mode = DiseaseScalingMode.Vanilla;
             }
+            s_mode = mode;
             s_thresholds = s_cache.GetOrCompute(
                 DiseaseScalingPolicy.VanillaThresholds,
                 mapSpan,
@@ -61,36 +70,63 @@ namespace TajsCOI.Tweaks.Features.Difficulty
 
         internal static void Install(Harmony harmony)
         {
+            if (s_installed)
+            {
+                return;
+            }
             MethodInfo? target = AccessTools.Method(typeof(PopsHealthManager), "generateDisease");
-            if (target is null || s_fleetField is null)
+            if (target is null || s_fleetField is null || s_diseasesField is null || s_randomField is null)
             {
                 throw new MissingMethodException(typeof(PopsHealthManager).FullName, "generateDisease");
             }
-            harmony.Patch(target, postfix: new HarmonyMethod(typeof(DiseaseScalingFeature), nameof(GenerateDiseasePostfix)));
+            harmony.Patch(target, prefix: new HarmonyMethod(typeof(DiseaseScalingFeature), nameof(GenerateDiseasePrefix)));
+            s_installed = true;
         }
 
-        private static void GenerateDiseasePostfix(PopsHealthManager __instance, ref Option<DiseaseProto> __result)
+        private static bool GenerateDiseasePrefix(PopsHealthManager __instance, ref Option<DiseaseProto> __result)
         {
-            if (!s_configured || !__result.HasValue)
+            if (!s_configured || s_mode == DiseaseScalingMode.Vanilla)
             {
-                return;
+                return true;
             }
 
-            DiseaseProto selected = __result.Value;
-            int tier = FindTier(selected.MinDistanceTraveled);
-            if (tier < 0 || tier >= s_thresholds.Count)
+            try
             {
-                return;
-            }
+                if (!TryReadFarthestLocationVisited(__instance, out int distance))
+                {
+                    return true;
+                }
+                if (s_diseasesField!.GetValue(__instance) is not IEnumerable<DiseaseProto> diseases ||
+                    s_randomField!.GetValue(__instance) is not IRandom random)
+                {
+                    return true;
+                }
 
-            int distance = ReadFarthestLocationVisited(__instance);
-            if (!DiseaseScalingPolicy.IsEligible(distance, s_thresholds[tier]))
-            {
-                // Returning None is conservative when the vanilla candidate is no longer
-                // eligible under a stricter scaled policy.  We never manufacture a replacement
-                // prototype, and the next native disease attempt can select again later.
-                __result = Option<DiseaseProto>.None;
+                // Reproduce COI's native top-three-by-health-penalty selection, changing only
+                // the distance predicate.  Existing DiseaseProto instances are reused; custom
+                // trigger diseases are absent from this native list and remain untouched.
+                DiseaseProto[] eligible = diseases
+                    .Where(disease => IsEligible(disease, distance))
+                    .OrderByDescending(disease => disease.HealthPenalty)
+                    .Take(3)
+                    .ToArray();
+                __result = eligible.Length == 0
+                    ? Option<DiseaseProto>.None
+                    : eligible[random.NextInt(eligible.Length)];
+                return false;
             }
+            catch
+            {
+                // A changed private collection/random shape leaves native disease selection
+                // active rather than risking a gameplay exception.
+                return true;
+            }
+        }
+
+        private static bool IsEligible(DiseaseProto disease, int distance)
+        {
+            int tier = FindTier(disease.MinDistanceTraveled);
+            return tier < 0 || tier >= s_thresholds.Count || DiseaseScalingPolicy.IsEligible(distance, s_thresholds[tier]);
         }
 
         private static int FindTier(int vanillaDistance)
@@ -105,18 +141,20 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             return -1;
         }
 
-        private static int ReadFarthestLocationVisited(PopsHealthManager manager)
+        private static bool TryReadFarthestLocationVisited(PopsHealthManager manager, out int distance)
         {
             try
             {
                 object? lazyFleet = s_fleetField!.GetValue(manager);
                 object? fleet = lazyFleet?.GetType().GetProperty("ValueOrNull")?.GetValue(lazyFleet);
-                object? distance = fleet?.GetType().GetProperty("FarthestLocationVisited")?.GetValue(fleet);
-                return distance is int value ? value : Convert.ToInt32(distance ?? 0);
+                object? value = fleet?.GetType().GetProperty("FarthestLocationVisited")?.GetValue(fleet);
+                distance = value is int integer ? integer : Convert.ToInt32(value ?? 0);
+                return true;
             }
             catch
             {
-                return int.MaxValue;
+                distance = 0;
+                return false;
             }
         }
     }

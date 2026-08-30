@@ -17,16 +17,24 @@ namespace TajsCOI.Tweaks.Features.ProgressionSandbox
         internal const string ResearchOwner = "TajsCOI.Tweaks.Sandbox.Progression.Research";
         internal const string ConstructionOwner = "TajsCOI.Tweaks.Sandbox.Progression.Construction";
 
+        private static bool s_researchAvailable;
+        private static bool s_constructionAvailable;
+
+        internal static bool ResearchAvailable => s_researchAvailable;
+        internal static bool ConstructionAvailable => s_constructionAvailable;
+
         internal static void ApplyNativeProperties(IPropertiesDb propertiesDb)
         {
-            ApplyToggle(
-                propertiesDb.GetProperty(IdsCore.PropertyIds.ResearchStepsMultiplier),
+            TryApplyToggle(
+                () => propertiesDb.GetProperty(IdsCore.PropertyIds.ResearchStepsMultiplier),
                 TajsTweaksRuntimeState.SandboxFreeResearch,
-                ResearchOwner);
-            ApplyToggle(
-                propertiesDb.GetProperty(IdsCore.PropertyIds.ConstructionCostsMultiplier),
+                ResearchOwner,
+                ref s_researchAvailable);
+            TryApplyToggle(
+                () => propertiesDb.GetProperty(IdsCore.PropertyIds.ConstructionCostsMultiplier),
                 TajsTweaksRuntimeState.SandboxNoConstructionCosts,
-                ConstructionOwner);
+                ConstructionOwner,
+                ref s_constructionAvailable);
         }
 
         /// <summary>
@@ -106,6 +114,25 @@ namespace TajsCOI.Tweaks.Features.ProgressionSandbox
             else
             {
                 property.TryRemoveModifier(owner);
+            }
+        }
+
+        private static bool TryApplyToggle(
+            Func<IProperty<Percent>> propertyFactory,
+            bool disabled,
+            string owner,
+            ref bool available)
+        {
+            try
+            {
+                ApplyToggle(propertyFactory(), disabled, owner);
+                available = true;
+                return true;
+            }
+            catch
+            {
+                available = false;
+                return false;
             }
         }
     }

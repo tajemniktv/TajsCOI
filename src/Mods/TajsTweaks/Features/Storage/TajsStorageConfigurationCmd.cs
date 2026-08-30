@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Mafi;
 using Mafi.Core;
 using Mafi.Core.Entities;
@@ -14,6 +15,66 @@ using CoiStorage = Mafi.Core.Buildings.Storages.Storage;
 
 namespace TajsCOI.Tweaks.Features.Storage
 {
+    /// <summary>
+    /// Explicit, value-only destructive command for the sandbox instant-empty option. The
+    /// command is serialized through the normal input pipeline and revalidates both the setting
+    /// and confirmation at execution time; no callback or scene object is persisted.
+    /// </summary>
+    [GenerateSerializer(false, null, 0, null)]
+    internal sealed class TajsStorageInstantEmptyCmd : InputCommand
+    {
+        internal readonly EntityId StorageId;
+        internal readonly bool Confirmed;
+
+        private static readonly Action<object, BlobWriter> s_serializeData = (obj, writer) =>
+            ((TajsStorageInstantEmptyCmd)obj).SerializeData(writer);
+
+        private static readonly Action<object, BlobReader> s_deserializeData = (obj, reader) =>
+            ((TajsStorageInstantEmptyCmd)obj).DeserializeData(reader);
+
+        internal TajsStorageInstantEmptyCmd(EntityId storageId, bool confirmed)
+        {
+            StorageId = storageId;
+            Confirmed = confirmed;
+        }
+
+        public static void Serialize(TajsStorageInstantEmptyCmd value, BlobWriter writer)
+        {
+            if (writer.TryStartClassSerialization(value))
+            {
+                writer.EnqueueDataSerialization(value, s_serializeData);
+            }
+        }
+
+        protected override void SerializeData(BlobWriter writer)
+        {
+            base.SerializeData(writer);
+            EntityId.Serialize(StorageId, writer);
+            writer.WriteBool(Confirmed);
+        }
+
+        public new static TajsStorageInstantEmptyCmd Deserialize(BlobReader reader)
+        {
+            if (reader.TryStartClassDeserialization(
+                    out TajsStorageInstantEmptyCmd? obj,
+                    (Func<BlobReader, Type, TajsStorageInstantEmptyCmd>?)null,
+                    (Func<BlobReader, string, TajsStorageInstantEmptyCmd>?)null,
+                    false))
+            {
+                reader.EnqueueDataDeserialization(obj!, s_deserializeData);
+            }
+
+            return obj!;
+        }
+
+        protected override void DeserializeData(BlobReader reader)
+        {
+            base.DeserializeData(reader);
+            reader.SetField(this, "StorageId", EntityId.Deserialize(reader));
+            reader.SetField(this, "Confirmed", reader.ReadBool());
+        }
+    }
+
     /// <summary>
     ///     Replays a storage configuration transfer through the normal input command path. The
     ///     source is resolved at execution time, so a queued command never captures gameplay objects.
@@ -96,7 +157,9 @@ namespace TajsCOI.Tweaks.Features.Storage
         ICommandProcessor<TajsStorageConfigurationCmd>,
         IAction<TajsStorageConfigurationCmd>,
         ICommandProcessor<TajsStorageCapacityCmd>,
-        IAction<TajsStorageCapacityCmd>
+        IAction<TajsStorageCapacityCmd>,
+        ICommandProcessor<TajsStorageInstantEmptyCmd>,
+        IAction<TajsStorageInstantEmptyCmd>
     {
         private readonly IEntitiesManager m_entities;
         private readonly EntitiesCloneConfigHelper m_cloneConfig;
@@ -241,6 +304,50 @@ namespace TajsCOI.Tweaks.Features.Storage
             }
 
             command.SetResultSuccess();
+        }
+
+        public void Invoke(TajsStorageInstantEmptyCmd command)
+        {
+            if (!TajsTweaksRuntimeState.SandboxInstantStorageEmpty)
+            {
+                command.SetResultError("Instant storage empty is disabled.");
+                return;
+            }
+
+            if (!command.Confirmed)
+            {
+                command.SetResultError("Instant storage empty requires explicit confirmation.");
+                return;
+            }
+
+            if (!m_entities.TryGetEntity<CoiStorage>(command.StorageId, out CoiStorage? storage) ||
+                storage is null || storage.IsDestroyed)
+            {
+                command.SetResultError("Target storage was not found.");
+                return;
+            }
+
+            MethodInfo? clear = typeof(CoiStorage).GetMethod(
+                "Cheat_ForceClear",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (clear is null)
+            {
+                command.SetResultError("The native storage clear seam is unavailable; no storage was changed.");
+                return;
+            }
+
+            try
+            {
+                // This is the exact native cheat clear path used by COI's
+                // StorageCheatClearProductCmd; reflection is resolved at command execution and
+                // fails closed if the supported seam changes.
+                clear.Invoke(storage, null);
+                command.SetResultSuccess();
+            }
+            catch (Exception exception)
+            {
+                command.SetResultError("Native storage clear failed: " + (exception.InnerException?.GetType().Name ?? exception.GetType().Name) + ".");
+            }
         }
     }
 

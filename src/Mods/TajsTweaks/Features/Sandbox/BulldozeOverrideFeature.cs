@@ -24,8 +24,8 @@ namespace TajsCOI.Tweaks.Features.Sandbox
 
         private static readonly HashSet<string> s_hardInvariantTokens = new(StringComparer.OrdinalIgnoreCase)
         {
-            "Road", "TrainTrack", "TransportPillar", "TrainDepot", "SettlementSquare", "SettlementSquareModule",
-            "Bridge", "Farm", "CargoDepot", "CargoShip", "Shipyard", "Rocket", "NuclearReactor", "Reactor", "Ruins",
+            "Road", "TrainTrack", "TransportPillar", "TrainDepot", "Settlement", "SettlementSquare", "SettlementSquareModule",
+            "Bridge", "Farm", "CargoDepot", "CargoShip", "Shipyard", "Port", "Harbor", "Dock", "Rocket", "NuclearReactor", "Reactor", "Ruins",
         };
 
         internal static void Install(Harmony harmony)
@@ -50,7 +50,7 @@ namespace TajsCOI.Tweaks.Features.Sandbox
         {
             if (!TajsTweaksRuntimeState.SandboxAlwaysAllowBulldoze ||
                 reason == EntityRemoveReason.Collapse ||
-                __result.IsSuccess ||
+                __result.ValidationStatus != EntityValidationResultStatus.Error ||
                 !IsWhitelisted(entity))
             {
                 return;
