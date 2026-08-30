@@ -34,7 +34,9 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
         public string Id => "LazyResourceVisualization";
         public string ConfigKey => LazyResourceVisualizationSettings.EnableConfigKey;
 
-        public bool IsProcessPatchInstalled()
+        public bool IsProcessPatchInstalled() => HasProcessPatchInstalled();
+
+        private static bool HasProcessPatchInstalled()
         {
             TargetSet? targets = FindTargets();
             MethodInfo? skip = AccessTools.Method(typeof(LazyResourceVisualizationFeature), nameof(SkipInitialBuild));
@@ -75,28 +77,7 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                     return;
                 }
 
-                var harmony = new Harmony(HarmonyId);
-                try
-                {
-                    harmony.Patch(targets.InitState, prefix: new HarmonyMethod(skip));
-                    harmony.Patch(targets.ForceSetActive, prefix: new HarmonyMethod(ensureForceSetActive));
-                    foreach (MethodInfo activator in targets.Activators)
-                    {
-                        harmony.Patch(activator, prefix: new HarmonyMethod(ensure));
-                    }
-                }
-                catch (Exception exception)
-                {
-                    harmony.Unpatch(targets.InitState, HarmonyPatchType.Prefix, HarmonyId);
-                    harmony.Unpatch(targets.ForceSetActive, HarmonyPatchType.Prefix, HarmonyId);
-                    foreach (MethodInfo activator in targets.Activators)
-                    {
-                        harmony.Unpatch(activator, HarmonyPatchType.Prefix, HarmonyId);
-                    }
-                    throw new InvalidOperationException(
-                        "Lazy resource visualization patch installation failed open; vanilla eager initialization remains active.",
-                        exception);
-                }
+                InstallPatches(targets, skip, ensure, ensureForceSetActive);
             }
 
             runtime.ReportCompatibility(
@@ -107,6 +88,78 @@ namespace TajsCOI.Performance.Features.LazyResourceVisualization
                     "Exact 0.8.7b ResVisBarsRenderer initState and Activator.Show* targets",
                     "Lazy initial resource-bar build installed",
                     "The hidden initial build is deferred until first overlay activation; the exact vanilla init method runs before that activation."));
+        }
+
+        /// <summary>
+        ///     Installs the process-lifetime candidate from the data-only mod constructor when the
+        ///     persisted opt-in is already true. This runs before dependency resolution creates
+        ///     gameplay-scene services, so the load-time renderer seam is actually covered.
+        /// </summary>
+        internal static bool TryInstallProcessEarly()
+        {
+            try
+            {
+                TargetSet? targets = FindTargets();
+                if (targets is null)
+                {
+                    return false;
+                }
+
+                MethodInfo? skip = AccessTools.Method(typeof(LazyResourceVisualizationFeature), nameof(SkipInitialBuild));
+                MethodInfo? ensure = AccessTools.Method(typeof(LazyResourceVisualizationFeature), nameof(EnsureInitialized));
+                MethodInfo? ensureForceSetActive = AccessTools.Method(typeof(LazyResourceVisualizationFeature), nameof(EnsureForceSetActive));
+                if (skip is null || ensure is null || ensureForceSetActive is null)
+                {
+                    return false;
+                }
+
+                lock (s_installGate)
+                {
+                    if (HasProcessPatchInstalled())
+                    {
+                        return true;
+                    }
+
+                    InstallPatches(targets, skip, ensure, ensureForceSetActive);
+                    return true;
+                }
+            }
+            catch
+            {
+                // The early path is deliberately fail-open. The scene host can retry later and
+                // vanilla initialization remains active when the private seam is unavailable.
+                return false;
+            }
+        }
+
+        private static void InstallPatches(
+            TargetSet targets,
+            MethodInfo skip,
+            MethodInfo ensure,
+            MethodInfo ensureForceSetActive)
+        {
+            var harmony = new Harmony(HarmonyId);
+            try
+            {
+                harmony.Patch(targets.InitState, prefix: new HarmonyMethod(skip));
+                harmony.Patch(targets.ForceSetActive, prefix: new HarmonyMethod(ensureForceSetActive));
+                foreach (MethodInfo activator in targets.Activators)
+                {
+                    harmony.Patch(activator, prefix: new HarmonyMethod(ensure));
+                }
+            }
+            catch (Exception exception)
+            {
+                harmony.Unpatch(targets.InitState, HarmonyPatchType.Prefix, HarmonyId);
+                harmony.Unpatch(targets.ForceSetActive, HarmonyPatchType.Prefix, HarmonyId);
+                foreach (MethodInfo activator in targets.Activators)
+                {
+                    harmony.Unpatch(activator, HarmonyPatchType.Prefix, HarmonyId);
+                }
+                throw new InvalidOperationException(
+                    "Lazy resource visualization patch installation failed open; vanilla eager initialization remains active.",
+                    exception);
+            }
         }
 
         private static bool SkipInitialBuild(object __instance)

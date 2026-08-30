@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using TajsCOI.Common.Tuning;
+using TajsCOI.Performance;
 using TajsCOI.Tweaks.Features.Selection;
 using TajsCOI.Tweaks.Features.MapEditor;
 using TajsCOI.Tweaks.Features.Tuning;
@@ -12,6 +13,34 @@ namespace TajsCOI.Tests
 {
     public sealed class SharedInfrastructureTests
     {
+        [Fact]
+        public void PerformanceStartupReaderIsSchemaBoundAndFailClosed()
+        {
+            const string key = "TajsPerformance.enable_lazy_resource_visualization";
+            Assert.True(PerformanceStartupSettings.TryReadBoolean(
+                "{\"schema_version\":1,\"values\":{\"TajsPerformance.enable_lazy_resource_visualization\":true}}",
+                key,
+                out bool enabled));
+            Assert.True(enabled);
+
+            Assert.True(PerformanceStartupSettings.TryReadBoolean(
+                "{\"schema_version\":1,\"values\":{\"TajsPerformance.enable_lazy_resource_visualization\":false}}",
+                key,
+                out enabled));
+            Assert.False(enabled);
+
+            Assert.False(PerformanceStartupSettings.TryReadBoolean(
+                "{\"schema_version\":2,\"values\":{\"TajsPerformance.enable_lazy_resource_visualization\":true}}",
+                key,
+                out enabled));
+            Assert.False(enabled);
+            Assert.False(PerformanceStartupSettings.TryReadBoolean(
+                "{\"schema_version\":1,\"values\":{\"TajsPerformance.enable_lazy_resource_visualization\":\"true\"}}",
+                key,
+                out enabled));
+            Assert.False(enabled);
+        }
+
         [Fact]
         public void TypedBaseOverrideUsesCapturedBaseAndRestoresOnDispose()
         {

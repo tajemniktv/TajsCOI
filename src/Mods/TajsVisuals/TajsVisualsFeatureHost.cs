@@ -221,7 +221,7 @@ namespace TajsCOI.Visuals
             }
             else
             {
-                m_lighting.Restore();
+                m_lighting.RestoreVanilla();
             }
         }
 

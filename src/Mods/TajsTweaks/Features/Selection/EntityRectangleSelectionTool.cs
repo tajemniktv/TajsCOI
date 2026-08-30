@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Mafi;
 using Mafi.Core.Entities.Static;
 using UnityEngine;
@@ -23,6 +24,8 @@ namespace TajsCOI.Tweaks.Features.Selection
         private readonly Action<IReadOnlyList<IStaticEntity>>? m_onMatchesChanged;
         private readonly Func<IStaticEntity, Camera, float, float, float, float, bool>? m_geometry;
         private readonly int m_maxCandidates;
+        private readonly SceneSelection<int> m_sceneSelection;
+        private readonly Dictionary<string, IStaticEntity> m_candidateById = new(StringComparer.Ordinal);
         private readonly List<IStaticEntity> m_candidateSnapshot = new();
         private readonly List<IStaticEntity> m_matches = new();
         private Vector2 m_start;
@@ -43,21 +46,24 @@ namespace TajsCOI.Tweaks.Features.Selection
             m_onMatchesChanged = onMatchesChanged;
             m_geometry = geometry;
             m_maxCandidates = Math.Max(0, maxCandidates);
+            m_sceneSelection = new SceneSelection<int>(
+                QueryPoint,
+                QueryRectangle,
+                m_maxCandidates > 0 ? m_maxCandidates : SceneSelectionLimits.MaxInteractiveCandidates);
         }
 
-        internal bool IsActive { get; private set; }
+        internal bool IsActive => m_sceneSelection.IsActive;
         internal bool CandidateSnapshotTruncated { get; private set; }
         internal bool LastCandidateSnapshotTruncated { get; private set; }
 
         internal string Activate(string instruction)
         {
-            if (!SceneSelectionCoordinator.TryActivate(this))
+            if (!m_sceneSelection.Activate())
             {
-                IsActive = false;
                 return "Another selection tool is already active.";
             }
-            IsActive = true;
             m_dragging = false;
+            m_candidateById.Clear();
             m_candidateSnapshot.Clear();
             CandidateSnapshotTruncated = false;
             LastCandidateSnapshotTruncated = false;
@@ -112,9 +118,9 @@ namespace TajsCOI.Tweaks.Features.Selection
 
         internal void Deactivate()
         {
-            IsActive = false;
-            SceneSelectionCoordinator.Deactivate(this);
+            m_sceneSelection.Deactivate();
             m_dragging = false;
+            m_candidateById.Clear();
             m_candidateSnapshot.Clear();
             LastCandidateSnapshotTruncated = CandidateSnapshotTruncated;
             CandidateSnapshotTruncated = false;
@@ -122,33 +128,34 @@ namespace TajsCOI.Tweaks.Features.Selection
             NotifyMatchesChanged();
         }
 
+        internal void Dispose()
+        {
+            m_sceneSelection.Dispose();
+            m_dragging = false;
+            m_candidateById.Clear();
+            m_candidateSnapshot.Clear();
+            m_matches.Clear();
+            NotifyMatchesChanged();
+        }
+
         private void ComputeMatches()
         {
-            m_matches.Clear();
-            Camera? camera = Camera.main;
-            if (camera is null)
-            {
-                NotifyMatchesChanged();
-                return;
-            }
-
             float minX = Mathf.Min(m_start.x, m_current.x);
             float maxX = Mathf.Max(m_start.x, m_current.x);
             float minY = Mathf.Min(m_start.y, m_current.y);
             float maxY = Mathf.Max(m_start.y, m_current.y);
-            var seen = new HashSet<int>();
             try
             {
-                foreach (IStaticEntity entity in m_candidateSnapshot)
+                m_sceneSelection.SelectRectangle(new SceneSelectionRectangle(minX, minY, maxX, maxY));
+                m_matches.Clear();
+                foreach (string id in m_sceneSelection.SelectedEntityIds)
                 {
-                    if (entity is null || !seen.Add(entity.Id.Value) || !m_canSelect(entity) ||
-                        !(m_geometry?.Invoke(entity, camera, minX, maxX, minY, maxY) ??
-                          IsInRect(entity, camera, minX, maxX, minY, maxY)))
+                    if (m_candidateById.TryGetValue(id, out IStaticEntity? entity))
                     {
-                        continue;
+                        m_matches.Add(entity);
                     }
-                    m_matches.Add(entity);
                 }
+                m_matches.Sort((left, right) => left.Id.Value.CompareTo(right.Id.Value));
             }
             catch
             {
@@ -166,23 +173,81 @@ namespace TajsCOI.Tweaks.Features.Selection
             {
                 foreach (IStaticEntity entity in m_candidates())
                 {
-                    if (m_maxCandidates > 0 && m_candidateSnapshot.Count >= m_maxCandidates)
+                    if (entity is null)
+                    {
+                        continue;
+                    }
+
+                    string id = StableId(entity.Id.Value);
+                    if (m_candidateById.ContainsKey(id))
+                    {
+                        continue;
+                    }
+                    int limit = m_maxCandidates > 0 ? m_maxCandidates : SceneSelectionLimits.MaxInteractiveCandidates;
+                    if (m_candidateSnapshot.Count >= limit)
                     {
                         CandidateSnapshotTruncated = true;
                         break;
                     }
-                    if (entity is not null)
-                    {
-                        m_candidateSnapshot.Add(entity);
-                    }
+                    m_candidateSnapshot.Add(entity);
+                    m_candidateById.Add(id, entity);
                 }
             }
             catch
             {
                 // Scene enumeration can race a reload; an empty snapshot is the safe result.
+                m_candidateById.Clear();
                 m_candidateSnapshot.Clear();
             }
         }
+
+        private IEnumerable<string> QueryPoint(SceneSelectionPoint point)
+        {
+            foreach (IStaticEntity entity in m_candidateSnapshot)
+            {
+                Tile3i tile = entity.CenterTile;
+                if (tile.X == (int)Math.Round(point.X) &&
+                    tile.Y == (int)Math.Round(point.Y) &&
+                    tile.Z == (int)Math.Round(point.Z) &&
+                    m_canSelect(entity))
+                {
+                    yield return StableId(entity.Id.Value);
+                }
+            }
+        }
+
+        private IEnumerable<string> QueryRectangle(SceneSelectionRectangle rectangle)
+        {
+            Camera? camera = Camera.main;
+            if (camera is null)
+            {
+                yield break;
+            }
+
+            foreach (IStaticEntity entity in m_candidateSnapshot)
+            {
+                if (m_canSelect(entity) &&
+                    (m_geometry?.Invoke(
+                         entity,
+                         camera,
+                         rectangle.MinX,
+                         rectangle.MaxX,
+                         rectangle.MinZ,
+                         rectangle.MaxZ) ??
+                     IsInRect(
+                         entity,
+                         camera,
+                         rectangle.MinX,
+                         rectangle.MaxX,
+                         rectangle.MinZ,
+                         rectangle.MaxZ)))
+                {
+                    yield return StableId(entity.Id.Value);
+                }
+            }
+        }
+
+        private static string StableId(int id) => id.ToString("D10", CultureInfo.InvariantCulture);
 
         private void NotifyMatchesChanged()
         {

@@ -43,7 +43,9 @@ namespace TajsCOI.Performance.Features.PathabilityInitialization
 
         public string ConfigKey => PathabilityInitializationSettings.EnableConfigKey;
 
-        public bool IsProcessPatchInstalled()
+        public bool IsProcessPatchInstalled() => HasProcessPatchInstalled();
+
+        private static bool HasProcessPatchInstalled()
         {
             TargetSet? targets = FindTargets();
             MethodInfo? skip = AccessTools.Method(typeof(PathabilityInitializationFeature), nameof(SkipInitialBlocking));
@@ -92,34 +94,13 @@ namespace TajsCOI.Performance.Features.PathabilityInitialization
                     return;
                 }
 
-                s_computeInitialBlocking = targets.ComputeInitialBlocking;
-                s_updateChangedTiles = targets.UpdateChangedTiles;
-                var harmony = new Harmony(HarmonyId);
                 try
                 {
-                    harmony.Patch(
-                        targets.InitSelf,
-                        prefix: new HarmonyMethod(beginLoad),
-                        finalizer: new HarmonyMethod(finalizeLoad));
-                    harmony.Patch(
-                        targets.ComputeInitialBlocking,
-                        prefix: new HarmonyMethod(skip),
-                        finalizer: new HarmonyMethod(finalizeBlocking));
-                    harmony.Patch(
-                        targets.ComputeAllPathability,
-                        prefix: new HarmonyMethod(ensure));
-                    harmony.Patch(
-                        targets.IsChunkBlocked,
-                        prefix: new HarmonyMethod(ensure));
-                    harmony.Patch(
-                        targets.GetValidNeighboursForTile,
-                        prefix: new HarmonyMethod(ensure));
+                    InstallPatches(targets, skip, ensure, finalizeBlocking, beginLoad, finalizeLoad);
                 }
                 catch (Exception exception)
                 {
-                    harmony.UnpatchAll(HarmonyId);
-                    s_computeInitialBlocking = null;
-                    s_updateChangedTiles = null;
+                    System.Threading.Interlocked.Exchange(ref s_patchAttempted, 0);
                     throw new InvalidOperationException(
                         "Pathability initialization candidate installation failed open; vanilla initialization remains active.",
                         exception);
@@ -136,6 +117,103 @@ namespace TajsCOI.Performance.Features.PathabilityInitialization
                     "Exact 0.8.7b ship pathability load and query seams",
                     "Load-time blocking scan deferral installed",
                     "The full-map pass is deferred until first query and then runs once; first-query latency and correctness require in-game validation."));
+        }
+
+        /// <summary>
+        ///     Installs the process-lifetime candidate from the data-only mod constructor when the
+        ///     persisted opt-in is already true. This runs before dependency resolution creates
+        ///     gameplay-scene services, so the load-time provider seam is actually covered.
+        /// </summary>
+        internal static bool TryInstallProcessEarly()
+        {
+            try
+            {
+                TargetSet? targets = FindTargets();
+                if (targets is null)
+                {
+                    return false;
+                }
+
+                MethodInfo? skip = AccessTools.Method(typeof(PathabilityInitializationFeature), nameof(SkipInitialBlocking));
+                MethodInfo? ensure = AccessTools.Method(typeof(PathabilityInitializationFeature), nameof(EnsureInitialBlocking));
+                MethodInfo? finalizeBlocking = AccessTools.Method(typeof(PathabilityInitializationFeature), nameof(FinalizeInitialBlocking));
+                MethodInfo? beginLoad = AccessTools.Method(typeof(PathabilityInitializationFeature), nameof(BeginLoadInitialization));
+                MethodInfo? finalizeLoad = AccessTools.Method(typeof(PathabilityInitializationFeature), nameof(FinalizeLoadInitialization));
+                if (skip is null || ensure is null || finalizeBlocking is null || beginLoad is null || finalizeLoad is null)
+                {
+                    return false;
+                }
+
+                lock (s_installGate)
+                {
+                    if (HasProcessPatchInstalled())
+                    {
+                        return true;
+                    }
+
+                    if (System.Threading.Interlocked.CompareExchange(ref s_patchAttempted, 1, 0) != 0)
+                    {
+                        return false;
+                    }
+
+                    try
+                    {
+                        InstallPatches(targets, skip, ensure, finalizeBlocking, beginLoad, finalizeLoad);
+                        return true;
+                    }
+                    catch
+                    {
+                        System.Threading.Interlocked.Exchange(ref s_patchAttempted, 0);
+                        return false;
+                    }
+                }
+            }
+            catch
+            {
+                // The early path is deliberately fail-open. The scene host can retry later and
+                // vanilla initialization remains active when the private seam is unavailable.
+                return false;
+            }
+        }
+
+        private static void InstallPatches(
+            TargetSet targets,
+            MethodInfo skip,
+            MethodInfo ensure,
+            MethodInfo finalizeBlocking,
+            MethodInfo beginLoad,
+            MethodInfo finalizeLoad)
+        {
+            s_computeInitialBlocking = targets.ComputeInitialBlocking;
+            s_updateChangedTiles = targets.UpdateChangedTiles;
+            var harmony = new Harmony(HarmonyId);
+            try
+            {
+                harmony.Patch(
+                    targets.InitSelf,
+                    prefix: new HarmonyMethod(beginLoad),
+                    finalizer: new HarmonyMethod(finalizeLoad));
+                harmony.Patch(
+                    targets.ComputeInitialBlocking,
+                    prefix: new HarmonyMethod(skip),
+                    finalizer: new HarmonyMethod(finalizeBlocking));
+                harmony.Patch(
+                    targets.ComputeAllPathability,
+                    prefix: new HarmonyMethod(ensure));
+                harmony.Patch(
+                    targets.IsChunkBlocked,
+                    prefix: new HarmonyMethod(ensure));
+                harmony.Patch(
+                    targets.GetValidNeighboursForTile,
+                    prefix: new HarmonyMethod(ensure));
+            }
+            catch
+            {
+                harmony.UnpatchAll(HarmonyId);
+                s_computeInitialBlocking = null;
+                s_updateChangedTiles = null;
+                throw;
+            }
         }
 
         /// <summary>
