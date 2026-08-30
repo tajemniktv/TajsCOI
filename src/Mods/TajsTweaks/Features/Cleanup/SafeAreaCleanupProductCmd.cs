@@ -52,7 +52,7 @@ namespace TajsCOI.Tweaks.Features.Cleanup
             base.SerializeData(writer);
             EntityId.Serialize(EntityId, writer);
             ProductProto.ID.Serialize(ProductId, writer);
-            Mafi.Quantity.Serialize(Quantity, writer);
+            Quantity.Serialize(Quantity, writer);
         }
 
         public new static SafeAreaCleanupProductCmd Deserialize(BlobReader reader)
@@ -73,7 +73,7 @@ namespace TajsCOI.Tweaks.Features.Cleanup
             base.DeserializeData(reader);
             reader.SetField(this, "EntityId", EntityId.Deserialize(reader));
             reader.SetField(this, "ProductId", ProductProto.ID.Deserialize(reader));
-            reader.SetField(this, "Quantity", Mafi.Quantity.Deserialize(reader));
+            reader.SetField(this, "Quantity", Quantity.Deserialize(reader));
         }
     }
 
@@ -149,7 +149,7 @@ namespace TajsCOI.Tweaks.Features.Cleanup
 
         internal static IEnumerable<IProductBuffer> EnumerateMutableBuffers(IStaticEntity entity)
         {
-            var seen = new System.Collections.Generic.HashSet<IProductBuffer>();
+            var seen = new HashSet<IProductBuffer>();
             foreach (IProductBufferReadOnly buffer in EnumerateReadOnlyBuffers(entity))
             {
                 if (buffer is IProductBuffer mutable && seen.Add(mutable))

@@ -28,7 +28,7 @@ namespace TajsCOI.Tweaks.Features.World
             {
                 return;
             }
-            Type? mapViewType = Type.GetType("Mafi.Unity.Ui.World.WorldMapWindow+MapView, Mafi.Unity");
+            var mapViewType = Type.GetType("Mafi.Unity.Ui.World.WorldMapWindow+MapView, Mafi.Unity");
             ConstructorInfo? constructor = mapViewType?.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
                 .FirstOrDefault(item => item.GetParameters().Length == 6);
             if (mapViewType is null || constructor is null)
@@ -66,7 +66,7 @@ namespace TajsCOI.Tweaks.Features.World
             }
             try
             {
-                PanAndZoom? map = s_mapProperty.GetValue(__instance) as PanAndZoom;
+                var map = s_mapProperty.GetValue(__instance) as PanAndZoom;
                 if (map is null)
                 {
                     return;
@@ -74,7 +74,7 @@ namespace TajsCOI.Tweaks.Features.World
                 float vanillaMin = Convert.ToSingle(s_minZoom.GetValue(map));
                 float vanillaMax = Convert.ToSingle(s_maxZoom.GetValue(map));
                 float mapExtent = Math.Max(mapManager.Map.Size.X, mapManager.Map.Size.Y);
-                MapViewportBounds extents = new MapViewportBounds(0f, mapExtent, 0f, mapExtent);
+                var extents = new MapViewportBounds(0f, mapExtent, 0f, mapExtent);
                 // 4096 is the ordinary-map baseline; larger maps get a proportional lower bound,
                 // while ordinary maps retain their vanilla 0.5f floor.
                 float derived = MapViewportMath.DeriveMinimumZoom(extents, 4096f, 4096f, vanillaMin);

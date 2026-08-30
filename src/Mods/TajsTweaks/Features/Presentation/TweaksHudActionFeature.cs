@@ -118,10 +118,10 @@ namespace TajsCOI.Tweaks.Features.Presentation
                 state.Enabled = true;
                 string structure = ComputeStructureFingerprint(root);
                 string policy = TajsTweaksRuntimeState.HudActionPolicy + "|" +
-                                 TajsTweaksRuntimeState.HudActionCollapsed + "|" +
-                                 TajsTweaksRuntimeState.HudActionHoverReveal + "|" +
-                                 TajsTweaksRuntimeState.HudRealWorldClock + "|" +
-                                 TajsTweaksRuntimeState.HudClock24Hour;
+                                TajsTweaksRuntimeState.HudActionCollapsed + "|" +
+                                TajsTweaksRuntimeState.HudActionHoverReveal + "|" +
+                                TajsTweaksRuntimeState.HudRealWorldClock + "|" +
+                                TajsTweaksRuntimeState.HudClock24Hour;
                 bool structureChanged = !string.Equals(structure, state.StructureFingerprint, StringComparison.Ordinal);
                 if (structureChanged)
                 {
@@ -222,7 +222,8 @@ namespace TajsCOI.Tweaks.Features.Presentation
         private static UiComponent[] GetRoots(HudController hud)
         {
             var result = new List<UiComponent>();
-            foreach (System.Reflection.FieldInfo field in hud.GetType().GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public))
+            foreach (System.Reflection.FieldInfo field in hud.GetType().GetFields(
+                         System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public))
             {
                 if (field.GetValue(hud) is CalendarControlsHud calendar)
                 {
@@ -281,15 +282,16 @@ namespace TajsCOI.Tweaks.Features.Presentation
                 string parentName = string.IsNullOrWhiteSpace(parent.RootElement.name) ? parent.GetType().Name : parent.RootElement.name;
                 int duplicate = state.Actions.Count(action => action.Parent == parent && action.Component.GetType() == component.GetType());
                 string id = prefix + "." + Sanitize(parentName) + "." + Sanitize(semantic) + "." + duplicate.ToString(CultureInfo.InvariantCulture);
-                state.Actions.Add(new ActionState
-                {
-                    Id = id,
-                    Component = component,
-                    Parent = parent,
-                    OriginalIndex = index,
-                    OriginalDisplay = component.RootElement.style.display,
-                    OriginalVisible = initialCapture ? component.IsVisible() : true,
-                });
+                state.Actions.Add(
+                    new ActionState
+                    {
+                        Id = id,
+                        Component = component,
+                        Parent = parent,
+                        OriginalIndex = index,
+                        OriginalDisplay = component.RootElement.style.display,
+                        OriginalVisible = initialCapture ? component.IsVisible() : true,
+                    });
             }
 
             state.InitialCaptureComplete = true;
@@ -394,9 +396,10 @@ namespace TajsCOI.Tweaks.Features.Presentation
 
             foreach (IGrouping<UiComponent, ActionState> group in state.Actions.GroupBy(action => action.Parent))
             {
-                ActionState[] ordered = group.OrderBy(action => preferences.TryGetValue(action.Id, out HudActionPreference preference) && preference.Order.HasValue
-                        ? preference.Order.Value
-                        : action.OriginalIndex)
+                ActionState[] ordered = group.OrderBy(action =>
+                        preferences.TryGetValue(action.Id, out HudActionPreference preference) && preference.Order.HasValue
+                            ? preference.Order.Value
+                            : action.OriginalIndex)
                     .ThenBy(action => action.OriginalIndex)
                     .ToArray();
                 UiComponent[] current = group.Key.AllChildren
@@ -487,9 +490,6 @@ namespace TajsCOI.Tweaks.Features.Presentation
             clock.Value(DateTime.Now.ToString(format, CultureInfo.CurrentCulture).AsLoc());
         }
 
-        private static string Sanitize(string value)
-        {
-            return new string(value.Select(character => char.IsLetterOrDigit(character) ? character : '_').ToArray());
-        }
+        private static string Sanitize(string value) => new(value.Select(character => char.IsLetterOrDigit(character) ? character : '_').ToArray());
     }
 }

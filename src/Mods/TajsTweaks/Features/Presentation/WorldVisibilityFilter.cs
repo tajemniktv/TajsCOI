@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Mafi;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Static;
 using Mafi.Core.Factory.Transports;
@@ -18,11 +17,11 @@ namespace TajsCOI.Tweaks.Features.Presentation
 {
     internal interface IWorldVisibilityPresentationAdapter : IDisposable
     {
-        void Attach(int entityId, IStaticEntity entity);
-        void Detach(int entityId);
-        void Apply(int entityId, bool visible);
-        bool CanSelect(int entityId, bool visible);
-        void SetCategoryVisible(bool visible);
+        public void Attach(int entityId, IStaticEntity entity);
+        public void Detach(int entityId);
+        public void Apply(int entityId, bool visible);
+        public bool CanSelect(int entityId, bool visible);
+        public void SetCategoryVisible(bool visible);
     }
 
     /// <summary>
@@ -248,14 +247,21 @@ namespace TajsCOI.Tweaks.Features.Presentation
     {
         private readonly Dictionary<string, WorldVisibilityCategoryDescriptor> m_categories =
             new(StringComparer.OrdinalIgnoreCase);
+
         private bool m_disposed;
 
         internal IReadOnlyCollection<WorldVisibilityCategoryDescriptor> Categories => m_categories.Values;
 
         internal bool Register(WorldVisibilityCategoryDescriptor descriptor)
         {
-            if (descriptor is null) throw new ArgumentNullException(nameof(descriptor));
-            if (m_disposed || m_categories.ContainsKey(descriptor.Id)) return false;
+            if (descriptor is null)
+            {
+                throw new ArgumentNullException(nameof(descriptor));
+            }
+            if (m_disposed || m_categories.ContainsKey(descriptor.Id))
+            {
+                return false;
+            }
             m_categories.Add(descriptor.Id, descriptor);
             return true;
         }
@@ -269,7 +275,10 @@ namespace TajsCOI.Tweaks.Features.Presentation
             {
                 try
                 {
-                    if (category.Matches(entity)) return category;
+                    if (category.Matches(entity))
+                    {
+                        return category;
+                    }
                 }
                 catch
                 {
@@ -320,7 +329,10 @@ namespace TajsCOI.Tweaks.Features.Presentation
 
         public void Dispose()
         {
-            if (m_disposed) return;
+            if (m_disposed)
+            {
+                return;
+            }
             foreach (WorldVisibilityCategoryDescriptor category in m_categories.Values)
             {
                 category.Adapter.Dispose();
@@ -355,6 +367,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
     internal sealed class WorldVisibilitySceneIndex : IDisposable
     {
         private readonly WorldVisibilityCategoryRegistry m_registry;
+
         // Category membership is the small overlay owned by #144. Native renderer bindings and
         // lifecycle/range ownership stay in the shared #134 HeightLayerSceneIndex when supplied.
         private readonly Dictionary<int, WorldVisibilityEntityRecord> m_records = new();
@@ -371,9 +384,15 @@ namespace TajsCOI.Tweaks.Features.Presentation
 
         internal bool Register(IStaticEntity entity)
         {
-            if (m_disposed || entity is null) return false;
+            if (m_disposed || entity is null)
+            {
+                return false;
+            }
             WorldVisibilityCategoryDescriptor? category = m_registry.Resolve(entity);
-            if (category is null) return false;
+            if (category is null)
+            {
+                return false;
+            }
             Remove(entity.Id.Value);
             var record = new WorldVisibilityEntityRecord(entity.Id.Value, category.Id);
             m_records.Add(record.EntityId, record);
@@ -391,12 +410,18 @@ namespace TajsCOI.Tweaks.Features.Presentation
 
         internal bool Remove(int entityId)
         {
-            if (!m_records.TryGetValue(entityId, out WorldVisibilityEntityRecord? record)) return false;
+            if (!m_records.TryGetValue(entityId, out WorldVisibilityEntityRecord? record))
+            {
+                return false;
+            }
             m_records.Remove(entityId);
             if (m_idsByCategory.TryGetValue(record.CategoryId, out HashSet<int>? ids))
             {
                 ids.Remove(entityId);
-                if (ids.Count == 0) m_idsByCategory.Remove(record.CategoryId);
+                if (ids.Count == 0)
+                {
+                    m_idsByCategory.Remove(record.CategoryId);
+                }
             }
             if (m_registry.TryGet(record.CategoryId, out WorldVisibilityCategoryDescriptor? category) && category is not null)
             {
@@ -431,7 +456,10 @@ namespace TajsCOI.Tweaks.Features.Presentation
                 category.Adapter.SetCategoryVisible(true);
                 if (m_idsByCategory.TryGetValue(category.Id, out HashSet<int>? ids))
                 {
-                    foreach (int entityId in ids.ToArray()) category.Adapter.Apply(entityId, true);
+                    foreach (int entityId in ids.ToArray())
+                    {
+                        category.Adapter.Apply(entityId, true);
+                    }
                 }
             }
         }
@@ -456,19 +484,28 @@ namespace TajsCOI.Tweaks.Features.Presentation
         internal IReadOnlyList<WorldVisibilityEntityRecord> QueryVisible(string? categoryId = null)
         {
             IEnumerable<WorldVisibilityEntityRecord> result = m_records.Values.Where(record => IsVisible(record.EntityId));
-            if (!string.IsNullOrWhiteSpace(categoryId)) result = result.Where(record => string.Equals(record.CategoryId, categoryId, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(categoryId))
+            {
+                result = result.Where(record => string.Equals(record.CategoryId, categoryId, StringComparison.OrdinalIgnoreCase));
+            }
             return result.OrderBy(record => record.EntityId).ToArray();
         }
 
         internal void Clear()
         {
-            foreach (int entityId in m_records.Keys.ToArray()) Remove(entityId);
+            foreach (int entityId in m_records.Keys.ToArray())
+            {
+                Remove(entityId);
+            }
             m_idsByCategory.Clear();
         }
 
         public void Dispose()
         {
-            if (m_disposed) return;
+            if (m_disposed)
+            {
+                return;
+            }
             Clear();
             m_registry.Dispose();
             m_disposed = true;
@@ -482,7 +519,9 @@ namespace TajsCOI.Tweaks.Features.Presentation
 
         internal void Update(IEnumerable<string> hiddenCategoryIds)
         {
-            string[] ids = hiddenCategoryIds?.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(id => id).ToArray() ?? Array.Empty<string>();
+            string[] ids =
+                hiddenCategoryIds?.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(id => id).ToArray() ??
+                Array.Empty<string>();
             IsVisible = ids.Length != 0;
             Text = IsVisible ? "Visibility filters active: " + string.Join(", ", ids) : string.Empty;
         }
@@ -522,8 +561,14 @@ namespace TajsCOI.Tweaks.Features.Presentation
             m_registry.ApplyPersisted(persistedHiddenCategories);
             m_index = new WorldVisibilitySceneIndex(m_registry);
             m_index.Clear();
-            foreach (IStaticEntity entity in m_entities.GetAllEntitiesOfType<IStaticEntity>()) m_index.Register(entity);
-            foreach (string categoryId in m_registry.HiddenCategoryIds) m_index.SetCategoryHidden(categoryId, true);
+            foreach (IStaticEntity entity in m_entities.GetAllEntitiesOfType<IStaticEntity>())
+            {
+                m_index.Register(entity);
+            }
+            foreach (string categoryId in m_registry.HiddenCategoryIds)
+            {
+                m_index.SetCategoryHidden(categoryId, true);
+            }
             m_entities.StaticEntityAdded.AddNonSaveable(this, OnStaticEntityAdded);
             m_entities.StaticEntityRemoved.AddNonSaveable(this, OnStaticEntityRemoved);
             m_entities.OnUpgradeToBePerformed.AddNonSaveable(this, OnUpgradeStarting);
@@ -538,7 +583,10 @@ namespace TajsCOI.Tweaks.Features.Presentation
 
         internal string SetCategoryHidden(string id, bool hidden)
         {
-            if (!m_index.SetCategoryHidden(id, hidden)) return "Unknown world visibility category: " + id + ".";
+            if (!m_index.SetCategoryHidden(id, hidden))
+            {
+                return "Unknown world visibility category: " + id + ".";
+            }
             RefreshIndicator();
             return (hidden ? "Hidden " : "Showing ") + id + ". " + Status();
         }
@@ -564,7 +612,10 @@ namespace TajsCOI.Tweaks.Features.Presentation
 
         public void Dispose()
         {
-            if (m_disposed) return;
+            if (m_disposed)
+            {
+                return;
+            }
             m_entities.StaticEntityAdded.RemoveNonSaveable(this, OnStaticEntityAdded);
             m_entities.StaticEntityRemoved.RemoveNonSaveable(this, OnStaticEntityRemoved);
             m_entities.OnUpgradeToBePerformed.RemoveNonSaveable(this, OnUpgradeStarting);
@@ -574,10 +625,37 @@ namespace TajsCOI.Tweaks.Features.Presentation
             m_disposed = true;
         }
 
-        private void OnStaticEntityAdded(IStaticEntity entity) { if (!m_disposed) m_index.Register(entity); }
-        private void OnStaticEntityRemoved(IStaticEntity entity) { if (!m_disposed && entity is not null) m_index.Remove(entity.Id.Value); }
-        private void OnUpgradeStarting(IUpgradableEntity entity) { if (!m_disposed && entity is IStaticEntity staticEntity) m_index.Remove(staticEntity.Id.Value); }
-        private void OnUpgradeFinished(IUpgradableEntity entity, IEntityProto _) { if (!m_disposed && entity is IStaticEntity staticEntity) m_index.Register(staticEntity); }
+        private void OnStaticEntityAdded(IStaticEntity entity)
+        {
+            if (!m_disposed)
+            {
+                m_index.Register(entity);
+            }
+        }
+
+        private void OnStaticEntityRemoved(IStaticEntity entity)
+        {
+            if (!m_disposed && entity is not null)
+            {
+                m_index.Remove(entity.Id.Value);
+            }
+        }
+
+        private void OnUpgradeStarting(IUpgradableEntity entity)
+        {
+            if (!m_disposed && entity is IStaticEntity staticEntity)
+            {
+                m_index.Remove(staticEntity.Id.Value);
+            }
+        }
+
+        private void OnUpgradeFinished(IUpgradableEntity entity, IEntityProto _)
+        {
+            if (!m_disposed && entity is IStaticEntity staticEntity)
+            {
+                m_index.Register(staticEntity);
+            }
+        }
 
         private void OnEntityVisualChanged(IEntity entity)
         {
@@ -596,14 +674,50 @@ namespace TajsCOI.Tweaks.Features.Presentation
             HeightLayerSceneIndex? sharedHeightLayerIndex)
         {
             var registry = new WorldVisibilityCategoryRegistry();
-            Func<IStaticEntity, HeightLayerRenderBinding?> nativeBinding = entity => renderer is null ? null : HeightLayerNativeBinding.TryCreate(entity, renderer, portsRenderer);
-            registry.Register(new WorldVisibilityCategoryDescriptor(OrdinaryBuildings, "Ordinary buildings", IsOrdinaryBuilding, new WorldVisibilityNativePresentationAdapter(nativeBinding, sharedHeightLayerIndex)));
-            registry.Register(new WorldVisibilityCategoryDescriptor(SettlementDecorations, "Settlement decorations", IsSettlementDecoration, new WorldVisibilityNativePresentationAdapter(nativeBinding, sharedHeightLayerIndex)));
-            registry.Register(new WorldVisibilityCategoryDescriptor(Offices, "Offices", MatchesName("Office"), new WorldVisibilityNativePresentationAdapter(nativeBinding, sharedHeightLayerIndex)));
-            registry.Register(new WorldVisibilityCategoryDescriptor(Trees, "Trees", _ => false, new WorldVisibilityTreePresentationAdapter(CreateTreeVisibilityAction(treesRenderer))));
-            registry.Register(new WorldVisibilityCategoryDescriptor(Lifts, "Lifts", MatchesName("Lift"), new WorldVisibilityInstancedPresentationAdapter(sharedHeightLayerIndex)));
-            registry.Register(new WorldVisibilityCategoryDescriptor(Sorters, "Sorters", MatchesName("Sorter"), new WorldVisibilityInstancedPresentationAdapter(sharedHeightLayerIndex)));
-            registry.Register(new WorldVisibilityCategoryDescriptor(BalancersConnectors, "Balancers/connectors", MatchesAny("Balancer", "Connector", "Zipper"), new WorldVisibilityInstancedPresentationAdapter(sharedHeightLayerIndex)));
+            Func<IStaticEntity, HeightLayerRenderBinding?> nativeBinding = entity =>
+                renderer is null ? null : HeightLayerNativeBinding.TryCreate(entity, renderer, portsRenderer);
+            registry.Register(
+                new WorldVisibilityCategoryDescriptor(
+                    OrdinaryBuildings,
+                    "Ordinary buildings",
+                    IsOrdinaryBuilding,
+                    new WorldVisibilityNativePresentationAdapter(nativeBinding, sharedHeightLayerIndex)));
+            registry.Register(
+                new WorldVisibilityCategoryDescriptor(
+                    SettlementDecorations,
+                    "Settlement decorations",
+                    IsSettlementDecoration,
+                    new WorldVisibilityNativePresentationAdapter(nativeBinding, sharedHeightLayerIndex)));
+            registry.Register(
+                new WorldVisibilityCategoryDescriptor(
+                    Offices,
+                    "Offices",
+                    MatchesName("Office"),
+                    new WorldVisibilityNativePresentationAdapter(nativeBinding, sharedHeightLayerIndex)));
+            registry.Register(
+                new WorldVisibilityCategoryDescriptor(
+                    Trees,
+                    "Trees",
+                    _ => false,
+                    new WorldVisibilityTreePresentationAdapter(CreateTreeVisibilityAction(treesRenderer))));
+            registry.Register(
+                new WorldVisibilityCategoryDescriptor(
+                    Lifts,
+                    "Lifts",
+                    MatchesName("Lift"),
+                    new WorldVisibilityInstancedPresentationAdapter(sharedHeightLayerIndex)));
+            registry.Register(
+                new WorldVisibilityCategoryDescriptor(
+                    Sorters,
+                    "Sorters",
+                    MatchesName("Sorter"),
+                    new WorldVisibilityInstancedPresentationAdapter(sharedHeightLayerIndex)));
+            registry.Register(
+                new WorldVisibilityCategoryDescriptor(
+                    BalancersConnectors,
+                    "Balancers/connectors",
+                    MatchesAny("Balancer", "Connector", "Zipper"),
+                    new WorldVisibilityInstancedPresentationAdapter(sharedHeightLayerIndex)));
             return registry;
         }
 
@@ -617,11 +731,18 @@ namespace TajsCOI.Tweaks.Features.Presentation
             MethodInfo? method = typeof(TreesRenderer).GetMethod(
                 "SetTreeRenderingState",
                 BindingFlags.Instance | BindingFlags.NonPublic);
-            return method is null ? null : visible =>
-            {
-                try { method.Invoke(renderer, new object[] { visible }); }
-                catch { }
-            };
+            return method is null
+                ? null
+                : visible =>
+                {
+                    try
+                    {
+                        method.Invoke(renderer, new object[] { visible });
+                    }
+                    catch
+                    {
+                    }
+                };
         }
 
         private static bool IsOrdinaryBuilding(IStaticEntity entity) =>

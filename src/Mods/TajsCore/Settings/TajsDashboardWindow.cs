@@ -25,7 +25,6 @@ using UnityEngine.UIElements;
 using Button = Mafi.Unity.UiToolkit.Library.Button;
 using Column = Mafi.Unity.UiToolkit.Library.Column;
 using Label = Mafi.Unity.UiToolkit.Library.Label;
-using TextField = Mafi.Unity.UiToolkit.Library.TextField;
 
 namespace TajsCOI.Core.Settings
 {
@@ -1256,7 +1255,7 @@ namespace TajsCOI.Core.Settings
                 visible,
                 string.Equals(m_selectedCategory, AllCategories, StringComparison.Ordinal)
                     ? "All settings"
-                : $"Settings · {m_selectedCategory}");
+                    : $"Settings · {m_selectedCategory}");
         }
 
         private Panel BuildMetadataGroupsPanel() =>

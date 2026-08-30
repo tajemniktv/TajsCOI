@@ -7,15 +7,14 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using HarmonyLib;
 using Mafi;
-using Mafi.Numerics;
 using UnityEngine;
 
 namespace TajsCOI.Tweaks.Features.Selection
 {
     /// <summary>
-    /// Patches the shared 0.8.7b polygon editor at its input boundary. Native
-    /// validity, cancel, undo and commit logic therefore continue to receive the
-    /// constrained cursor as if it had been entered by the user.
+    ///     Patches the shared 0.8.7b polygon editor at its input boundary. Native
+    ///     validity, cancel, undo and commit logic therefore continue to receive the
+    ///     constrained cursor as if it had been entered by the user.
     /// </summary>
     internal static class PolygonConstraintFeature
     {
@@ -36,8 +35,8 @@ namespace TajsCOI.Tweaks.Features.Selection
         private static bool s_installed;
 
         /// <summary>
-        /// Allows the common shortcut registry (#141) to supply the actual modifier
-        /// state without coupling this patch to a particular input implementation.
+        ///     Allows the common shortcut registry (#141) to supply the actual modifier
+        ///     state without coupling this patch to a particular input implementation.
         /// </summary>
         internal static void ConfigureModifiers(Func<bool>? axisModifierHeld, Func<bool>? gridModifierHeld)
         {
@@ -55,7 +54,7 @@ namespace TajsCOI.Tweaks.Features.Selection
                 return;
             }
 
-            Type? stateType = Type.GetType("Mafi.Unity.Ui.Controllers.PolygonEditState, Mafi.Unity", false);
+            var stateType = Type.GetType("Mafi.Unity.Ui.Controllers.PolygonEditState, Mafi.Unity", false);
             MethodInfo? inputUpdate = stateType is null ? null : AccessTools.Method(stateType, "InputUpdate");
             if (!IsExpectedInputMethod(inputUpdate))
             {

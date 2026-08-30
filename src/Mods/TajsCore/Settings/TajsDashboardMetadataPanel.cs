@@ -9,11 +9,9 @@ using System.Linq;
 using Mafi;
 using Mafi.Localization;
 using Mafi.Unity.UiToolkit.Component;
-using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Metadata;
 using TajsCOI.Common.Ui;
 using Button = Mafi.Unity.UiToolkit.Library.Button;
-using Column = Mafi.Unity.UiToolkit.Library.Column;
 using Label = Mafi.Unity.UiToolkit.Library.Label;
 using Panel = Mafi.Unity.UiToolkit.Library.Panel;
 using Row = Mafi.Unity.UiToolkit.Library.Row;
@@ -76,10 +74,14 @@ namespace TajsCOI.Core.Settings
                 new[]
                 {
                     DataTableColumn<EntityMetadataGroup>.CreateText(
-                        "name", "Group", group => group.Name,
-                        width: DataTableColumnWidth.Constrained(180, 320), visibilityPriority: 10),
+                        "name",
+                        "Group",
+                        group => group.Name,
+                        width: DataTableColumnWidth.Constrained(180, 320),
+                        visibilityPriority: 10),
                     DataTableColumn<EntityMetadataGroup>.CreateText(
-                        "members", "Members",
+                        "members",
+                        "Members",
                         group => members.TryGetValue(group.GroupId, out int count)
                             ? count.ToString(CultureInfo.InvariantCulture)
                             : "0",
@@ -87,11 +89,17 @@ namespace TajsCOI.Core.Settings
                         alignment: DataTableColumnAlignment.End,
                         visibilityPriority: 9),
                     DataTableColumn<EntityMetadataGroup>.CreateText(
-                        "color", "Color", group => group.Color,
-                        width: DataTableColumnWidth.Fixed(110), visibilityPriority: 8),
+                        "color",
+                        "Color",
+                        group => group.Color,
+                        width: DataTableColumnWidth.Fixed(110),
+                        visibilityPriority: 8),
                     DataTableColumn<EntityMetadataGroup>.CreateText(
-                        "lock", "Lock", group => group.Locked ? "Locked" : "Open",
-                        width: DataTableColumnWidth.Fixed(90), visibilityPriority: 7),
+                        "lock",
+                        "Lock",
+                        group => group.Locked ? "Locked" : "Open",
+                        width: DataTableColumnWidth.Fixed(90),
+                        visibilityPriority: 7),
                 },
                 group => group.GroupId,
                 DataTableSelectionMode.Single);

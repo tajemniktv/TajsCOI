@@ -226,8 +226,7 @@ namespace TajsCOI.Tweaks
 
         private static readonly IReadOnlyList<SettingChoice> s_shipUnloadPolicies = new[]
         {
-            new SettingChoice("vanilla", "Vanilla order"),
-            new SettingChoice("smallest_stack_first", "Smallest stack first"),
+            new SettingChoice("vanilla", "Vanilla order"), new SettingChoice("smallest_stack_first", "Smallest stack first"),
         };
 
         private static readonly IReadOnlyList<SettingChoice> s_terrainDesignationPriorities = new[]
@@ -240,16 +239,12 @@ namespace TajsCOI.Tweaks
 
         private static readonly IReadOnlyList<SettingChoice> s_trainTuningProfiles = new[]
         {
-            new SettingChoice("vanilla", "Vanilla"),
-            new SettingChoice("efficient", "Efficient fuel"),
-            new SettingChoice("power", "Climbing power"),
+            new SettingChoice("vanilla", "Vanilla"), new SettingChoice("efficient", "Efficient fuel"), new SettingChoice("power", "Climbing power"),
         };
 
         private static readonly IReadOnlyList<SettingChoice> s_locomotiveNumbering = new[]
         {
-            new SettingChoice("vanilla", "Native numbering"),
-            new SettingChoice("sequential", "Sequential"),
-            new SettingChoice("random", "Seeded random"),
+            new SettingChoice("vanilla", "Native numbering"), new SettingChoice("sequential", "Sequential"), new SettingChoice("random", "Seeded random"),
         };
 
         private static readonly IReadOnlyList<SettingChoice> s_bridgeScaleModes = new[]
@@ -264,15 +259,12 @@ namespace TajsCOI.Tweaks
 
         private static readonly IReadOnlyList<SettingChoice> s_researchTreeLayouts = new[]
         {
-            new SettingChoice("vanilla", "Vanilla spacing"),
-            new SettingChoice("compact", "Compact spacing"),
+            new SettingChoice("vanilla", "Vanilla spacing"), new SettingChoice("compact", "Compact spacing"),
         };
 
         private static readonly IReadOnlyList<SettingChoice> s_recipePickerDensities = new[]
         {
-            new SettingChoice("vanilla", "Vanilla list"),
-            new SettingChoice("compact", "Compact columns"),
-            new SettingChoice("custom", "Custom"),
+            new SettingChoice("vanilla", "Vanilla list"), new SettingChoice("compact", "Compact columns"), new SettingChoice("custom", "Custom"),
         };
 
         private static readonly IReadOnlyList<SettingChoice> s_groundwaterPolicies = new[]

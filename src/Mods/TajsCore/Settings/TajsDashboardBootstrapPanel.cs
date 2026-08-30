@@ -8,9 +8,7 @@ using HarmonyLib;
 using Mafi;
 using Mafi.Localization;
 using Mafi.Unity.UiToolkit.Component;
-using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Bootstrap;
-using TajsCOI.Common.Ui;
 using Button = Mafi.Unity.UiToolkit.Library.Button;
 using Label = Mafi.Unity.UiToolkit.Library.Label;
 using Panel = Mafi.Unity.UiToolkit.Library.Panel;
@@ -90,8 +88,9 @@ namespace TajsCOI.Core.Settings
                     return true;
                 }
 
-                feedback.Value(("Bootstrap source discovery failed: expected payload, canonical 0Harmony.dll, or bundled Doorstop proxy was not found.\n" +
-                                "payload=" + bootstrapPath + "\nharmony=" + harmonyPath + "\nproxy=" + doorstopProxyPath).AsLoc()).Show();
+                feedback.Value(
+                    ("Bootstrap source discovery failed: expected payload, canonical 0Harmony.dll, or bundled Doorstop proxy was not found.\n" +
+                     "payload=" + bootstrapPath + "\nharmony=" + harmonyPath + "\nproxy=" + doorstopProxyPath).AsLoc()).Show();
                 return false;
             }
 

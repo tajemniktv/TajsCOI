@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Mafi;
-using Mafi.Core.Terrain;
 using Mafi.Unity.Terrain;
 using TajsCOI.Common.Settings;
 using TajsCOI.Tweaks;
@@ -43,8 +42,8 @@ namespace TajsCOI.Tests
         [Fact]
         public void DiffSeparatesEnteredExitedAndChangedChunks()
         {
-            var previous = new HashSet<Chunk2i> { new Chunk2i(0, 0), new Chunk2i(1, 0) };
-            var next = new HashSet<Chunk2i> { new Chunk2i(1, 0), new Chunk2i(2, 0) };
+            var previous = new HashSet<Chunk2i> { new(0, 0), new(1, 0) };
+            var next = new HashSet<Chunk2i> { new(1, 0), new(2, 0) };
 
             TerrainXRayChunkDiff diff = TerrainXRayChunkIndex.Diff(previous, next, stateChanged: true);
 
@@ -57,7 +56,7 @@ namespace TajsCOI.Tests
         [Fact]
         public void UnchangedStateDoesNotRequestChunkUpdates()
         {
-            var chunks = new HashSet<Chunk2i> { new Chunk2i(0, 0) };
+            var chunks = new HashSet<Chunk2i> { new(0, 0) };
 
             TerrainXRayChunkDiff diff = TerrainXRayChunkIndex.Diff(chunks, chunks, stateChanged: false);
 

@@ -21,10 +21,10 @@
     <PrimaryModDll Include="TajsBootstrap.dll"/>
     <PrimaryModDll Include="$(TargetFileName)"/>
 
-    <CoiPackageAsset Include="Assets\winhttp.dll" />
-    <CoiPackageAsset Include="Assets\UnityDoorstop-LICENSE.txt" />
-    <CoiAdditionalFile Include="$(TargetDir)winhttp.dll" />
-    <CoiAdditionalFile Include="$(TargetDir)UnityDoorstop-LICENSE.txt" />
+    <CoiPackageAsset Include="Assets\winhttp.dll"/>
+    <CoiPackageAsset Include="Assets\UnityDoorstop-LICENSE.txt"/>
+    <CoiAdditionalFile Include="$(TargetDir)winhttp.dll"/>
+    <CoiAdditionalFile Include="$(TargetDir)UnityDoorstop-LICENSE.txt"/>
 
     <ProjectReference Include="..\..\Libraries\TajsCOI.Common\TajsCOI.Common.csproj"/>
     <ProjectReference Include="..\..\Bootstrap\TajsBootstrap\TajsBootstrap.csproj"/>
@@ -44,8 +44,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Assets\winhttp.dll" CopyToOutputDirectory="Never" />
-    <None Update="Assets\UnityDoorstop-LICENSE.txt" CopyToOutputDirectory="Never" />
+    <None Update="Assets\winhttp.dll" CopyToOutputDirectory="Never"/>
+    <None Update="Assets\UnityDoorstop-LICENSE.txt" CopyToOutputDirectory="Never"/>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>TajsCOI.Tests</_Parameter1>
     </AssemblyAttribute>

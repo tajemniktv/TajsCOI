@@ -33,7 +33,7 @@ namespace TajsCOI.Tweaks.Features.Cleanup
         {
             unchecked
             {
-                return (EntityId * 397) ^ (Title?.GetHashCode() ?? 0);
+                return EntityId * 397 ^ (Title?.GetHashCode() ?? 0);
             }
         }
     }

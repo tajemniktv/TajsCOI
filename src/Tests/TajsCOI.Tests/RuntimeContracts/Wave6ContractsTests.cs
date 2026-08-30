@@ -1,14 +1,14 @@
 // Taj's COI Mods | Wave6ContractsTests.cs
+// Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
+// All Rights Reserved.
 
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using Xunit;
 using TajsCOI.Tweaks.Features.Fleet;
 using TajsCOI.Tweaks.Features.Research;
 using TajsCOI.Tweaks.Features.Ships;
 using TajsCOI.Tweaks.Features.Trains;
 using TajsCOI.Tweaks.Features.World;
+using Xunit;
 
 namespace TajsCOI.Tests.RuntimeContracts
 {
@@ -44,7 +44,7 @@ namespace TajsCOI.Tests.RuntimeContracts
         [Fact]
         public void ShipUnloadSelectorProtectsReservationsAndChoosesSmallest()
         {
-            var selected = ShipUnloadSelector.Select(
+            UnloadBufferCandidate? selected = ShipUnloadSelector.Select(
                 ShipUnloadPolicy.SmallestStackFirst,
                 new[]
                 {

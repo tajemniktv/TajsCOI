@@ -3,6 +3,7 @@
 // All Rights Reserved.
 
 using System;
+using System.Collections.Generic;
 using Mafi;
 using Mafi.Core.Console;
 using Mafi.Core.Factory.Transports;
@@ -89,7 +90,7 @@ namespace TajsCOI.Tweaks.Features.TransportPillars
                 return "Area rejected: bounds must be ordered and no larger than 64x64 tiles.";
             }
 
-            var plans = m_tool.BuildAreaPreview(bounds);
+            IReadOnlyList<TransportPillarPlan> plans = m_tool.BuildAreaPreview(bounds);
             int valid = 0;
             foreach (TransportPillarPlan plan in plans)
             {

@@ -392,9 +392,11 @@ namespace TajsCOI.Tests.RuntimeContracts
                 typeof(int));
 
             Assert.Same(getOrCreate, targets!.GetOrCreatePfNodeAt);
-            Assert.Same(dataChunk.GetMethod(
-                "RecomputeCoreData",
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic), targets.RecomputeCoreData);
+            Assert.Same(
+                dataChunk.GetMethod(
+                    "RecomputeCoreData",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
+                targets.RecomputeCoreData);
             Assert.Same(
                 typeof(ShipsClearancePathabilityProvider).GetMethod(
                     "computeInitialBlocking",

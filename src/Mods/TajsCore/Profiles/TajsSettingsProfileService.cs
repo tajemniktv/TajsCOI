@@ -10,13 +10,13 @@ using System.Linq;
 using System.Text;
 using Mafi;
 using Mafi.Collections;
+using Mafi.Core.Console;
 using Mafi.Serialization;
+using TajsCOI.Common.Diagnostics;
+using TajsCOI.Common.Logging;
 using TajsCOI.Common.Profiles;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
-using TajsCOI.Common.Logging;
-using Mafi.Core.Console;
-using TajsCOI.Common.Diagnostics;
 
 namespace TajsCOI.Core.Profiles
 {
@@ -92,53 +92,57 @@ namespace TajsCOI.Core.Profiles
             }
 
             SettingSnapshot[] snapshots = m_settings.GetSnapshot().ToArray();
-            var byId = snapshots.ToDictionary(snapshot => snapshot.Descriptor.StableId, StringComparer.Ordinal);
+            Dictionary<string, SettingSnapshot> byId = snapshots.ToDictionary(snapshot => snapshot.Descriptor.StableId, StringComparer.Ordinal);
             var entries = new List<SettingsProfilePreviewEntry>();
             var skipped = new List<string>();
             foreach (KeyValuePair<string, object> item in profile.Values.OrderBy(pair => pair.Key, StringComparer.Ordinal))
             {
                 if (!byId.TryGetValue(item.Key, out SettingSnapshot? snapshot))
                 {
-                    entries.Add(new SettingsProfilePreviewEntry(
-                        item.Key,
-                        SettingsProfilePreviewState.Unavailable,
-                        null,
-                        item.Value,
-                        "Setting ID is not registered in this installation."));
+                    entries.Add(
+                        new SettingsProfilePreviewEntry(
+                            item.Key,
+                            SettingsProfilePreviewState.Unavailable,
+                            null,
+                            item.Value,
+                            "Setting ID is not registered in this installation."));
                     skipped.Add(item.Key);
                     continue;
                 }
 
                 if (!snapshot.Descriptor.Flags.HasFlag(SettingFlags.ProfileSafe))
                 {
-                    entries.Add(new SettingsProfilePreviewEntry(
-                        item.Key,
-                        SettingsProfilePreviewState.Unavailable,
-                        snapshot.Value,
-                        item.Value,
-                        "The setting is not explicitly marked profile-safe."));
+                    entries.Add(
+                        new SettingsProfilePreviewEntry(
+                            item.Key,
+                            SettingsProfilePreviewState.Unavailable,
+                            snapshot.Value,
+                            item.Value,
+                            "The setting is not explicitly marked profile-safe."));
                     skipped.Add(item.Key);
                     continue;
                 }
 
                 if (!snapshot.Descriptor.TryNormalize(item.Value, out object normalized, out string error))
                 {
-                    entries.Add(new SettingsProfilePreviewEntry(
-                        item.Key,
-                        SettingsProfilePreviewState.Invalid,
-                        snapshot.Value,
-                        item.Value,
-                        error));
+                    entries.Add(
+                        new SettingsProfilePreviewEntry(
+                            item.Key,
+                            SettingsProfilePreviewState.Invalid,
+                            snapshot.Value,
+                            item.Value,
+                            error));
                     continue;
                 }
 
                 bool unchanged = Equals(snapshot.Value, normalized);
-                entries.Add(new SettingsProfilePreviewEntry(
-                    item.Key,
-                    unchanged ? SettingsProfilePreviewState.Unchanged : SettingsProfilePreviewState.Proposed,
-                    snapshot.Value,
-                    normalized,
-                    unchanged ? "Already active." : "Validated profile value."));
+                entries.Add(
+                    new SettingsProfilePreviewEntry(
+                        item.Key,
+                        unchanged ? SettingsProfilePreviewState.Unchanged : SettingsProfilePreviewState.Proposed,
+                        snapshot.Value,
+                        normalized,
+                        unchanged ? "Already active." : "Validated profile value."));
             }
 
             // A profile can intentionally omit values. Expose those selected, safe settings as
@@ -148,12 +152,13 @@ namespace TajsCOI.Core.Profiles
                          !profile.Values.ContainsKey(snapshot.Descriptor.StableId) &&
                          IsSelected(profile, snapshot.Descriptor)))
             {
-                entries.Add(new SettingsProfilePreviewEntry(
-                    snapshot.Descriptor.StableId,
-                    SettingsProfilePreviewState.Current,
-                    snapshot.Value,
-                    snapshot.Value,
-                    "Profile does not override this selected setting."));
+                entries.Add(
+                    new SettingsProfilePreviewEntry(
+                        snapshot.Descriptor.StableId,
+                        SettingsProfilePreviewState.Current,
+                        snapshot.Value,
+                        snapshot.Value,
+                        "Profile does not override this selected setting."));
             }
 
             return new SettingsProfilePreview(profile, entries, skipped);
@@ -162,7 +167,7 @@ namespace TajsCOI.Core.Profiles
         public SettingsProfileApplyResult Apply(SettingsProfile profile)
         {
             SettingsProfilePreview preview = Preview(profile ?? throw new ArgumentNullException(nameof(profile)));
-            var errors = preview.Entries
+            List<string> errors = preview.Entries
                 .Where(entry => entry.State == SettingsProfilePreviewState.Invalid)
                 .Select(entry => entry.StableId + ": " + entry.Message)
                 .ToList();
@@ -380,7 +385,7 @@ namespace TajsCOI.Core.Profiles
             }
             string[] selectedCategories = SplitList(categories);
             string[] selectedModules = SplitList(modules);
-            var values = m_settings.GetSnapshot()
+            Dictionary<string, object> values = m_settings.GetSnapshot()
                 .Where(snapshot => snapshot.Descriptor.Flags.HasFlag(SettingFlags.ProfileSafe) &&
                                    (selectedCategories.Length == 0 || selectedCategories.Contains(snapshot.Descriptor.Category, StringComparer.Ordinal)) &&
                                    (selectedModules.Length == 0 || selectedModules.Contains(snapshot.Descriptor.ModId, StringComparer.Ordinal)))
@@ -408,7 +413,9 @@ namespace TajsCOI.Core.Profiles
             }
             SettingsProfilePreview preview = Preview(profile);
             return "Profile '" + profile.Name + "' preview: " +
-                   string.Join(", ", preview.Entries.GroupBy(entry => entry.State).OrderBy(group => group.Key).Select(group => group.Key + "=" + group.Count())) +
+                   string.Join(
+                       ", ",
+                       preview.Entries.GroupBy(entry => entry.State).OrderBy(group => group.Key).Select(group => group.Key + "=" + group.Count())) +
                    (preview.SkippedIds.Count == 0 ? string.Empty : "; skipped=" + string.Join(",", preview.SkippedIds));
         }
 
@@ -469,11 +476,11 @@ namespace TajsCOI.Core.Profiles
 
         private static string[] SplitList(string? value) =>
             (value ?? string.Empty)
-                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(item => item.Trim())
-                .Where(item => item.Length != 0)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
+            .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(item => item.Trim())
+            .Where(item => item.Length != 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
 
         private void LoadExisting()
         {

@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using Mafi;
-using Mafi.Core;
 using Mafi.Core.Entities.Dynamic;
 using Mafi.Core.Products;
 using Mafi.Core.Terrain.Designation;

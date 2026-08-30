@@ -1584,7 +1584,8 @@ namespace TajsCOI.Profiler.Probes.Runtime
             builder.Append(", total=")
                 .Append((totalTicks * 1000.0 / Stopwatch.Frequency).ToString("F2", CultureInfo.InvariantCulture)).Append(" ms")
                 .Append(", finalizer-drain=")
-                .Append((passes.Sum(x => x.FinalizerDrainElapsedTicks) * 1000.0 / Stopwatch.Frequency)
+                .Append(
+                    (passes.Sum(x => x.FinalizerDrainElapsedTicks) * 1000.0 / Stopwatch.Frequency)
                     .ToString("F2", CultureInfo.InvariantCulture)).Append(" ms")
                 .Append(", max=")
                 .Append((maxTicks * 1000.0 / Stopwatch.Frequency).ToString("F2", CultureInfo.InvariantCulture)).Append(" ms")

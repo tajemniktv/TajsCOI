@@ -7,9 +7,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
-using Mafi;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Static;
+using Mafi.Core.Entities.Static.Layout;
 using Mafi.Core.Ports;
 using Mafi.Core.Ports.Io;
 using Mafi.Unity.Entities;
@@ -19,10 +19,10 @@ using UnityEngine;
 namespace TajsCOI.Tweaks.Features.Presentation
 {
     /// <summary>
-    /// Scene-local renderer binding. All three presentation surfaces are changed
-    /// together so hidden entities cannot remain selectable through a port or a
-    /// stale physics hit target. The optional readers preserve pre-existing native
-    /// visibility when ShowAll or scene teardown restores the binding.
+    ///     Scene-local renderer binding. All three presentation surfaces are changed
+    ///     together so hidden entities cannot remain selectable through a port or a
+    ///     stale physics hit target. The optional readers preserve pre-existing native
+    ///     visibility when ShowAll or scene teardown restores the binding.
     /// </summary>
     internal sealed class HeightLayerRenderBinding
     {
@@ -65,8 +65,8 @@ namespace TajsCOI.Tweaks.Features.Presentation
     }
 
     /// <summary>
-    /// Immutable scene-index row. It intentionally stores only the id and
-    /// presentation metadata, never a simulation entity reference.
+    ///     Immutable scene-index row. It intentionally stores only the id and
+    ///     presentation metadata, never a simulation entity reference.
     /// </summary>
     internal sealed class HeightLayerEntityRecord
     {
@@ -111,9 +111,9 @@ namespace TajsCOI.Tweaks.Features.Presentation
     }
 
     /// <summary>
-    /// The reusable category/render policy adapter. Other presentation filters can
-    /// register the same binding and call Apply without knowing how a renderer or
-    /// instanced ports are represented by the game.
+    ///     The reusable category/render policy adapter. Other presentation filters can
+    ///     register the same binding and call Apply without knowing how a renderer or
+    ///     instanced ports are represented by the game.
     /// </summary>
     internal sealed class HeightLayerPresentationAdapter : IDisposable
     {
@@ -163,7 +163,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
     }
 
     /// <summary>
-    /// EntityId -> vertical range index for the active gameplay scene.
+    ///     EntityId -> vertical range index for the active gameplay scene.
     /// </summary>
     internal sealed class HeightLayerSceneIndex : IDisposable
     {
@@ -221,10 +221,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
             return Register(range.EntityId, range.MinHeight, range.MaxHeight, range.Category, range.RendererBinding);
         }
 
-        internal bool Remove(int entityId)
-        {
-            return RemoveInternal(entityId, clearExternalVisibility: true);
-        }
+        internal bool Remove(int entityId) => RemoveInternal(entityId, clearExternalVisibility: true);
 
         private bool RemoveInternal(int entityId, bool clearExternalVisibility)
         {
@@ -249,12 +246,15 @@ namespace TajsCOI.Tweaks.Features.Presentation
         }
 
         /// <summary>
-        /// Adds or replaces a presentation-only visibility policy owned by another scene feature.
-        /// Policies compose with the height cutoff and are retained across renderer refreshes.
+        ///     Adds or replaces a presentation-only visibility policy owned by another scene feature.
+        ///     Policies compose with the height cutoff and are retained across renderer refreshes.
         /// </summary>
         internal bool SetExternalVisibility(object owner, int entityId, bool visible)
         {
-            if (owner is null) throw new ArgumentNullException(nameof(owner));
+            if (owner is null)
+            {
+                throw new ArgumentNullException(nameof(owner));
+            }
             ThrowIfDisposed();
             if (!m_externalVisibility.TryGetValue(entityId, out Dictionary<object, bool>? policies))
             {
@@ -274,7 +274,10 @@ namespace TajsCOI.Tweaks.Features.Presentation
 
         internal void ClearExternalVisibility(object owner, int entityId)
         {
-            if (owner is null) throw new ArgumentNullException(nameof(owner));
+            if (owner is null)
+            {
+                throw new ArgumentNullException(nameof(owner));
+            }
             if (!m_externalVisibility.TryGetValue(entityId, out Dictionary<object, bool>? policies))
             {
                 return;
@@ -359,10 +362,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
 
         internal IReadOnlyList<HeightLayerVisibilityChange> ShowAll() => SetCutoff(null);
 
-        internal bool IsVisible(int entityId)
-        {
-            return !m_records.TryGetValue(entityId, out HeightLayerEntityRecord? record) || IsVisible(record);
-        }
+        internal bool IsVisible(int entityId) => !m_records.TryGetValue(entityId, out HeightLayerEntityRecord? record) || IsVisible(record);
 
         internal bool CanInteract(int entityId) => IsVisible(entityId);
 
@@ -464,14 +464,15 @@ namespace TajsCOI.Tweaks.Features.Presentation
     }
 
     /// <summary>
-    /// Scene-facing owner that exposes the HUD state and placement policy without
-    /// making the global runtime state or terrain renderer aware of this filter.
+    ///     Scene-facing owner that exposes the HUD state and placement policy without
+    ///     making the global runtime state or terrain renderer aware of this filter.
     /// </summary>
     internal sealed class HeightLayerFilterScene : IDisposable
     {
         internal HeightLayerSceneIndex Index { get; }
         internal int? ActiveLayer => Index.Cutoff;
         internal bool IsFiltering => ActiveLayer.HasValue;
+
         internal string HudIndicator =>
             ActiveLayer.HasValue ? "Height layer " + ActiveLayer.Value : "All height layers";
 
@@ -499,7 +500,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
             int baseHeight = entity.CenterTile.Z;
             int minHeight = baseHeight;
             int maxHeight = baseHeight;
-            foreach (var tile in entity.OccupiedTiles)
+            foreach (OccupiedTileRelative tile in entity.OccupiedTiles)
             {
                 minHeight = Math.Min(minHeight, baseHeight + tile.RelativeFrom);
                 // VerticalSizeRaw is a count and MaxHeight is inclusive.
@@ -512,10 +513,10 @@ namespace TajsCOI.Tweaks.Features.Presentation
     }
 
     /// <summary>
-    /// Binds the scene index to the native static-entity lifecycle. The index is
-    /// rebuilt from the current scene and then kept current for adds, removals,
-    /// upgrades, and renderer refreshes. Simulation state remains owned by the
-    /// native entity manager; this class only updates presentation callbacks.
+    ///     Binds the scene index to the native static-entity lifecycle. The index is
+    ///     rebuilt from the current scene and then kept current for adds, removals,
+    ///     upgrades, and renderer refreshes. Simulation state remains owned by the
+    ///     native entity manager; this class only updates presentation callbacks.
     /// </summary>
     internal sealed class HeightLayerFilterFeature : IDisposable
     {
@@ -618,10 +619,10 @@ namespace TajsCOI.Tweaks.Features.Presentation
     }
 
     /// <summary>
-    /// Native MB renderer adapter. Port visibility is deliberately an injected
-    /// callback because IoPortsRenderer uses instanced chunks rather than child
-    /// GameObjects; #144 can provide its category-aware port binding through the
-    /// same HeightLayerRenderBinding contract.
+    ///     Native MB renderer adapter. Port visibility is deliberately an injected
+    ///     callback because IoPortsRenderer uses instanced chunks rather than child
+    ///     GameObjects; #144 can provide its category-aware port binding through the
+    ///     same HeightLayerRenderBinding contract.
     /// </summary>
     internal static class HeightLayerNativeBinding
     {

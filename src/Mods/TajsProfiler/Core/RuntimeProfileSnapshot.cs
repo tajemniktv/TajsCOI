@@ -178,6 +178,7 @@ namespace TajsCOI.Profiler.Core
         internal int Gen1Collections { get; }
         internal int Gen2Collections { get; }
         internal double ElapsedMilliseconds => ElapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+
         internal double FinalizerDrainElapsedMilliseconds =>
             FinalizerDrainElapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }

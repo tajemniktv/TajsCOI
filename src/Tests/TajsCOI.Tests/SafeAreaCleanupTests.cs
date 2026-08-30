@@ -2,7 +2,7 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
-using System;
+using System.Collections.Generic;
 using System.Linq;
 using TajsCOI.Tweaks.Features.Cleanup;
 using Xunit;
@@ -23,9 +23,9 @@ namespace TajsCOI.Tests
         [Fact]
         public void BoundedSelectionIsDeterministicAndReportsTruncation()
         {
-            var values = Enumerable.Range(1, 5).ToArray();
+            int[] values = Enumerable.Range(1, 5).ToArray();
 
-            var result = SafeAreaCleanupPolicy.TakeBounded(values, 3, out bool truncated);
+            IReadOnlyList<int> result = SafeAreaCleanupPolicy.TakeBounded(values, 3, out bool truncated);
 
             Assert.Equal(new[] { 1, 2, 3 }, result);
             Assert.True(truncated);

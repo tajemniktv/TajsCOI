@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using Mafi;
 using Mafi.Collections.ImmutableCollections;
-using Mafi.Core.Entities.Static;
 using Mafi.Core.Factory.Transports;
 using Mafi.Core.Input;
 using TajsCOI.Tweaks.Features.Selection;

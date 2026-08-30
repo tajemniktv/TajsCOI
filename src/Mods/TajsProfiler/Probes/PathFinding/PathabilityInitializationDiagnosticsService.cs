@@ -38,6 +38,7 @@ namespace TajsCOI.Profiler.Probes.PathFinding
         private const string ConnectivityNodeRestore = "VehiclesConnectivityManager.GetOrCreatePfNodeAt";
 
         private static readonly object s_metricsGate = new();
+
         private static readonly Dictionary<string, PathabilityAccumulator> s_metrics =
             new(StringComparer.Ordinal)
             {
@@ -51,20 +52,24 @@ namespace TajsCOI.Profiler.Probes.PathFinding
             };
 
         private static readonly ConcurrentDictionary<MethodBase, string> s_targets = new();
+
         private static readonly FieldInfo? s_connectivityProviderField =
             typeof(VehiclesConnectivityManager).GetField(
                 "m_pathabilityProvider",
                 BindingFlags.Instance | BindingFlags.NonPublic);
+
         private static readonly FieldInfo? s_providerDataField =
             typeof(ClearancePathabilityProvider).GetField(
                 "m_data",
                 BindingFlags.Instance | BindingFlags.NonPublic);
+
         private static readonly MethodInfo? s_getPfData = typeof(ClearancePathabilityProvider.DataChunk).GetMethod(
             "GetPfData",
             BindingFlags.Instance | BindingFlags.Public,
             null,
             new[] { typeof(int) },
             null);
+
         private static readonly MethodInfo? s_allocatedBytesMethod = typeof(GC).GetMethod(
             "GetAllocatedBytesForCurrentThread",
             BindingFlags.Static | BindingFlags.Public,
@@ -165,7 +170,8 @@ namespace TajsCOI.Profiler.Probes.PathFinding
                     .Append(", scale=").Append(snapshot.Scale);
             }
 
-            builder.Append("\nClassification: ships blocking is a full-map O(area) scan with O(entities) occupancy inputs; clearance chunk work is O(area) over loaded chunks; connectivity restore is O(graph) in saved nodes/edges.");
+            builder.Append(
+                "\nClassification: ships blocking is a full-map O(area) scan with O(entities) occupancy inputs; clearance chunk work is O(area) over loaded chunks; connectivity restore is O(graph) in saved nodes/edges.");
             return builder.ToString();
         }
 
@@ -435,7 +441,7 @@ namespace TajsCOI.Profiler.Probes.PathFinding
                     return 0;
                 }
 
-                Array? data = s_providerDataField.GetValue(provider) as Array;
+                var data = s_providerDataField.GetValue(provider) as Array;
                 int capabilities = ReadIntMember(provider, "PathabilityCapabilitiesCount");
                 if (data is null || capabilities <= 0)
                 {
@@ -459,7 +465,7 @@ namespace TajsCOI.Profiler.Probes.PathFinding
                         // ReadOnlyArraySlice<T> intentionally exposes only the foreach pattern
                         // (it does not implement IEnumerable).  Use its allocation-free
                         // AsEnumerable bridge only for this post-init diagnostic summary.
-                        IEnumerable? enumerable = nodes as IEnumerable;
+                        var enumerable = nodes as IEnumerable;
                         if (enumerable is null && nodes is not null)
                         {
                             MethodInfo? asEnumerable = nodes.GetType().GetMethod(
@@ -707,13 +713,13 @@ namespace TajsCOI.Profiler.Probes.PathFinding
                 SavedNodeInputs = savedNodeInputs;
             }
 
-            internal int Width;
-            internal int Height;
-            internal long Chunks;
-            internal long Cells;
+            internal readonly int Width;
+            internal readonly int Height;
+            internal readonly long Chunks;
+            internal readonly long Cells;
             internal long GraphNodes;
             internal long GraphEdges;
-            internal long EntityInputs;
+            internal readonly long EntityInputs;
             internal long SavedNodeInputs;
         }
 
@@ -751,20 +757,20 @@ namespace TajsCOI.Profiler.Probes.PathFinding
                 ManagedBytesDelta = managedBytesDelta;
             }
 
-            internal string Name;
-            internal string Scale;
-            internal long Count;
-            internal long TotalTicks;
-            internal long MaxTicks;
-            internal long Width;
-            internal long Height;
-            internal long Chunks;
-            internal long Cells;
-            internal long GraphNodes;
-            internal long GraphEdges;
-            internal long EntityInputs;
-            internal long SavedNodeInputs;
-            internal long ManagedBytesDelta;
+            internal readonly string Name;
+            internal readonly string Scale;
+            internal readonly long Count;
+            internal readonly long TotalTicks;
+            internal readonly long MaxTicks;
+            internal readonly long Width;
+            internal readonly long Height;
+            internal readonly long Chunks;
+            internal readonly long Cells;
+            internal readonly long GraphNodes;
+            internal readonly long GraphEdges;
+            internal readonly long EntityInputs;
+            internal readonly long SavedNodeInputs;
+            internal readonly long ManagedBytesDelta;
         }
 
         private sealed class PathabilityAccumulator

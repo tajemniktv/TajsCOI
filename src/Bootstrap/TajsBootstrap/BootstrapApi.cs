@@ -60,6 +60,7 @@ namespace TajsCOI.Bootstrap
     public static class BootstrapApi
     {
         private static readonly object s_gate = new();
+
         private static BootstrapStatus s_status = new(
             BootstrapState.NotInitialized,
             "Bootstrap has not been initialized.",
@@ -311,7 +312,7 @@ namespace TajsCOI.Bootstrap
 
         private static string ComputeSha256(string path)
         {
-            using (var stream = File.OpenRead(path))
+            using (FileStream stream = File.OpenRead(path))
             using (var sha256 = SHA256.Create())
             {
                 byte[] bytes = sha256.ComputeHash(stream);

@@ -60,21 +60,23 @@ namespace TajsCOI.Visuals
             SceneManager.activeSceneChanged -= OnActiveSceneChanged;
             SceneManager.activeSceneChanged += OnActiveSceneChanged;
 
-            m_runtime.RegisterComponent(new RuntimeComponentDescriptor(
-                TajsVisualsSettingsCatalog.ModId,
-                ComponentId,
-                RuntimeComponentLifetime.GameplayScene,
-                "Mafi.Unity.Camera.LightController and directional UnityEngine.Light",
-                Array.Empty<string>(),
-                Array.Empty<string>(),
-                Array.Empty<string>()));
-            m_runtime.ReportCompatibility(new CompatibilityReport(
-                TajsVisualsSettingsCatalog.ModId,
-                "FeatureHost",
-                CompatibilityState.Compatible,
-                "Scene-owned snapshot backend with presentation-only phase policy",
-                TajsVisualsSettingsCatalog.All.Count + " settings registered",
-                "Lighting is opt-in; weather, fog, and simulation date/time remain vanilla-owned."));
+            m_runtime.RegisterComponent(
+                new RuntimeComponentDescriptor(
+                    TajsVisualsSettingsCatalog.ModId,
+                    ComponentId,
+                    RuntimeComponentLifetime.GameplayScene,
+                    "Mafi.Unity.Camera.LightController and directional UnityEngine.Light",
+                    Array.Empty<string>(),
+                    Array.Empty<string>(),
+                    Array.Empty<string>()));
+            m_runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    TajsVisualsSettingsCatalog.ModId,
+                    "FeatureHost",
+                    CompatibilityState.Compatible,
+                    "Scene-owned snapshot backend with presentation-only phase policy",
+                    TajsVisualsSettingsCatalog.All.Count + " settings registered",
+                    "Lighting is opt-in; weather, fog, and simulation date/time remain vanilla-owned."));
         }
 
         private void InitializeScene()
@@ -89,49 +91,53 @@ namespace TajsCOI.Visuals
                 Scene active = SceneManager.GetActiveScene();
                 if (!m_resolver.TryResolve(out m_calendar))
                 {
-                    m_runtime.ReportCompatibility(new CompatibilityReport(
-                        TajsVisualsSettingsCatalog.ModId,
-                        "PresentationClock",
-                        CompatibilityState.Degraded,
-                        "Authoritative ICalendar.CurrentDate",
-                        "ICalendar was unavailable",
-                        "The cycle falls back to smooth simulation steps; no simulation state is changed."));
+                    m_runtime.ReportCompatibility(
+                        new CompatibilityReport(
+                            TajsVisualsSettingsCatalog.ModId,
+                            "PresentationClock",
+                            CompatibilityState.Degraded,
+                            "Authoritative ICalendar.CurrentDate",
+                            "ICalendar was unavailable",
+                            "The cycle falls back to smooth simulation steps; no simulation state is changed."));
                 }
                 if (m_lighting.TryInitialize(m_resolver, active.handle))
                 {
-                    m_runtime.RegisterCapability(new RuntimeCapabilityDescriptor(
-                        "TajsVisuals.LightingBackend",
-                        TajsVisualsSettingsCatalog.ModId,
-                        ComponentId,
-                        RuntimeCapabilityState.Available,
-                        "0.8.7b",
-                        "Snapshot-based directional-light policy and exact restore",
-                        string.Empty,
-                        RuntimeComponentLifetime.GameplayScene));
+                    m_runtime.RegisterCapability(
+                        new RuntimeCapabilityDescriptor(
+                            "TajsVisuals.LightingBackend",
+                            TajsVisualsSettingsCatalog.ModId,
+                            ComponentId,
+                            RuntimeCapabilityState.Available,
+                            "0.8.7b",
+                            "Snapshot-based directional-light policy and exact restore",
+                            string.Empty,
+                            RuntimeComponentLifetime.GameplayScene));
                 }
                 else
                 {
-                    m_runtime.RegisterCapability(new RuntimeCapabilityDescriptor(
-                        "TajsVisuals.LightingBackend",
-                        TajsVisualsSettingsCatalog.ModId,
-                        ComponentId,
-                        RuntimeCapabilityState.Unavailable,
-                        "0.8.7b",
-                        "Directional-light target unavailable",
-                        "Vanilla rendering remains active.",
-                        RuntimeComponentLifetime.GameplayScene));
+                    m_runtime.RegisterCapability(
+                        new RuntimeCapabilityDescriptor(
+                            "TajsVisuals.LightingBackend",
+                            TajsVisualsSettingsCatalog.ModId,
+                            ComponentId,
+                            RuntimeCapabilityState.Unavailable,
+                            "0.8.7b",
+                            "Directional-light target unavailable",
+                            "Vanilla rendering remains active.",
+                            RuntimeComponentLifetime.GameplayScene));
                 }
             }
             catch (Exception exception)
             {
                 m_log.Exception(exception, "Visual lighting initialization failed open.");
-                m_runtime.ReportCompatibility(new CompatibilityReport(
-                    TajsVisualsSettingsCatalog.ModId,
-                    ComponentId,
-                    CompatibilityState.Disabled,
-                    "Scene-owned directional-light target",
-                    exception.GetType().Name,
-                    "Vanilla rendering remains active."));
+                m_runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsVisualsSettingsCatalog.ModId,
+                        ComponentId,
+                        CompatibilityState.Disabled,
+                        "Scene-owned directional-light target",
+                        exception.GetType().Name,
+                        "Vanilla rendering remains active."));
             }
         }
 
@@ -154,9 +160,9 @@ namespace TajsCOI.Visuals
                         time.TotalElapsedSimStepsSmooth.ToDouble(),
                         Calendar.SIM_STEPS_PER_DAY)
                     : PresentationClock.FromSimulationDate(
-                    m_calendar.CurrentDate,
-                    time.TotalElapsedSimStepsSmooth.ToDouble(),
-                    Calendar.SIM_STEPS_PER_DAY);
+                        m_calendar.CurrentDate,
+                        time.TotalElapsedSimStepsSmooth.ToDouble(),
+                        Calendar.SIM_STEPS_PER_DAY);
                 RefreshFixedState();
                 ApplyCurrentPolicy();
             }

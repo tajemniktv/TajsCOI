@@ -47,7 +47,9 @@ namespace TajsCOI.Tweaks.Features.MapEditor
         internal void Begin(IEnumerable<MapEditorModManifest> manifests)
         {
             Clear();
-            m_manifests.AddRange((manifests ?? Array.Empty<MapEditorModManifest>()).Where(manifest => manifest.IsValid).GroupBy(manifest => manifest.Id, StringComparer.Ordinal).Select(group => group.First()));
+            m_manifests.AddRange(
+                (manifests ?? Array.Empty<MapEditorModManifest>()).Where(manifest => manifest.IsValid).GroupBy(manifest => manifest.Id, StringComparer.Ordinal)
+                .Select(group => group.First()));
             IsActive = true;
         }
 
@@ -59,7 +61,10 @@ namespace TajsCOI.Tweaks.Features.MapEditor
             {
                 bool accepted = canResolve?.Invoke(manifest) == true;
                 m_decisions.Add(new MapEditorModDecision(manifest, accepted, accepted ? string.Empty : "manifest could not be resolved in editor mode"));
-                if (accepted) compatible.Add(manifest);
+                if (accepted)
+                {
+                    compatible.Add(manifest);
+                }
             }
             return compatible;
         }

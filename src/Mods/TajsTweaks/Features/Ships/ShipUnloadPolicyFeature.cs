@@ -10,12 +10,9 @@ using HarmonyLib;
 using Mafi;
 using Mafi.Collections;
 using Mafi.Core;
-using Mafi.Core.Buildings.Shipyard;
 using Mafi.Core.Entities.Static;
 using Mafi.Core.Products;
 using Mafi.Core.World;
-using Mafi.Core.World.Entities;
-using TajsCOI.Tweaks.Features.Ships;
 
 namespace TajsCOI.Tweaks
 {
@@ -34,10 +31,8 @@ namespace TajsCOI.Tweaks
             {
                 return;
             }
-            MethodInfo method = AccessTools.Method(typeof(BattleShip), "TryUnloadCargo", new[]
-            {
-                typeof(Quantity), typeof(Mafi.Collections.IReadOnlySet<ProductProto>),
-            }) ?? throw new MissingMethodException(typeof(BattleShip).FullName, "TryUnloadCargo");
+            MethodInfo method = AccessTools.Method(typeof(BattleShip), "TryUnloadCargo", new[] { typeof(Quantity), typeof(IReadOnlySet<ProductProto>) }) ??
+                                throw new MissingMethodException(typeof(BattleShip).FullName, "TryUnloadCargo");
             s_removeEmpty = AccessTools.Method(typeof(BattleShip), "removeBufferIfEmpty");
             harmony.Patch(method, prefix: new HarmonyMethod(typeof(ShipUnloadPolicyFeature), nameof(TryUnloadCargoPrefix)));
             s_installed = true;
@@ -52,7 +47,7 @@ namespace TajsCOI.Tweaks
         private static bool TryUnloadCargoPrefix(
             BattleShip __instance,
             Quantity maxQuantity,
-            Mafi.Collections.IReadOnlySet<ProductProto> productsToSkip,
+            IReadOnlySet<ProductProto> productsToSkip,
             ref ProductQuantity __result)
         {
             if (!string.Equals(TajsTweaksRuntimeState.ShipUnloadPolicy, "smallest_stack_first", StringComparison.OrdinalIgnoreCase))

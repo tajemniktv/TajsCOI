@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mafi;
-using Mafi.Core;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Static;
 using Mafi.Core.Entities.Static.Commands;
@@ -323,7 +322,7 @@ namespace TajsCOI.Tweaks.Features.Cleanup
                     hadPivot = true;
                     Vector2 screen = Project(camera, pivot);
                     if (IsInside(screen, minX, maxX, minY, maxY) ||
-                        (previous.HasValue && SegmentIntersects(previous.Value, screen, minX, maxX, minY, maxY)))
+                        previous.HasValue && SegmentIntersects(previous.Value, screen, minX, maxX, minY, maxY))
                     {
                         return true;
                     }
@@ -348,13 +347,13 @@ namespace TajsCOI.Tweaks.Features.Cleanup
                 {
                     Vector2 current = new(pivot.X, pivot.Y);
                     if (bounds.Contains((int)current.x, (int)current.y) ||
-                        (previous.HasValue && SegmentIntersects(
+                        previous.HasValue && SegmentIntersects(
                             previous.Value,
                             current,
                             bounds.MinX,
                             bounds.MaxX,
                             bounds.MinY,
-                            bounds.MaxY)))
+                            bounds.MaxY))
                     {
                         return true;
                     }
@@ -407,13 +406,25 @@ namespace TajsCOI.Tweaks.Features.Cleanup
             float ratio = q / p;
             if (p < 0f)
             {
-                if (ratio > t1) return false;
-                if (ratio > t0) t0 = ratio;
+                if (ratio > t1)
+                {
+                    return false;
+                }
+                if (ratio > t0)
+                {
+                    t0 = ratio;
+                }
             }
             else
             {
-                if (ratio < t0) return false;
-                if (ratio < t1) t1 = ratio;
+                if (ratio < t0)
+                {
+                    return false;
+                }
+                if (ratio < t1)
+                {
+                    t1 = ratio;
+                }
             }
             return true;
         }

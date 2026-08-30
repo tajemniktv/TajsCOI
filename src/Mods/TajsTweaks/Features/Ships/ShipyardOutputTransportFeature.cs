@@ -9,14 +9,11 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using HarmonyLib;
 using Mafi;
-using Mafi.Core;
 using Mafi.Core.Buildings.Shipyard;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Static;
 using Mafi.Core.Ports;
 using Mafi.Core.Ports.Io;
-using Mafi.Core.Products;
-using TajsCOI.Tweaks.Features.Ships;
 
 namespace TajsCOI.Tweaks
 {
@@ -43,8 +40,8 @@ namespace TajsCOI.Tweaks
                 return;
             }
             MethodInfo target = typeof(Shipyard).GetInterfaceMap(typeof(IEntityWithSimUpdate)).TargetMethods
-                .FirstOrDefault(method => method.Name.IndexOf("SimUpdate", StringComparison.OrdinalIgnoreCase) >= 0)
-                ?? throw new MissingMethodException(typeof(Shipyard).FullName, "SimUpdate");
+                                    .FirstOrDefault(method => method.Name.IndexOf("SimUpdate", StringComparison.OrdinalIgnoreCase) >= 0)
+                                ?? throw new MissingMethodException(typeof(Shipyard).FullName, "SimUpdate");
             harmony.Patch(target, postfix: new HarmonyMethod(typeof(ShipyardOutputTransportFeature), nameof(SimUpdatePostfix)));
             s_installed = true;
         }
@@ -93,7 +90,7 @@ namespace TajsCOI.Tweaks
                         continue;
                     }
                     IoPort port = ports[index % ports.Length];
-                    IoPortData portData = new IoPortData(port);
+                    var portData = new IoPortData(port);
                     if (!portData.AllowedProductType.Matches(buffer.Product.Type))
                     {
                         continue;

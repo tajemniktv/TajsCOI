@@ -4,7 +4,6 @@
 
 using System;
 using System.Collections.Generic;
-using Mafi;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Static;
 using TajsCOI.Common.Metadata;

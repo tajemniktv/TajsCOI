@@ -48,7 +48,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
         {
             Type type = typeof(ResearchWindow);
             MethodInfo positionMethod = AccessTools.Method(type, "getNodePos", new[] { typeof(ResearchNode) })
-                                         ?? throw new MissingMethodException(type.FullName, "getNodePos");
+                                        ?? throw new MissingMethodException(type.FullName, "getNodePos");
             s_positionsMapField = AccessTools.Field(type, "m_positionsMap")
                                   ?? throw new MissingFieldException(type.FullName, "m_positionsMap");
             s_positionsMapGetter = AccessTools.Method(s_positionsMapField.FieldType, "get_Item", new[] { typeof(ResearchNode) })
@@ -58,14 +58,15 @@ namespace TajsCOI.Tweaks.Features.Presentation
             s_buildTreeMethod = AccessTools.Method(type, "buildTree", Type.EmptyTypes)
                                 ?? throw new MissingMethodException(type.FullName, "buildTree");
             ConstructorInfo constructor = type.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                .SingleOrDefault(x => x.GetParameters().Select(parameter => parameter.ParameterType).SequenceEqual(new[]
-                {
-                    typeof(ResearchManager),
-                    typeof(IInputScheduler),
-                    typeof(NewInstanceOf<ResearchDetailUi>),
-                    typeof(ShortcutsManager),
-                }))
-                ?? throw new MissingMethodException(type.FullName, ".ctor");
+                                              .SingleOrDefault(x => x.GetParameters().Select(parameter => parameter.ParameterType).SequenceEqual(
+                                                  new[]
+                                                  {
+                                                      typeof(ResearchManager),
+                                                      typeof(IInputScheduler),
+                                                      typeof(NewInstanceOf<ResearchDetailUi>),
+                                                      typeof(ShortcutsManager),
+                                                  }))
+                                          ?? throw new MissingMethodException(type.FullName, ".ctor");
             MethodInfo renderUpdate = AccessTools.Method(type, "RenderUpdate", new[] { typeof(GameTime) })
                                       ?? throw new MissingMethodException(type.FullName, "RenderUpdate");
 

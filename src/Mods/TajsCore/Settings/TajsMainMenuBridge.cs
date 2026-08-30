@@ -8,18 +8,14 @@ using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using Mafi;
-using Mafi.Core;
 using Mafi.Localization;
-using Mafi.Unity;
 using Mafi.Unity.MainMenu;
-using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
-using TajsCOI.Common.Ui;
+using TajsCOI.Bootstrap;
 using TajsCOI.Common.Profiles;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
-using TajsCOI.Bootstrap;
 using Button = Mafi.Unity.UiToolkit.Library.Button;
 
 namespace TajsCOI.Core.Settings
@@ -91,13 +87,8 @@ namespace TajsCOI.Core.Settings
 
         private static ConstructorInfo? FindConstructor(Type controller) =>
             controller.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                .SingleOrDefault(item => item.GetParameters().Select(parameter => parameter.ParameterType.FullName).SequenceEqual(new[]
-                {
-                    "Mafi.Unity.IMain",
-                    "Mafi.Unity.UiToolkit.UiRoot",
-                    "Mafi.Core.IFileSystemHelper",
-                    "Mafi.DependencyResolver",
-                }));
+                .SingleOrDefault(item => item.GetParameters().Select(parameter => parameter.ParameterType.FullName).SequenceEqual(
+                    new[] { "Mafi.Unity.IMain", "Mafi.Unity.UiToolkit.UiRoot", "Mafi.Core.IFileSystemHelper", "Mafi.DependencyResolver" }));
 
         private static Type? FindControllerType() =>
             AppDomain.CurrentDomain.GetAssemblies()
@@ -122,14 +113,17 @@ namespace TajsCOI.Core.Settings
                     return;
                 }
 
-                s_attached.GetValue(menu, _ =>
-                {
-                    menu.Add(new ButtonText(
-                        Button.General,
-                        "TajsCOI Control Center".AsLoc(),
-                        () => OpenGlobalWindow(menu, resolver)).Compact());
-                    return new object();
-                });
+                s_attached.GetValue(
+                    menu,
+                    _ =>
+                    {
+                        menu.Add(
+                            new ButtonText(
+                                Button.General,
+                                "TajsCOI Control Center".AsLoc(),
+                                () => OpenGlobalWindow(menu, resolver)).Compact());
+                        return new object();
+                    });
             }
             catch
             {
@@ -170,10 +164,11 @@ namespace TajsCOI.Core.Settings
 
         private void Build()
         {
-            var body = new ScrollColumn().Fill().AlignItemsStretch().Gap(4.pt());
-            body.Add(new Label(
-                "Main-menu controls are limited to global settings, profile-safe values, and diagnostics."
-                    .AsLoc()).FontSize(12));
+            ScrollColumn body = new ScrollColumn().Fill().AlignItemsStretch().Gap(4.pt());
+            body.Add(
+                new Label(
+                    "Main-menu controls are limited to global settings, profile-safe values, and diagnostics."
+                        .AsLoc()).FontSize(12));
             body.Add(BuildSettingsSummary(), BuildProfiles(), BuildDiagnostics());
             AddBodySingle(body);
         }
@@ -185,9 +180,11 @@ namespace TajsCOI.Core.Settings
                          .Where(item => item.Descriptor.Scope == SettingScope.Global)
                          .OrderBy(item => item.Descriptor.StableId, StringComparer.Ordinal))
             {
-                panel.Body.Add(new Label(
-                    (snapshot.Descriptor.StableId + " = " + Convert.ToString(snapshot.Value, System.Globalization.CultureInfo.InvariantCulture)).AsLoc())
-                    .FontSize(11));
+                panel.Body.Add(
+                    new Label(
+                            (snapshot.Descriptor.StableId + " = " + Convert.ToString(snapshot.Value, System.Globalization.CultureInfo.InvariantCulture))
+                            .AsLoc())
+                        .FontSize(11));
             }
             return panel;
         }
@@ -214,9 +211,12 @@ namespace TajsCOI.Core.Settings
                         () =>
                         {
                             SettingsProfilePreview preview = m_profiles.Preview(profile);
-                            feedback.Value((profile.Name + ": " + string.Join(", ", preview.Entries
-                                    .GroupBy(entry => entry.State)
-                                    .Select(group => group.Key + "=" + group.Count()))).AsLoc()).Show();
+                            feedback.Value(
+                                (profile.Name + ": " + string.Join(
+                                    ", ",
+                                    preview.Entries
+                                        .GroupBy(entry => entry.State)
+                                        .Select(group => group.Key + "=" + group.Count()))).AsLoc()).Show();
                         }),
                     TajsDashboardUi.ActionButton(
                         Button.Area,
@@ -225,19 +225,21 @@ namespace TajsCOI.Core.Settings
                         () =>
                         {
                             SettingsProfileApplyResult result = m_profiles.Apply(profile);
-                            feedback.Value((profile.Name + ": applied=" + result.AppliedCount +
-                                    ", skipped=" + result.SkippedIds.Count + ", errors=" + result.Errors.Count).AsLoc()).Show();
+                            feedback.Value(
+                                (profile.Name + ": applied=" + result.AppliedCount +
+                                 ", skipped=" + result.SkippedIds.Count + ", errors=" + result.Errors.Count).AsLoc()).Show();
                         }));
-                panel.Body.Add(new Row(3.pt())
-                {
-                    new Column(1.pt())
+                panel.Body.Add(
+                    new Row(3.pt())
                     {
-                        new Label(profile.Name.AsLoc()).FontBold(),
-                        new Label((profile.Values.Count + " saved value(s)").AsLoc()).FontSize(11),
-                        feedback,
-                    }.FlexGrow(1f),
-                    actions,
-                }.AlignItemsCenter());
+                        new Column(1.pt())
+                        {
+                            new Label(profile.Name.AsLoc()).FontBold(),
+                            new Label((profile.Values.Count + " saved value(s)").AsLoc()).FontSize(11),
+                            feedback,
+                        }.FlexGrow(1f),
+                        actions,
+                    }.AlignItemsCenter());
             }
             return panel;
         }
@@ -250,10 +252,11 @@ namespace TajsCOI.Core.Settings
             panel.Body.Add(new Label(("Registered capabilities: " + m_runtime.GetCapabilitySnapshot().Count).AsLoc()).FontSize(11));
             panel.Body.Add(new Label(("Registered components: " + m_runtime.GetComponentSnapshot().Count).AsLoc()).FontSize(11));
             BootstrapStatus bootstrap = BootstrapApi.Status;
-            panel.Body.Add(new Label(
-                    ("Early bootstrap: " + bootstrap.State +
-                     (bootstrap.CanonicalVersion.Length == 0 ? string.Empty : " " + bootstrap.CanonicalVersion)).AsLoc())
-                .FontSize(11));
+            panel.Body.Add(
+                new Label(
+                        ("Early bootstrap: " + bootstrap.State +
+                         (bootstrap.CanonicalVersion.Length == 0 ? string.Empty : " " + bootstrap.CanonicalVersion)).AsLoc())
+                    .FontSize(11));
             panel.Body.Add(new ButtonText(Button.Area, "Close".AsLoc(), Close));
             return panel;
         }

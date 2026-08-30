@@ -163,7 +163,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
                     state = existingState!;
                 }
                 bool wrapped = recipesColumn.AllChildren.Any(child => child is Column column &&
-                    column.AllChildren.Any(nested => nested is SelectableStaticRecipeUi));
+                                                                      column.AllChildren.Any(nested => nested is SelectableStaticRecipeUi));
                 if (policy.IsVanilla && !wrapped && !state.Applied)
                 {
                     state.ScreenWidth = UnityEngine.Screen.width;
@@ -269,7 +269,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
             IReadOnlyList<SelectableStaticRecipeUi> rows,
             RecipePickerLayoutPolicy policy)
         {
-            Px spacing = new Px((float)policy.SpacingPoints * Px.POINTS_MULTIPLIER);
+            var spacing = new Px((float)policy.SpacingPoints * Px.POINTS_MULTIPLIER);
             Px nativeTileWidth = rows
                 .Select(row => row.TotalWidth)
                 .Aggregate(Px.Zero, (current, width) => current.Max(width));
@@ -281,7 +281,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
             recipesColumn.Direction(LayoutDirection.Row).Wrap(false).Gap(Px.Zero, Px.Zero);
             for (int columnIndex = 0; columnIndex < columns; columnIndex++)
             {
-                var column = new RecipesColumn(spacing).AlignItemsStretch().NoShrink().Width(compactColumnWidth);
+                RecipesColumn column = new RecipesColumn(spacing).AlignItemsStretch().NoShrink().Width(compactColumnWidth);
                 int start = columnIndex * rowsPerColumn;
                 int end = Math.Min(rows.Count, start + rowsPerColumn);
                 for (int rowIndex = start; rowIndex < end; rowIndex++)

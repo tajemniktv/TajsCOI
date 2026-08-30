@@ -233,8 +233,10 @@ namespace TajsCOI.Tweaks.Features.Cleanup
                 IReadOnlyList<SafeAreaProductPreview> current = BuildProductPreview(entity);
                 foreach (SafeAreaProductPreview requested in entry.Products)
                 {
-                    SafeAreaProductPreview? available = current.FirstOrDefault(
-                        candidate => string.Equals(candidate.ProductId, requested.ProductId, StringComparison.Ordinal));
+                    SafeAreaProductPreview? available = current.FirstOrDefault(candidate => string.Equals(
+                        candidate.ProductId,
+                        requested.ProductId,
+                        StringComparison.Ordinal));
                     int currentQuantity = available?.Quantity ?? 0;
                     int quantity = Math.Min(requested.Quantity, currentQuantity);
                     if (quantity <= 0 || !TryGetProduct(requested.ProductId, out ProductProto? product) || product is null ||

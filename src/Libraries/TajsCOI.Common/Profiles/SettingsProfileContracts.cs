@@ -122,6 +122,7 @@ namespace TajsCOI.Common.Profiles
         public SettingsProfile Profile { get; }
         public IReadOnlyList<SettingsProfilePreviewEntry> Entries { get; }
         public IReadOnlyList<string> SkippedIds { get; }
+
         public bool CanApply =>
             Entries.All(entry => entry.State != SettingsProfilePreviewState.Invalid);
     }
@@ -143,24 +144,24 @@ namespace TajsCOI.Common.Profiles
 
     public interface ISettingsProfileService
     {
-        IReadOnlyList<SettingsProfile> List();
+        public IReadOnlyList<SettingsProfile> List();
 
-        bool TryGet(string name, out SettingsProfile? profile);
+        public bool TryGet(string name, out SettingsProfile? profile);
 
-        SettingsProfilePreview Preview(SettingsProfile profile);
+        public SettingsProfilePreview Preview(SettingsProfile profile);
 
-        SettingsProfileApplyResult Apply(SettingsProfile profile);
+        public SettingsProfileApplyResult Apply(SettingsProfile profile);
 
-        bool TrySave(SettingsProfile profile, out string error);
+        public bool TrySave(SettingsProfile profile, out string error);
 
-        bool TryDelete(string name, out string error);
+        public bool TryDelete(string name, out string error);
 
-        bool TryDuplicate(string sourceName, string destinationName, out SettingsProfile? profile, out string error);
+        public bool TryDuplicate(string sourceName, string destinationName, out SettingsProfile? profile, out string error);
 
-        bool TryRename(string sourceName, string destinationName, out SettingsProfile? profile, out string error);
+        public bool TryRename(string sourceName, string destinationName, out SettingsProfile? profile, out string error);
 
-        bool TryImport(string path, string? nameOverride, out SettingsProfile? profile, out string error);
+        public bool TryImport(string path, string? nameOverride, out SettingsProfile? profile, out string error);
 
-        bool TryExport(string name, string path, out string error);
+        public bool TryExport(string name, string path, out string error);
     }
 }

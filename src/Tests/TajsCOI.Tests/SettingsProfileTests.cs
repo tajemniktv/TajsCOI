@@ -24,14 +24,35 @@ namespace TajsCOI.Tests
             try
             {
                 var settings = new TajsSettings(Path.Combine(root, "settings.json"), new SettingsTestsNullLogger());
-                settings.Register(SettingDescriptor.Boolean(
-                    "ProfileMod", "Profile Mod", "safe", "Safe", "Safe setting", false,
-                    flags: SettingFlags.ProfileSafe));
-                settings.Register(SettingDescriptor.Integer(
-                    "ProfileMod", "Profile Mod", "bounded", "Bounded", "Bounded setting", 10, 0, 20, 1,
-                    flags: SettingFlags.ProfileSafe));
-                settings.Register(SettingDescriptor.Boolean(
-                    "ProfileMod", "Profile Mod", "unsafe", "Unsafe", "Not approved", false));
+                settings.Register(
+                    SettingDescriptor.Boolean(
+                        "ProfileMod",
+                        "Profile Mod",
+                        "safe",
+                        "Safe",
+                        "Safe setting",
+                        false,
+                        flags: SettingFlags.ProfileSafe));
+                settings.Register(
+                    SettingDescriptor.Integer(
+                        "ProfileMod",
+                        "Profile Mod",
+                        "bounded",
+                        "Bounded",
+                        "Bounded setting",
+                        10,
+                        0,
+                        20,
+                        1,
+                        flags: SettingFlags.ProfileSafe));
+                settings.Register(
+                    SettingDescriptor.Boolean(
+                        "ProfileMod",
+                        "Profile Mod",
+                        "unsafe",
+                        "Unsafe",
+                        "Not approved",
+                        false));
 
                 var profile = new SettingsProfile(
                     1,
@@ -41,10 +62,7 @@ namespace TajsCOI.Tests
                     Array.Empty<string>(),
                     new Dictionary<string, object>
                     {
-                        ["ProfileMod.safe"] = true,
-                        ["ProfileMod.bounded"] = 999,
-                        ["ProfileMod.unsafe"] = true,
-                        ["FutureMod.missing"] = true,
+                        ["ProfileMod.safe"] = true, ["ProfileMod.bounded"] = 999, ["ProfileMod.unsafe"] = true, ["FutureMod.missing"] = true,
                     });
                 var service = new TajsSettingsProfileService(settings, new TajsRuntime(), root);
 
@@ -75,9 +93,15 @@ namespace TajsCOI.Tests
             try
             {
                 var settings = new TajsSettings(Path.Combine(root, "settings.json"), new SettingsTestsNullLogger());
-                settings.Register(SettingDescriptor.Boolean(
-                    "ProfileMod", "Profile Mod", "safe", "Safe", "Safe setting", true,
-                    flags: SettingFlags.ProfileSafe));
+                settings.Register(
+                    SettingDescriptor.Boolean(
+                        "ProfileMod",
+                        "Profile Mod",
+                        "safe",
+                        "Safe",
+                        "Safe setting",
+                        true,
+                        flags: SettingFlags.ProfileSafe));
                 var service = new TajsSettingsProfileService(settings, new TajsRuntime(), Path.Combine(root, "profiles"));
                 Assert.Contains("1 profile-safe", service.CaptureProfile("demo"));
                 Assert.True(service.TryDuplicate("demo", "copy", out _, out string error), error);
@@ -107,7 +131,7 @@ namespace TajsCOI.Tests
                 "invalid",
                 Array.Empty<string>(),
                 Array.Empty<string>(),
-                new Dictionary<string, object> { ["ProfileMod.setting"] = new object() }));
+                new Dictionary<string, object> { ["ProfileMod.setting"] = new() }));
             Assert.Throws<ArgumentException>(() => new SettingsProfile(
                 1,
                 "test",
@@ -125,9 +149,15 @@ namespace TajsCOI.Tests
             try
             {
                 var settings = new TajsSettings(Path.Combine(root, "settings.json"), new SettingsTestsNullLogger());
-                settings.Register(SettingDescriptor.Boolean(
-                    "ProfileMod", "Profile Mod", "safe", "Safe", "Safe setting", true,
-                    flags: SettingFlags.ProfileSafe));
+                settings.Register(
+                    SettingDescriptor.Boolean(
+                        "ProfileMod",
+                        "Profile Mod",
+                        "safe",
+                        "Safe",
+                        "Safe setting",
+                        true,
+                        flags: SettingFlags.ProfileSafe));
                 var service = new TajsSettingsProfileService(settings, new TajsRuntime(), Path.Combine(root, "profiles"));
 
                 Assert.Contains("1 profile-safe", service.CaptureProfile("demo"));
@@ -154,14 +184,31 @@ namespace TajsCOI.Tests
         private static SettingsProfilePreviewState State(SettingsProfilePreview preview, string stableId) =>
             preview.Entries.Single(entry => entry.StableId == stableId).State;
 
-        private sealed class SettingsTestsNullLogger : TajsCOI.Common.Logging.ITajsLogger
+        private sealed class SettingsTestsNullLogger : Common.Logging.ITajsLogger
         {
-            public void Info(string message) { }
-            public void Warning(string message) { }
-            public void WarningOnce(string message) { }
-            public void Error(string message) { }
-            public void ErrorOnce(string message) { }
-            public void Exception(Exception exception, string? message = null) { }
+            public void Info(string message)
+            {
+            }
+
+            public void Warning(string message)
+            {
+            }
+
+            public void WarningOnce(string message)
+            {
+            }
+
+            public void Error(string message)
+            {
+            }
+
+            public void ErrorOnce(string message)
+            {
+            }
+
+            public void Exception(Exception exception, string? message = null)
+            {
+            }
         }
     }
 }

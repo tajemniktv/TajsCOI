@@ -97,7 +97,13 @@ namespace TajsCOI.Tweaks.Features.World
             }
         }
 
-        internal void Clear() { lock (m_gate) m_claims.Clear(); }
+        internal void Clear()
+        {
+            lock (m_gate)
+            {
+                m_claims.Clear();
+            }
+        }
     }
 
     internal readonly struct ExplorationCandidate

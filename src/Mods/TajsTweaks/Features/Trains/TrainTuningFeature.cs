@@ -36,9 +36,15 @@ namespace TajsCOI.Tweaks.Features.Trains
                 return;
             }
             ConstructorInfo constructor = AccessTools.Constructor(
-                typeof(Locomotive),
-                new[] { typeof(EntityId), typeof(LocomotiveProto), typeof(EntityContext), typeof(IEntityMaintenanceProvidersFactory) })
-                ?? throw new MissingMethodException(typeof(Locomotive).FullName, ".ctor");
+                                              typeof(Locomotive),
+                                              new[]
+                                              {
+                                                  typeof(EntityId),
+                                                  typeof(LocomotiveProto),
+                                                  typeof(EntityContext),
+                                                  typeof(IEntityMaintenanceProvidersFactory),
+                                              })
+                                          ?? throw new MissingMethodException(typeof(Locomotive).FullName, ".ctor");
             s_locoNumberField = AccessTools.Field(typeof(Locomotive), "<LocoNumber>k__BackingField")
                                 ?? AccessTools.Field(typeof(Locomotive), "LocoNumber");
             if (s_locoNumberField is null)

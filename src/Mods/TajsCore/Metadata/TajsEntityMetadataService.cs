@@ -4,22 +4,22 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Mafi;
 using Mafi.Core;
+using Mafi.Core.Console;
+using Mafi.Core.Entities;
 using Mafi.Core.Game;
 using Mafi.Core.GameLoop;
 using Mafi.Core.SaveGame;
-using Mafi.Core.Console;
-using Mafi.Core.Entities;
-using TajsCOI.Common.Metadata;
-using TajsCOI.Common.Logging;
-using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Diagnostics;
-using System.Globalization;
+using TajsCOI.Common.Logging;
+using TajsCOI.Common.Metadata;
+using TajsCOI.Common.Runtime;
 
 namespace TajsCOI.Core.Metadata
 {
@@ -181,7 +181,8 @@ namespace TajsCOI.Core.Metadata
                 try
                 {
                     int order = m_store.Groups.Values.Select(item => item.Order).DefaultIfEmpty(-1).Max() + 1;
-                    group = new EntityMetadataGroup(Guid.NewGuid().ToString("N"),
+                    group = new EntityMetadataGroup(
+                        Guid.NewGuid().ToString("N"),
                         string.IsNullOrWhiteSpace(name) ? "Group " + (order + 1) : name!.Trim(),
                         order,
                         string.IsNullOrWhiteSpace(color) ? "#66C2A5" : color!.Trim(),

@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mafi;
-using Mafi.Core;
 using Mafi.Core.Input;
 using Mafi.Core.Prototypes;
 using Mafi.Core.Research;

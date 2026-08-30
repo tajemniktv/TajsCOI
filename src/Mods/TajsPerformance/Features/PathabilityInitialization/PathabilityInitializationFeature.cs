@@ -9,7 +9,6 @@ using System.Runtime.CompilerServices;
 using HarmonyLib;
 using Mafi;
 using Mafi.Collections;
-using Mafi.Core.PathFinding;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
@@ -127,7 +126,8 @@ namespace TajsCOI.Performance.Features.PathabilityInitialization
                 }
             }
 
-            log.Info("Opt-in pathability initialization deferral installed; the exact vanilla blocking pass runs synchronously before the first ship pathability query.");
+            log.Info(
+                "Opt-in pathability initialization deferral installed; the exact vanilla blocking pass runs synchronously before the first ship pathability query.");
             runtime.ReportCompatibility(
                 new CompatibilityReport(
                     "TajsPerformance",
@@ -140,7 +140,7 @@ namespace TajsCOI.Performance.Features.PathabilityInitialization
 
         /// <summary>
         ///     Compatibility alias retained for focused contract tests and callers that only need
-        ///     the primary private method. Full candidate installation uses <see cref="FindTargets"/>.
+        ///     the primary private method. Full candidate installation uses <see cref="FindTargets" />.
         /// </summary>
         internal static MethodInfo? FindTarget() => FindTargets()?.ComputeInitialBlocking;
 
@@ -158,7 +158,8 @@ namespace TajsCOI.Performance.Features.PathabilityInitialization
             Type tile = typeof(Tile2i);
             Type resolver = typeof(DependencyResolver);
             Type pfNodeInfo = Type.GetType("Mafi.Core.PathFinding.PfNodeInfo, Mafi.Core") ?? throw new TypeLoadException("Mafi.Core.PathFinding.PfNodeInfo");
-            Type pathfinderMode = Type.GetType("Mafi.Core.PathFinding.ShipsPathFinderMode, Mafi.Core") ?? throw new TypeLoadException("Mafi.Core.PathFinding.ShipsPathFinderMode");
+            Type pathfinderMode = Type.GetType("Mafi.Core.PathFinding.ShipsPathFinderMode, Mafi.Core") ??
+                                  throw new TypeLoadException("Mafi.Core.PathFinding.ShipsPathFinderMode");
             Type edgeCache = typeof(Lyst<>).MakeGenericType(pfNodeInfo);
             MethodInfo? initSelf = FindMethod(provider, flags, "initSelf", typeof(void), typeof(int), resolver);
             MethodInfo? computeInitial = FindMethod(provider, flags, "computeInitialBlocking", typeof(void));

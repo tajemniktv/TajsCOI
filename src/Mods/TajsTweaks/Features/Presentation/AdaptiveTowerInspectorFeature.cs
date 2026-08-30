@@ -10,7 +10,6 @@ using System.Runtime.CompilerServices;
 using HarmonyLib;
 using Mafi;
 using Mafi.Core.Entities;
-using Mafi.Core.Syncers;
 using Mafi.Core.Entities.Dynamic;
 using Mafi.Localization;
 using Mafi.Unity.UiToolkit.Component;
@@ -27,9 +26,9 @@ namespace TajsCOI.Tweaks.Features.Presentation
     /// </summary>
     public interface IAdaptiveInspectorSectionProvider
     {
-        string SectionId { get; }
+        public string SectionId { get; }
 
-        bool TryAttach(object inspector, UiComponent mainBody);
+        public bool TryAttach(object inspector, UiComponent mainBody);
     }
 
     public static class AdaptiveInspectorSectionRegistry
@@ -48,7 +47,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
             {
                 s_providers.RemoveAll(reference => !reference.TryGetTarget(out _));
                 if (!s_providers.Any(reference => reference.TryGetTarget(out IAdaptiveInspectorSectionProvider? current) &&
-                                                   string.Equals(current.SectionId, provider.SectionId, StringComparison.Ordinal)))
+                                                  string.Equals(current.SectionId, provider.SectionId, StringComparison.Ordinal)))
                 {
                     s_providers.Add(new WeakReference<IAdaptiveInspectorSectionProvider>(provider));
                 }
@@ -60,7 +59,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
             lock (s_gate)
             {
                 s_providers.RemoveAll(reference => !reference.TryGetTarget(out IAdaptiveInspectorSectionProvider? current) ||
-                                                    ReferenceEquals(current, provider));
+                                                   ReferenceEquals(current, provider));
             }
         }
 
@@ -145,11 +144,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
             }
 
             Assembly assembly = typeof(PanelWithHeader).Assembly;
-            foreach (string typeName in new[]
-                     {
-                         "Mafi.Unity.Ui.Inspectors.MineTowerInspector",
-                         "Mafi.Unity.Ui.Inspectors.ForestryTowerInspector",
-                     })
+            foreach (string typeName in new[] { "Mafi.Unity.Ui.Inspectors.MineTowerInspector", "Mafi.Unity.Ui.Inspectors.ForestryTowerInspector" })
             {
                 Type inspectorType = assembly.GetType(typeName, throwOnError: true)!;
                 foreach (ConstructorInfo constructor in inspectorType.GetConstructors(s_flags))
@@ -329,11 +324,11 @@ namespace TajsCOI.Tweaks.Features.Presentation
             string[] classes = state.Inspector.GetType().Name == "MineTowerInspector"
                 ? new[] { "excavator", "truck" }
                 : new[] { "tree_planter", "tree_harvester" };
-            var row = new Row(3.pt()).Wrap();
+            Row row = new Row(3.pt()).Wrap();
             foreach (string vehicleClass in classes)
             {
                 string captured = vehicleClass;
-                var toggle = new Toggle(standalone: true)
+                Toggle toggle = new Toggle(standalone: true)
                     .Label(Localize(FormatClassName(vehicleClass)))
                     .Value(IsVehicleClassVisible(vehicleClass))
                     .OnValueChanged(_ => SaveFilters(state));
@@ -351,7 +346,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
             // builds harvesting options followed by tree-planter and tree-harvester panels.
             // We intentionally patch only those concrete inspector types and identify the
             // assignment sections by their native VehicleAssignerUi child.
-            var vehicleClasses = state.Inspector.GetType().Name == "MineTowerInspector"
+            string[] vehicleClasses = state.Inspector.GetType().Name == "MineTowerInspector"
                 ? new[] { "excavator", "truck" }
                 : new[] { "tree_planter", "tree_harvester" };
             int vehicleIndex = 0;
@@ -389,7 +384,7 @@ namespace TajsCOI.Tweaks.Features.Presentation
 
                 if (vehicleUi is not null)
                 {
-                    var scroll = new ScrollColumn().MaxHeight(8 * 28f.px()).FlexShrink(0f);
+                    ScrollColumn scroll = new ScrollColumn().MaxHeight(8 * 28f.px()).FlexShrink(0f);
                     vehicleUi.RemoveFromHierarchy();
                     scroll.Add(vehicleUi);
                     panel.Body.Add(scroll);
@@ -438,9 +433,10 @@ namespace TajsCOI.Tweaks.Features.Presentation
                 }
             }
 
-            state.Summary.Value(hiddenAssigned == 0
-                ? Localize("All assigned vehicles are visible.")
-                : Localize(hiddenAssigned + " assigned vehicle(s) hidden by filters."));
+            state.Summary.Value(
+                hiddenAssigned == 0
+                    ? Localize("All assigned vehicles are visible.")
+                    : Localize(hiddenAssigned + " assigned vehicle(s) hidden by filters."));
             state.Summary.Visible(hiddenAssigned > 0);
         }
 
@@ -494,9 +490,18 @@ namespace TajsCOI.Tweaks.Features.Presentation
         private static string ClassifyVehicle(Vehicle vehicle)
         {
             string value = (vehicle.GetType().Name + " " + vehicle.Prototype.GetType().Name).ToLowerInvariant();
-            if (value.Contains("excavator", StringComparison.Ordinal)) return "excavator";
-            if (value.Contains("treeplanter", StringComparison.Ordinal) || value.Contains("tree_planter", StringComparison.Ordinal)) return "tree_planter";
-            if (value.Contains("treeharvester", StringComparison.Ordinal) || value.Contains("tree_harvester", StringComparison.Ordinal)) return "tree_harvester";
+            if (value.Contains("excavator", StringComparison.Ordinal))
+            {
+                return "excavator";
+            }
+            if (value.Contains("treeplanter", StringComparison.Ordinal) || value.Contains("tree_planter", StringComparison.Ordinal))
+            {
+                return "tree_planter";
+            }
+            if (value.Contains("treeharvester", StringComparison.Ordinal) || value.Contains("tree_harvester", StringComparison.Ordinal))
+            {
+                return "tree_harvester";
+            }
             return value.Contains("truck", StringComparison.Ordinal) ? "truck" : string.Empty;
         }
 
@@ -508,7 +513,9 @@ namespace TajsCOI.Tweaks.Features.Presentation
 
         private static void SaveFilters(InspectorState state)
         {
-            string value = string.Join(",", state.Filters.Where(pair => pair.Value.GetValue()).Select(pair => pair.Key).OrderBy(x => x, StringComparer.Ordinal));
+            string value = string.Join(
+                ",",
+                state.Filters.Where(pair => pair.Value.GetValue()).Select(pair => pair.Key).OrderBy(x => x, StringComparer.Ordinal));
             TajsTweaksFeatureSettings.TrySet(TajsTweaksSettingsCatalog.InspectorVehicleFilters, value);
             Apply(state);
         }
@@ -516,8 +523,17 @@ namespace TajsCOI.Tweaks.Features.Presentation
         private static void SaveSectionCollapse(SectionState section)
         {
             HashSet<string> collapsed = new(TajsTweaksRuntimeState.ParseIds(TajsTweaksRuntimeState.InspectorSectionCollapsed), StringComparer.Ordinal);
-            if (section.Panel.IsCollapsed) collapsed.Add(section.Id); else collapsed.Remove(section.Id);
-            TajsTweaksFeatureSettings.TrySet(TajsTweaksSettingsCatalog.InspectorSectionCollapsed, string.Join(",", collapsed.OrderBy(x => x, StringComparer.Ordinal)));
+            if (section.Panel.IsCollapsed)
+            {
+                collapsed.Add(section.Id);
+            }
+            else
+            {
+                collapsed.Remove(section.Id);
+            }
+            TajsTweaksFeatureSettings.TrySet(
+                TajsTweaksSettingsCatalog.InspectorSectionCollapsed,
+                string.Join(",", collapsed.OrderBy(x => x, StringComparer.Ordinal)));
         }
 
         private static bool IsSectionCollapsed(string id) =>
@@ -543,9 +559,6 @@ namespace TajsCOI.Tweaks.Features.Presentation
             internal static void Bind(ITajsSettings settings) => s_settings = new WeakReference<ITajsSettings>(settings);
         }
 
-        internal static void BindSettings(ITajsSettings settings)
-        {
-            TajsTweaksFeatureSettings.Bind(settings);
-        }
+        internal static void BindSettings(ITajsSettings settings) => TajsTweaksFeatureSettings.Bind(settings);
     }
 }

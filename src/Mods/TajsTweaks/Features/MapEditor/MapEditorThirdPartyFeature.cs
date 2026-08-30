@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
+using Mafi.Collections.ImmutableCollections;
 using Mafi.Core.Game;
 using Mafi.Core.Mods;
 using Mafi.Unity;
@@ -52,10 +53,10 @@ namespace TajsCOI.Tweaks.Features.MapEditor
             }
             try
             {
-                var available = main.AvailableMods;
+                ImmutableArray<AvailableModData> available = main.AvailableMods;
                 s_context.Begin(BuildManifests(available));
                 IReadOnlyList<MapEditorModManifest> compatible = s_context.Resolve(_ => true);
-                if (compatible.Count == 0 || !main.TryLoadMods(available, includeMissingCoreMods: true, out var loadedMods, out _))
+                if (compatible.Count == 0 || !main.TryLoadMods(available, includeMissingCoreMods: true, out ImmutableArray<LoadedModData> loadedMods, out _))
                 {
                     return true;
                 }

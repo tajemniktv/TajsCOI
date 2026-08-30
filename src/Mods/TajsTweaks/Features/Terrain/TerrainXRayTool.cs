@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mafi;
-using Mafi.Core;
 using Mafi.Core.Terrain;
 using Mafi.Localization;
 using Mafi.Unity;
@@ -14,7 +13,6 @@ using Mafi.Unity.InputControl;
 using Mafi.Unity.Terrain;
 using Mafi.Unity.Ui.Hud;
 using Mafi.Unity.UiStatic.Toolbar;
-using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Settings;
@@ -383,7 +381,7 @@ namespace TajsCOI.Tweaks
             m_topCircle.SetCircle(center.CornerTile2f, new RelTile1i(Radius), m_terrain.GetHeight(center));
             m_bottomCircle.SetCircle(
                 center.CornerTile2f,
-                new RelTile1i((Radius * 3) / 4),
+                new RelTile1i(Radius * 3 / 4),
                 m_terrain.GetHeight(center) + new ThicknessTilesI(Depth).ThicknessTilesF);
         }
 
@@ -568,9 +566,6 @@ namespace TajsCOI.Tweaks
 
         internal IReadOnlyCollection<Chunk2i> Changed { get; }
 
-        internal IEnumerable<Chunk2i> UpdateChunks()
-        {
-            return Entered.Concat(Exited).Concat(Changed).Distinct();
-        }
+        internal IEnumerable<Chunk2i> UpdateChunks() => Entered.Concat(Exited).Concat(Changed).Distinct();
     }
 }

@@ -11,7 +11,6 @@ using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Runtime;
 using UnityEngine;
-using UnityEngine.Rendering;
 
 namespace TajsCOI.Visuals.Features.Lighting
 {
@@ -210,7 +209,12 @@ namespace TajsCOI.Visuals.Features.Lighting
                 }
                 catch (Exception exception)
                 {
-                    ReportProperty("ControllerState", CompatibilityState.Degraded, "Original LightController state", exception.GetType().Name, "Vanilla state could not be fully restored.");
+                    ReportProperty(
+                        "ControllerState",
+                        CompatibilityState.Degraded,
+                        "Original LightController state",
+                        exception.GetType().Name,
+                        "Vanilla state could not be fully restored.");
                 }
             }
 
@@ -227,7 +231,12 @@ namespace TajsCOI.Visuals.Features.Lighting
                 }
                 catch (Exception exception)
                 {
-                    ReportProperty("DirectLightValues", CompatibilityState.Degraded, "UnityEngine.Light intensity, shadowStrength, and color", exception.GetType().Name, "The controller state was restored; one or more direct values remain unchanged.");
+                    ReportProperty(
+                        "DirectLightValues",
+                        CompatibilityState.Degraded,
+                        "UnityEngine.Light intensity, shadowStrength, and color",
+                        exception.GetType().Name,
+                        "The controller state was restored; one or more direct values remain unchanged.");
                 }
             }
 
@@ -239,7 +248,12 @@ namespace TajsCOI.Visuals.Features.Lighting
                 }
                 catch (Exception exception)
                 {
-                    ReportProperty("AngleOffset", CompatibilityState.Degraded, "Directional Light transform.eulerAngles", exception.GetType().Name, "Vanilla direction could not be restored.");
+                    ReportProperty(
+                        "AngleOffset",
+                        CompatibilityState.Degraded,
+                        "Directional Light transform.eulerAngles",
+                        exception.GetType().Name,
+                        "Vanilla direction could not be restored.");
                 }
             }
 
@@ -252,7 +266,12 @@ namespace TajsCOI.Visuals.Features.Lighting
                 }
                 catch (Exception exception)
                 {
-                    ReportProperty("AmbientLighting", CompatibilityState.Degraded, "RenderSettings ambientLight and ambientIntensity", exception.GetType().Name, "Ambient lighting was left unchanged.");
+                    ReportProperty(
+                        "AmbientLighting",
+                        CompatibilityState.Degraded,
+                        "RenderSettings ambientLight and ambientIntensity",
+                        exception.GetType().Name,
+                        "Ambient lighting was left unchanged.");
                 }
             }
 
@@ -265,7 +284,12 @@ namespace TajsCOI.Visuals.Features.Lighting
                 }
                 catch (Exception exception)
                 {
-                    ReportProperty("QualityShadowValues", CompatibilityState.Degraded, "QualitySettings shadows and shadowDistance", exception.GetType().Name, "Quality shadow values were left unchanged.");
+                    ReportProperty(
+                        "QualityShadowValues",
+                        CompatibilityState.Degraded,
+                        "QualitySettings shadows and shadowDistance",
+                        exception.GetType().Name,
+                        "Quality shadow values were left unchanged.");
                 }
             }
         }
@@ -281,7 +305,12 @@ namespace TajsCOI.Visuals.Features.Lighting
             {
                 m_snapshot = null;
                 m_log.Exception(exception, "LightController state snapshot failed open.");
-                ReportProperty("Intensity", CompatibilityState.Disabled, "LightController.GetState/SetLightIntensity", exception.GetType().Name, "Lighting controls remain inactive; vanilla rendering is unchanged.");
+                ReportProperty(
+                    "Intensity",
+                    CompatibilityState.Disabled,
+                    "LightController.GetState/SetLightIntensity",
+                    exception.GetType().Name,
+                    "Lighting controls remain inactive; vanilla rendering is unchanged.");
                 return;
             }
 
@@ -301,18 +330,28 @@ namespace TajsCOI.Visuals.Features.Lighting
                 // retains the controller's value.
                 if (controllerState.LightIntensity == 0f &&
                     controllerState.LightExtraIntensity == 0f &&
-                    controllerState.LightColor == default(Color) &&
+                    controllerState.LightColor == default &&
                     directIntensity != 0f)
                 {
                     controllerState.LightIntensity = directIntensity;
                     controllerState.ShadowsStrength = directShadowStrength;
                     controllerState.LightColor = directColor;
                 }
-                ReportProperty("DirectLightValues", CompatibilityState.Compatible, "UnityEngine.Light intensity, shadowStrength, and color", "Captured for exact restore", "Direct values cover renderer scenes without initialized weather state.");
+                ReportProperty(
+                    "DirectLightValues",
+                    CompatibilityState.Compatible,
+                    "UnityEngine.Light intensity, shadowStrength, and color",
+                    "Captured for exact restore",
+                    "Direct values cover renderer scenes without initialized weather state.");
             }
             catch (Exception exception)
             {
-                ReportProperty("DirectLightValues", CompatibilityState.Degraded, "UnityEngine.Light intensity, shadowStrength, and color", exception.GetType().Name, "Controller-state restore remains available.");
+                ReportProperty(
+                    "DirectLightValues",
+                    CompatibilityState.Degraded,
+                    "UnityEngine.Light intensity, shadowStrength, and color",
+                    exception.GetType().Name,
+                    "Controller-state restore remains available.");
             }
 
             Vector3 eulerAngles = Vector3.zero;
@@ -321,14 +360,24 @@ namespace TajsCOI.Visuals.Features.Lighting
             {
                 eulerAngles = light.transform.eulerAngles;
                 angleCaptureSucceeded = true;
-                ReportProperty("AngleOffset", CompatibilityState.Compatible, "Directional Light transform.eulerAngles", "LightController does not update angles from simulation time in 0.8.7b", "The offset is visual-only and simulation-independent.");
+                ReportProperty(
+                    "AngleOffset",
+                    CompatibilityState.Compatible,
+                    "Directional Light transform.eulerAngles",
+                    "LightController does not update angles from simulation time in 0.8.7b",
+                    "The offset is visual-only and simulation-independent.");
             }
             catch (Exception exception)
             {
-                ReportProperty("AngleOffset", CompatibilityState.Disabled, "Directional Light transform.eulerAngles", exception.GetType().Name, "Angle policy is disabled; vanilla direction remains active.");
+                ReportProperty(
+                    "AngleOffset",
+                    CompatibilityState.Disabled,
+                    "Directional Light transform.eulerAngles",
+                    exception.GetType().Name,
+                    "Angle policy is disabled; vanilla direction remains active.");
             }
 
-            ShadowQuality shadows = ShadowQuality.All;
+            var shadows = ShadowQuality.All;
             float shadowDistance = 0f;
             bool qualityCaptureSucceeded = false;
             try
@@ -336,11 +385,21 @@ namespace TajsCOI.Visuals.Features.Lighting
                 shadows = QualitySettings.shadows;
                 shadowDistance = QualitySettings.shadowDistance;
                 qualityCaptureSucceeded = true;
-                ReportProperty("QualityShadowValues", CompatibilityState.Compatible, "QualitySettings shadows and shadowDistance", "Captured for exact restore", "Quality/shadow ownership remains with the vanilla renderer.");
+                ReportProperty(
+                    "QualityShadowValues",
+                    CompatibilityState.Compatible,
+                    "QualitySettings shadows and shadowDistance",
+                    "Captured for exact restore",
+                    "Quality/shadow ownership remains with the vanilla renderer.");
             }
             catch (Exception exception)
             {
-                ReportProperty("QualityShadowValues", CompatibilityState.Degraded, "QualitySettings shadows and shadowDistance", exception.GetType().Name, "Quality shadow values could not be captured for restore.");
+                ReportProperty(
+                    "QualityShadowValues",
+                    CompatibilityState.Degraded,
+                    "QualitySettings shadows and shadowDistance",
+                    exception.GetType().Name,
+                    "Quality shadow values could not be captured for restore.");
             }
 
             Color ambientLight = Color.black;
@@ -351,11 +410,21 @@ namespace TajsCOI.Visuals.Features.Lighting
                 ambientLight = RenderSettings.ambientLight;
                 ambientIntensity = RenderSettings.ambientIntensity;
                 ambientCaptureSucceeded = true;
-                ReportProperty("AmbientLighting", CompatibilityState.Compatible, "RenderSettings ambientLight and ambientIntensity", "Captured for exact restore", "Ambient ownership remains with the vanilla renderer.");
+                ReportProperty(
+                    "AmbientLighting",
+                    CompatibilityState.Compatible,
+                    "RenderSettings ambientLight and ambientIntensity",
+                    "Captured for exact restore",
+                    "Ambient ownership remains with the vanilla renderer.");
             }
             catch (Exception exception)
             {
-                ReportProperty("AmbientLighting", CompatibilityState.Degraded, "RenderSettings ambientLight and ambientIntensity", exception.GetType().Name, "Ambient values could not be captured for restore.");
+                ReportProperty(
+                    "AmbientLighting",
+                    CompatibilityState.Degraded,
+                    "RenderSettings ambientLight and ambientIntensity",
+                    exception.GetType().Name,
+                    "Ambient values could not be captured for restore.");
             }
 
             m_snapshot = new Snapshot
@@ -374,16 +443,36 @@ namespace TajsCOI.Visuals.Features.Lighting
                 HasAmbientValues = ambientCaptureSucceeded,
                 HasDirectLightValues = directCaptureSucceeded,
             };
-            ReportProperty("Intensity", CompatibilityState.Compatible, "LightController.GetState/SetLightIntensity", "LightIntensity and LightExtraIntensity", "Base intensity is derived from the pristine scene snapshot; weather color/extra intensity remain renderer-owned.");
-            ReportProperty("ShadowStrength", CompatibilityState.Compatible, "LightController.State.ShadowsStrength", "Captured and safely clamped", "Shadow policy never exceeds the vanilla snapshot.");
-            ReportProperty("LightColor", CompatibilityState.Compatible, "LightController.State.LightColor", "Captured for exact restore", "Weather owns color transitions while the visuals policy is active.");
+            ReportProperty(
+                "Intensity",
+                CompatibilityState.Compatible,
+                "LightController.GetState/SetLightIntensity",
+                "LightIntensity and LightExtraIntensity",
+                "Base intensity is derived from the pristine scene snapshot; weather color/extra intensity remain renderer-owned.");
+            ReportProperty(
+                "ShadowStrength",
+                CompatibilityState.Compatible,
+                "LightController.State.ShadowsStrength",
+                "Captured and safely clamped",
+                "Shadow policy never exceeds the vanilla snapshot.");
+            ReportProperty(
+                "LightColor",
+                CompatibilityState.Compatible,
+                "LightController.State.LightColor",
+                "Captured for exact restore",
+                "Weather owns color transitions while the visuals policy is active.");
         }
 
         private Light? ResolveAuthoritativeLight(LightController controller)
         {
             if (s_lightField is null)
             {
-                ReportProperty("AuthoritativeLight", CompatibilityState.Degraded, "LightController.m_light", "Private field was not found", "Falling back to a directional-light scene search.");
+                ReportProperty(
+                    "AuthoritativeLight",
+                    CompatibilityState.Degraded,
+                    "LightController.m_light",
+                    "Private field was not found",
+                    "Falling back to a directional-light scene search.");
             }
             else
             {
@@ -391,14 +480,29 @@ namespace TajsCOI.Visuals.Features.Lighting
                 {
                     if (s_lightField.GetValue(controller) is Light owned && owned && owned.type == LightType.Directional)
                     {
-                        ReportProperty("AuthoritativeLight", CompatibilityState.Compatible, "LightController.m_light is directional", "Private authoritative light resolved", "The backend targets the renderer-owned sun.");
+                        ReportProperty(
+                            "AuthoritativeLight",
+                            CompatibilityState.Compatible,
+                            "LightController.m_light is directional",
+                            "Private authoritative light resolved",
+                            "The backend targets the renderer-owned sun.");
                         return owned;
                     }
-                    ReportProperty("AuthoritativeLight", CompatibilityState.Degraded, "LightController.m_light is directional", "Field was absent, destroyed, or non-directional", "Falling back to a directional-light scene search.");
+                    ReportProperty(
+                        "AuthoritativeLight",
+                        CompatibilityState.Degraded,
+                        "LightController.m_light is directional",
+                        "Field was absent, destroyed, or non-directional",
+                        "Falling back to a directional-light scene search.");
                 }
                 catch (Exception exception)
                 {
-                    ReportProperty("AuthoritativeLight", CompatibilityState.Degraded, "LightController.m_light", exception.GetType().Name, "Falling back to a directional-light scene search.");
+                    ReportProperty(
+                        "AuthoritativeLight",
+                        CompatibilityState.Degraded,
+                        "LightController.m_light",
+                        exception.GetType().Name,
+                        "Falling back to a directional-light scene search.");
                 }
             }
 
@@ -408,14 +512,24 @@ namespace TajsCOI.Visuals.Features.Lighting
                 {
                     if (candidate && candidate.type == LightType.Directional)
                     {
-                        ReportProperty("AuthoritativeLight", CompatibilityState.Degraded, "LightController.m_light is directional", "Directional light scene fallback", "The private ownership seam was unavailable; the fallback remains fail-open.");
+                        ReportProperty(
+                            "AuthoritativeLight",
+                            CompatibilityState.Degraded,
+                            "LightController.m_light is directional",
+                            "Directional light scene fallback",
+                            "The private ownership seam was unavailable; the fallback remains fail-open.");
                         return candidate;
                     }
                 }
             }
             catch (Exception exception)
             {
-                ReportProperty("AuthoritativeLight", CompatibilityState.Disabled, "Directional light scene search", exception.GetType().Name, "No light target is available.");
+                ReportProperty(
+                    "AuthoritativeLight",
+                    CompatibilityState.Disabled,
+                    "Directional light scene search",
+                    exception.GetType().Name,
+                    "No light target is available.");
             }
             return null;
         }
@@ -440,7 +554,12 @@ namespace TajsCOI.Visuals.Features.Lighting
             }
             catch (Exception exception)
             {
-                ReportProperty("ControllerState", CompatibilityState.Degraded, "LightController.SetState(State)", exception.GetType().Name, "Falling back to direct Light writes without changing simulation state.");
+                ReportProperty(
+                    "ControllerState",
+                    CompatibilityState.Degraded,
+                    "LightController.SetState(State)",
+                    exception.GetType().Name,
+                    "Falling back to direct Light writes without changing simulation state.");
                 try
                 {
                     light.intensity = state.LightIntensity + state.LightExtraIntensity;
@@ -449,7 +568,12 @@ namespace TajsCOI.Visuals.Features.Lighting
                 }
                 catch (Exception fallbackException)
                 {
-                    ReportProperty("ControllerState", CompatibilityState.Disabled, "Direct Light intensity, shadowStrength, and color", fallbackException.GetType().Name, "Vanilla light state remains active.");
+                    ReportProperty(
+                        "ControllerState",
+                        CompatibilityState.Disabled,
+                        "Direct Light intensity, shadowStrength, and color",
+                        fallbackException.GetType().Name,
+                        "Vanilla light state remains active.");
                 }
             }
         }
@@ -465,7 +589,12 @@ namespace TajsCOI.Visuals.Features.Lighting
             }
             catch (Exception exception)
             {
-                ReportProperty("ControllerState", CompatibilityState.Degraded, "LightController.SetLightIntensity(float, float)", exception.GetType().Name, "Falling back to direct Light writes without changing simulation state.");
+                ReportProperty(
+                    "ControllerState",
+                    CompatibilityState.Degraded,
+                    "LightController.SetLightIntensity(float, float)",
+                    exception.GetType().Name,
+                    "Falling back to direct Light writes without changing simulation state.");
                 try
                 {
                     light.intensity = intensity;
@@ -473,7 +602,12 @@ namespace TajsCOI.Visuals.Features.Lighting
                 }
                 catch (Exception fallbackException)
                 {
-                    ReportProperty("ControllerState", CompatibilityState.Disabled, "Direct Light intensity and shadowStrength", fallbackException.GetType().Name, "Vanilla light state remains active.");
+                    ReportProperty(
+                        "ControllerState",
+                        CompatibilityState.Disabled,
+                        "Direct Light intensity and shadowStrength",
+                        fallbackException.GetType().Name,
+                        "Vanilla light state remains active.");
                 }
             }
         }
@@ -485,13 +619,14 @@ namespace TajsCOI.Visuals.Features.Lighting
                 return;
             }
 
-            m_runtime.ReportCompatibility(new CompatibilityReport(
-                "TajsVisuals",
-                "LightingBackend." + property,
-                state,
-                expected,
-                observed,
-                reason));
+            m_runtime.ReportCompatibility(
+                new CompatibilityReport(
+                    "TajsVisuals",
+                    "LightingBackend." + property,
+                    state,
+                    expected,
+                    observed,
+                    reason));
         }
 
         private static float Clamp01(float value) => Math.Min(1f, Math.Max(0f, value));

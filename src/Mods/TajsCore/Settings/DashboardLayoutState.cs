@@ -70,12 +70,7 @@ namespace TajsCOI.Core.Settings
                 temporary = fullPath + ".tmp." + Guid.NewGuid().ToString("N");
                 File.WriteAllLines(
                     temporary,
-                    new[]
-                    {
-                        Header,
-                        width.ToString("R", CultureInfo.InvariantCulture),
-                        height.ToString("R", CultureInfo.InvariantCulture),
-                    },
+                    new[] { Header, width.ToString("R", CultureInfo.InvariantCulture), height.ToString("R", CultureInfo.InvariantCulture) },
                     new UTF8Encoding(false));
                 if (File.Exists(fullPath))
                 {

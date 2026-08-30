@@ -6,7 +6,6 @@ using System;
 using Mafi;
 using Mafi.Core.Entities;
 using Mafi.Core.GameLoop;
-using Mafi.Core.Prototypes;
 using Mafi.Unity.Entities;
 using Mafi.Unity.Ports.Io;
 

@@ -25,7 +25,10 @@ namespace TajsCOI.Tests
         public void PhaseValuesInterpolateAndWrapAcrossMidnight()
         {
             var configuration = new VisualPhaseConfiguration(
-                0.2f, 0.3f, 0.7f, 0.8f,
+                0.2f,
+                0.3f,
+                0.7f,
+                0.8f,
                 new LightingPolicy(0.5f, 10f, 0.8f),
                 new LightingPolicy(1f, 20f, 1f),
                 new LightingPolicy(0.5f, 30f, 0.8f),

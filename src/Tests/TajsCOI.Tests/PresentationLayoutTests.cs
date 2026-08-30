@@ -2,7 +2,6 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using TajsCOI.Common.Settings;
@@ -49,12 +48,12 @@ namespace TajsCOI.Tests
             SettingDescriptorAssert(TajsTweaksSettingsCatalog.ResearchTreeLayout, "vanilla");
             SettingDescriptorAssert(TajsTweaksSettingsCatalog.RecipePickerDensity, "vanilla");
 
-            var tile = TajsTweaksSettingsCatalog.All.Single(x => x.Key == TajsTweaksSettingsCatalog.RecipePickerTileSize);
+            SettingDescriptor tile = TajsTweaksSettingsCatalog.All.Single(x => x.Key == TajsTweaksSettingsCatalog.RecipePickerTileSize);
             Assert.Equal(36, tile.DefaultValue);
             Assert.Equal(24, tile.Minimum);
             Assert.Equal(72, tile.Maximum);
 
-            var spacing = TajsTweaksSettingsCatalog.All.Single(x => x.Key == TajsTweaksSettingsCatalog.RecipePickerSpacing);
+            SettingDescriptor spacing = TajsTweaksSettingsCatalog.All.Single(x => x.Key == TajsTweaksSettingsCatalog.RecipePickerSpacing);
             Assert.Equal(1d, spacing.DefaultValue);
             Assert.Equal(0d, spacing.Minimum);
             Assert.Equal(8d, spacing.Maximum);
@@ -78,7 +77,7 @@ namespace TajsCOI.Tests
             SettingDescriptorAssert(TajsTweaksSettingsCatalog.InspectorSectionCollapsed, string.Empty);
             SettingDescriptorAssert(TajsTweaksSettingsCatalog.InspectorVehicleFilters, "excavator,truck,tree_planter,tree_harvester");
 
-            var rows = TajsTweaksSettingsCatalog.All.Single(x => x.Key == TajsTweaksSettingsCatalog.InspectorVehicleVisibleRows);
+            SettingDescriptor rows = TajsTweaksSettingsCatalog.All.Single(x => x.Key == TajsTweaksSettingsCatalog.InspectorVehicleVisibleRows);
             Assert.Equal(8, rows.DefaultValue);
             Assert.Equal(3, rows.Minimum);
             Assert.Equal(24, rows.Maximum);
@@ -87,7 +86,7 @@ namespace TajsCOI.Tests
 
         private static void SettingDescriptorAssert(string key, string defaultValue)
         {
-            var descriptor = TajsTweaksSettingsCatalog.All.Single(x => x.Key == key);
+            SettingDescriptor descriptor = TajsTweaksSettingsCatalog.All.Single(x => x.Key == key);
             Assert.Equal(defaultValue, descriptor.DefaultValue);
             Assert.Equal(SettingApplyMode.Immediate, descriptor.ApplyMode);
             Assert.Equal(SettingScope.Global, descriptor.Scope);
@@ -95,7 +94,7 @@ namespace TajsCOI.Tests
 
         private static void SettingDescriptorAssert(string key, bool defaultValue)
         {
-            var descriptor = TajsTweaksSettingsCatalog.All.Single(x => x.Key == key);
+            SettingDescriptor descriptor = TajsTweaksSettingsCatalog.All.Single(x => x.Key == key);
             Assert.Equal(defaultValue, descriptor.DefaultValue);
             Assert.Equal(SettingApplyMode.Immediate, descriptor.ApplyMode);
             Assert.Equal(SettingScope.Global, descriptor.Scope);

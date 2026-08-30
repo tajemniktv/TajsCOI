@@ -2,10 +2,8 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using Mafi;
 using Mafi.Core;
 using Mafi.Core.Entities;
 using Mafi.Localization;
@@ -122,17 +120,29 @@ namespace TajsCOI.Tests
 
             public LocStrFormatted DefaultTitle => default;
 
-            public void UpdateIsEnabled() { }
+            public void UpdateIsEnabled()
+            {
+            }
 
-            public void UpdateIsBroken() { }
+            public void UpdateIsBroken()
+            {
+            }
 
-            public void UpdateProperties() { }
+            public void UpdateProperties()
+            {
+            }
 
-            public void SetPaused(bool isPaused) { }
+            public void SetPaused(bool isPaused)
+            {
+            }
 
-            public void AddObserver(IEntityObserver observer) { }
+            public void AddObserver(IEntityObserver observer)
+            {
+            }
 
-            public void RemoveObserver(IEntityObserver observer) { }
+            public void RemoveObserver(IEntityObserver observer)
+            {
+            }
         }
     }
 }

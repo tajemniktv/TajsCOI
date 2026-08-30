@@ -52,9 +52,9 @@ namespace TajsCOI.Tweaks.Features.Selection
             unchecked
             {
                 int hash = MinX;
-                hash = (hash * 397) ^ MinY;
-                hash = (hash * 397) ^ MaxX;
-                return (hash * 397) ^ MaxY;
+                hash = hash * 397 ^ MinY;
+                hash = hash * 397 ^ MaxX;
+                return hash * 397 ^ MaxY;
             }
         }
 

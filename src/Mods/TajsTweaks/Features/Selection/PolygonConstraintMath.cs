@@ -29,9 +29,9 @@ namespace TajsCOI.Tweaks.Features.Selection
     }
 
     /// <summary>
-    /// Pure drag-coordinate constraints shared by polygon area editors.
-    /// The caller supplies the unmodified cursor position on every update; this
-    /// helper never turns the constrained result into a new drag origin.
+    ///     Pure drag-coordinate constraints shared by polygon area editors.
+    ///     The caller supplies the unmodified cursor position on every update; this
+    ///     helper never turns the constrained result into a new drag origin.
     /// </summary>
     internal static class PolygonConstraintMath
     {
@@ -87,9 +87,6 @@ namespace TajsCOI.Tweaks.Features.Selection
             return new PolygonVector2(constrainedX, constrainedY);
         }
 
-        private static float Snap(float value, float gridSize)
-        {
-            return (float)(Math.Round(value / gridSize, MidpointRounding.AwayFromZero) * gridSize);
-        }
+        private static float Snap(float value, float gridSize) => (float)(Math.Round(value / gridSize, MidpointRounding.AwayFromZero) * gridSize);
     }
 }

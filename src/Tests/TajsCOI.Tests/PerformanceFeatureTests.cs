@@ -24,7 +24,6 @@ using TajsCOI.Performance.Features.RenderingLoadShedding;
 using TajsCOI.Performance.Features.SaveLoadReadBuffer;
 using TajsCOI.Performance.Features.StreamingSaveCompression;
 using Xunit;
-
 using DependencyResolver = Mafi.DependencyResolver;
 using Tile2i = Mafi.Tile2i;
 

@@ -38,7 +38,7 @@ namespace TajsCOI.Tweaks.Features.Cleanup
         {
             unchecked
             {
-                return ((ProductId?.GetHashCode() ?? 0) * 397) ^ Quantity;
+                return (ProductId?.GetHashCode() ?? 0) * 397 ^ Quantity;
             }
         }
     }

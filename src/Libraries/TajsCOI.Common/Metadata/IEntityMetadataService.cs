@@ -8,25 +8,25 @@ namespace TajsCOI.Common.Metadata
 {
     public interface IEntityMetadataService : IEntityMetadataLookup
     {
-        bool TrySetEntityMetadata(
+        public bool TrySetEntityMetadata(
             EntityMetadataIdentity identity,
             string? alias,
             string? note,
             string? groupId,
             out string error);
 
-        bool TryClearEntityMetadata(EntityMetadataIdentity identity);
+        public bool TryClearEntityMetadata(EntityMetadataIdentity identity);
 
-        bool TryCreateGroup(string? name, string? color, out EntityMetadataGroup? group, out string error);
+        public bool TryCreateGroup(string? name, string? color, out EntityMetadataGroup? group, out string error);
 
-        bool TryUpdateGroup(string groupId, string? name, int order, string? color, bool locked, out string error);
+        public bool TryUpdateGroup(string groupId, string? name, int order, string? color, bool locked, out string error);
 
-        bool TryDeleteGroup(string groupId);
+        public bool TryDeleteGroup(string groupId);
 
         /// <summary>
         ///     Removes only identities explicitly confirmed as destroyed. Missing live entities
         ///     are not treated as destruction because scene queries can be partial during reload.
         /// </summary>
-        int PruneConfirmed(IEnumerable<EntityMetadataIdentity> confirmedDestroyed);
+        public int PruneConfirmed(IEnumerable<EntityMetadataIdentity> confirmedDestroyed);
     }
 }

@@ -31,8 +31,8 @@ namespace TajsCOI.Tweaks.Features.Presentation
         }
 
         internal bool IsVanilla => Math.Abs(TileScale - 1f) < 0.0001f &&
-                                    Math.Abs(SpacingPoints - VanillaSpacingPoints) < 0.0001 &&
-                                    Columns == VanillaColumns;
+                                   Math.Abs(SpacingPoints - VanillaSpacingPoints) < 0.0001 &&
+                                   Columns == VanillaColumns;
 
         internal static RecipePickerLayoutPolicy Resolve(string? density, int tileSize, double spacingPoints, int columns)
         {

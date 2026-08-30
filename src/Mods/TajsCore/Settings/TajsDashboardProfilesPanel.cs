@@ -10,7 +10,6 @@ using Mafi.Localization;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Profiles;
-using TajsCOI.Common.Ui;
 using Button = Mafi.Unity.UiToolkit.Library.Button;
 using Label = Mafi.Unity.UiToolkit.Library.Label;
 using Panel = Mafi.Unity.UiToolkit.Library.Panel;
@@ -64,7 +63,7 @@ namespace TajsCOI.Core.Settings
                             queueRefresh();
                         }));
                 Row row = new Row(4.pt()).AlignItemsCenter();
-                Column description = new Column(1.pt())
+                var description = new Column(1.pt())
                 {
                     new Label(profile.Name.AsLoc()).FontBold(),
                     new Label((profile.Values.Count + " saved value(s) · schema " + profile.Schema).AsLoc()).FontSize(11),

@@ -80,6 +80,7 @@ namespace TajsCOI.Bootstrap
         public BootstrapInstallState State { get; }
         public string Message { get; }
         public string ManifestPath { get; }
+
         public bool Succeeded => State == BootstrapInstallState.Installed ||
                                  State == BootstrapInstallState.Verified ||
                                  State == BootstrapInstallState.Disabled ||
@@ -103,6 +104,7 @@ namespace TajsCOI.Bootstrap
         private const string HarmonyRelativePath = PayloadDirectory + "\\0Harmony.dll";
         private const string DoorstopProxyRelativePath = "winhttp.dll";
         private const string DoorstopConfigRelativePath = "doorstop_config.ini";
+
         public static string? DiscoverGameRoot(string? runtimeExecutablePath = null)
         {
             string? executable = runtimeExecutablePath;
@@ -138,9 +140,14 @@ namespace TajsCOI.Bootstrap
 
         public static BootstrapInstallResult Install(BootstrapInstallRequest request)
         {
-            if (!TryPrepare(request, out string root, out string bootstrapSource, out string harmonySource,
+            if (!TryPrepare(
+                    request,
+                    out string root,
+                    out string bootstrapSource,
+                    out string harmonySource,
                     out string doorstopProxySource,
-                    out string manifestPath, out BootstrapInstallResult? failure))
+                    out string manifestPath,
+                    out BootstrapInstallResult? failure))
             {
                 return failure!;
             }
@@ -186,15 +193,16 @@ namespace TajsCOI.Bootstrap
                 WriteTextAtomically(
                     SafeCombine(root, DoorstopConfigRelativePath),
                     BuildDoorstopConfig(bootstrapSource));
-                WriteManifestAtomic(manifestPath, new InstallManifest
-                {
-                    Schema = ManifestSchema,
-                    GameRoot = root,
-                    Enabled = true,
-                    Files = expected,
-                });
-                return new BootstrapInstallResult(BootstrapInstallState.Installed,
-                    "Bootstrap payload, Doorstop proxy, and configuration installed. Existing version.dll was left untouched.", manifestPath);
+                WriteManifestAtomic(
+                    manifestPath,
+                    new InstallManifest
+                    {
+                        Schema = ManifestSchema, GameRoot = root, Enabled = true, Files = expected,
+                    });
+                return new BootstrapInstallResult(
+                    BootstrapInstallState.Installed,
+                    "Bootstrap payload, Doorstop proxy, and configuration installed. Existing version.dll was left untouched.",
+                    manifestPath);
             }
             catch (UnauthorizedAccessException exception)
             {
@@ -216,8 +224,10 @@ namespace TajsCOI.Bootstrap
             InstallManifest? manifest = TryReadManifest(manifestPath, out string? readError);
             if (readError is not null || manifest is null)
             {
-                return new BootstrapInstallResult(BootstrapInstallState.Drifted,
-                    readError ?? "Bootstrap is not installed.", manifestPath);
+                return new BootstrapInstallResult(
+                    BootstrapInstallState.Drifted,
+                    readError ?? "Bootstrap is not installed.",
+                    manifestPath);
             }
             if (!string.Equals(manifest.GameRoot, root, StringComparison.OrdinalIgnoreCase))
             {
@@ -237,19 +247,28 @@ namespace TajsCOI.Bootstrap
                 }
                 if (!File.Exists(path) || !string.Equals(ComputeSha256(path), record.Sha256, StringComparison.OrdinalIgnoreCase))
                 {
-                    return new BootstrapInstallResult(BootstrapInstallState.Drifted,
-                        "Bootstrap payload drifted: " + record.RelativePath, manifestPath);
+                    return new BootstrapInstallResult(
+                        BootstrapInstallState.Drifted,
+                        "Bootstrap payload drifted: " + record.RelativePath,
+                        manifestPath);
                 }
             }
-            return new BootstrapInstallResult(manifest.Enabled ? BootstrapInstallState.Verified : BootstrapInstallState.Disabled,
-                manifest.Enabled ? "Bootstrap payload hashes match the install manifest." : "Bootstrap is disabled.", manifestPath);
+            return new BootstrapInstallResult(
+                manifest.Enabled ? BootstrapInstallState.Verified : BootstrapInstallState.Disabled,
+                manifest.Enabled ? "Bootstrap payload hashes match the install manifest." : "Bootstrap is disabled.",
+                manifestPath);
         }
 
         public static BootstrapInstallResult Repair(BootstrapInstallRequest request)
         {
-            if (!TryPrepare(request, out string root, out string bootstrapSource, out string harmonySource,
+            if (!TryPrepare(
+                    request,
+                    out string root,
+                    out string bootstrapSource,
+                    out string harmonySource,
                     out string doorstopProxySource,
-                    out string manifestPath, out BootstrapInstallResult? failure))
+                    out string manifestPath,
+                    out BootstrapInstallResult? failure))
             {
                 return failure!;
             }
@@ -284,8 +303,10 @@ namespace TajsCOI.Bootstrap
                     BuildDoorstopConfig(bootstrapSource));
                 manifest.Files = expected;
                 WriteManifestAtomic(manifestPath, manifest);
-                return new BootstrapInstallResult(BootstrapInstallState.Installed,
-                    "Owned bootstrap payload, Doorstop proxy, and configuration repaired; existing version.dll was left untouched.", manifestPath);
+                return new BootstrapInstallResult(
+                    BootstrapInstallState.Installed,
+                    "Owned bootstrap payload, Doorstop proxy, and configuration repaired; existing version.dll was left untouched.",
+                    manifestPath);
             }
             catch (UnauthorizedAccessException exception)
             {
@@ -297,10 +318,7 @@ namespace TajsCOI.Bootstrap
             }
         }
 
-        public static BootstrapInstallResult Disable(string gameRoot)
-        {
-            return UpdateEnabled(gameRoot, false);
-        }
+        public static BootstrapInstallResult Disable(string gameRoot) => UpdateEnabled(gameRoot, false);
 
         /// <summary>
         ///     Reads the optional install manifest without changing any files. A missing manifest
@@ -396,8 +414,10 @@ namespace TajsCOI.Bootstrap
                 {
                     File.Delete(manifestPath);
                 }
-                return new BootstrapInstallResult(BootstrapInstallState.Uninstalled,
-                    "Owned bootstrap files, Doorstop proxy, configuration, and manifest removed; existing version.dll was left untouched.", manifestPath);
+                return new BootstrapInstallResult(
+                    BootstrapInstallState.Uninstalled,
+                    "Owned bootstrap files, Doorstop proxy, configuration, and manifest removed; existing version.dll was left untouched.",
+                    manifestPath);
             }
             catch (UnauthorizedAccessException exception)
             {
@@ -429,8 +449,10 @@ namespace TajsCOI.Bootstrap
             {
                 manifest.Enabled = enabled;
                 WriteManifestAtomic(manifestPath, manifest);
-                return new BootstrapInstallResult(enabled ? BootstrapInstallState.Installed : BootstrapInstallState.Disabled,
-                    enabled ? "Bootstrap enabled." : "Bootstrap disabled; no payload was removed.", manifestPath);
+                return new BootstrapInstallResult(
+                    enabled ? BootstrapInstallState.Installed : BootstrapInstallState.Disabled,
+                    enabled ? "Bootstrap enabled." : "Bootstrap disabled; no payload was removed.",
+                    manifestPath);
             }
             catch (Exception exception)
             {
@@ -491,10 +513,26 @@ namespace TajsCOI.Bootstrap
             string doorstopConfigText) =>
             new[]
             {
-                new BootstrapFileRecord { RelativePath = BootstrapRelativePath, Sha256 = ComputeSha256(bootstrapSource), Length = new FileInfo(bootstrapSource).Length },
-                new BootstrapFileRecord { RelativePath = HarmonyRelativePath, Sha256 = ComputeSha256(harmonySource), Length = new FileInfo(harmonySource).Length },
-                new BootstrapFileRecord { RelativePath = DoorstopProxyRelativePath, Sha256 = ComputeSha256(doorstopProxySource), Length = new FileInfo(doorstopProxySource).Length },
-                new BootstrapFileRecord { RelativePath = DoorstopConfigRelativePath, Sha256 = ComputeSha256(Encoding.UTF8.GetBytes(doorstopConfigText)), Length = Encoding.UTF8.GetByteCount(doorstopConfigText) },
+                new BootstrapFileRecord
+                {
+                    RelativePath = BootstrapRelativePath, Sha256 = ComputeSha256(bootstrapSource), Length = new FileInfo(bootstrapSource).Length,
+                },
+                new BootstrapFileRecord
+                {
+                    RelativePath = HarmonyRelativePath, Sha256 = ComputeSha256(harmonySource), Length = new FileInfo(harmonySource).Length,
+                },
+                new BootstrapFileRecord
+                {
+                    RelativePath = DoorstopProxyRelativePath,
+                    Sha256 = ComputeSha256(doorstopProxySource),
+                    Length = new FileInfo(doorstopProxySource).Length,
+                },
+                new BootstrapFileRecord
+                {
+                    RelativePath = DoorstopConfigRelativePath,
+                    Sha256 = ComputeSha256(Encoding.UTF8.GetBytes(doorstopConfigText)),
+                    Length = Encoding.UTF8.GetByteCount(doorstopConfigText),
+                },
             };
 
         private static string BuildDoorstopConfig(string bootstrapAssemblyPath)
@@ -640,7 +678,7 @@ namespace TajsCOI.Bootstrap
             string temp = path + ".tmp-" + Guid.NewGuid().ToString("N");
             try
             {
-                using (var stream = File.Create(temp))
+                using (FileStream stream = File.Create(temp))
                 {
                     serializer.WriteObject(stream, manifest);
                 }
@@ -680,7 +718,7 @@ namespace TajsCOI.Bootstrap
             try
             {
                 var serializer = new DataContractJsonSerializer(typeof(InstallManifest));
-                using (var stream = File.OpenRead(path))
+                using (FileStream stream = File.OpenRead(path))
                 {
                     var manifest = serializer.ReadObject(stream) as InstallManifest;
                     if (manifest is null || manifest.Schema != ManifestSchema || string.IsNullOrWhiteSpace(manifest.GameRoot))
@@ -706,7 +744,7 @@ namespace TajsCOI.Bootstrap
 
         private static string ComputeSha256(string path)
         {
-            using (var stream = File.OpenRead(path))
+            using (FileStream stream = File.OpenRead(path))
             using (var sha256 = SHA256.Create())
             {
                 return FormatSha256(sha256.ComputeHash(stream));
@@ -734,30 +772,23 @@ namespace TajsCOI.Bootstrap
         [DataContract]
         private sealed class InstallManifest
         {
-            [DataMember(Order = 0)]
-            public int Schema { get; set; }
+            [DataMember(Order = 0)] public int Schema { get; set; }
 
-            [DataMember(Order = 1)]
-            public string GameRoot { get; set; } = string.Empty;
+            [DataMember(Order = 1)] public string GameRoot { get; set; } = string.Empty;
 
-            [DataMember(Order = 2)]
-            public bool Enabled { get; set; }
+            [DataMember(Order = 2)] public bool Enabled { get; set; }
 
-            [DataMember(Order = 3)]
-            public BootstrapFileRecord[] Files { get; set; } = Array.Empty<BootstrapFileRecord>();
+            [DataMember(Order = 3)] public BootstrapFileRecord[] Files { get; set; } = Array.Empty<BootstrapFileRecord>();
         }
 
         [DataContract]
         private sealed class BootstrapFileRecord
         {
-            [DataMember(Order = 0)]
-            public string RelativePath { get; set; } = string.Empty;
+            [DataMember(Order = 0)] public string RelativePath { get; set; } = string.Empty;
 
-            [DataMember(Order = 1)]
-            public string Sha256 { get; set; } = string.Empty;
+            [DataMember(Order = 1)] public string Sha256 { get; set; } = string.Empty;
 
-            [DataMember(Order = 2)]
-            public long Length { get; set; }
+            [DataMember(Order = 2)] public long Length { get; set; }
         }
     }
 }

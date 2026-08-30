@@ -5,7 +5,6 @@
 using System;
 using System.Linq;
 using System.Reflection;
-using HarmonyLib;
 using Mafi.Unity.UiToolkit;
 using Xunit;
 
@@ -20,13 +19,8 @@ namespace TajsCOI.Tests.RuntimeContracts
             Assert.NotNull(controller);
             ConstructorInfo[] constructors = controller.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             ConstructorInfo? target = constructors.SingleOrDefault(item =>
-                item.GetParameters().Select(parameter => parameter.ParameterType.FullName).SequenceEqual(new[]
-                {
-                    "Mafi.Unity.IMain",
-                    "Mafi.Unity.UiToolkit.UiRoot",
-                    "Mafi.Core.IFileSystemHelper",
-                    "Mafi.DependencyResolver",
-                }));
+                item.GetParameters().Select(parameter => parameter.ParameterType.FullName).SequenceEqual(
+                    new[] { "Mafi.Unity.IMain", "Mafi.Unity.UiToolkit.UiRoot", "Mafi.Core.IFileSystemHelper", "Mafi.DependencyResolver" }));
             Assert.NotNull(target);
         }
     }

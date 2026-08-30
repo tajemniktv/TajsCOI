@@ -3,15 +3,8 @@
 // All Rights Reserved.
 
 using System.Collections.Generic;
-using Mafi;
-using Mafi.Core.Buildings.Offices;
-using Mafi.Core.Buildings.OreSorting;
-using Mafi.Core.Buildings.Waste;
 using Mafi.Core.Entities;
 using Mafi.Core.Entities.Static;
-using Mafi.Core.Factory.Machines;
-using Mafi.Core.Factory.Transports;
-using UnityEngine;
 using TajsCOI.Tweaks.Features.Selection;
 using EntityId = Mafi.Core.EntityId;
 

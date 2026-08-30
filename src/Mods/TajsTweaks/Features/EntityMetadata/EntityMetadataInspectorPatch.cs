@@ -12,11 +12,8 @@ using Mafi;
 using Mafi.Core.Entities;
 using Mafi.Localization;
 using Mafi.Unity.Ui;
-using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
-using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Common.Metadata;
-using TajsCOI.Common.Runtime;
 using Label = Mafi.Unity.UiToolkit.Library.Label;
 using Column = Mafi.Unity.UiToolkit.Library.Column;
 
@@ -56,10 +53,7 @@ namespace TajsCOI.Tweaks.Features.EntityMetadata
             }
         }
 
-        internal static bool HasExpectedTarget()
-        {
-            return FindTargets().Any();
-        }
+        internal static bool HasExpectedTarget() => FindTargets().Any();
 
         private static IEnumerable<MethodBase> FindTargets()
         {

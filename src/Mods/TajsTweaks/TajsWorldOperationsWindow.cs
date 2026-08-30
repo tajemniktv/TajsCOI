@@ -18,10 +18,10 @@ using Mafi.Core.World;
 using Mafi.Core.World.Entities;
 using Mafi.Localization;
 using Mafi.Unity.Ui.Library;
+using Mafi.Unity.Ui.World;
 using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
-using Mafi.Unity.Ui.World;
 using TajsCOI.Common.Metadata;
 using TajsCOI.Tweaks.Features.World;
 using UnityEngine;
@@ -84,8 +84,8 @@ namespace TajsCOI.Tweaks
             m_worldMap = worldMap;
             m_inputScheduler = inputScheduler;
             m_productsManager = productsManager;
-            m_metadata = metadata ?? throw new System.ArgumentNullException(nameof(metadata));
-            m_worldMapController = worldMapController ?? throw new System.ArgumentNullException(nameof(worldMapController));
+            m_metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
+            m_worldMapController = worldMapController ?? throw new ArgumentNullException(nameof(worldMapController));
 
             WindowSize(new Px(900f), new Px(620f));
             Panel panel = new Panel().BodyGap(new Px(4f));
@@ -252,16 +252,17 @@ namespace TajsCOI.Tweaks
                     double? quantity = entity is WorldMapMine mine && mine.QuantityAvailable.HasValue
                         ? mine.QuantityAvailable.Value.Value
                         : null;
-                    live.Add(new WorldEntitySnapshot(
-                        entity.Id.Value,
-                        kind,
-                        entity.DefaultTitle.ToString(),
-                        location.Position.X,
-                        location.Position.Y,
-                        entity is WorldMapRepairableEntity repairable && repairable.IsUnderConstruction ? "under construction" : "discovered",
-                        entity.IsOwnedByPlayer,
-                        quantity,
-                        TryReadPrototypeId(entity)));
+                    live.Add(
+                        new WorldEntitySnapshot(
+                            entity.Id.Value,
+                            kind,
+                            entity.DefaultTitle.ToString(),
+                            location.Position.X,
+                            location.Position.Y,
+                            entity is WorldMapRepairableEntity repairable && repairable.IsUnderConstruction ? "under construction" : "discovered",
+                            entity.IsOwnedByPlayer,
+                            quantity,
+                            TryReadPrototypeId(entity)));
                 }
 
                 IReadOnlyList<WorldEntitySnapshot> snapshot = WorldEntityBrowser.Snapshot(live);
@@ -275,7 +276,7 @@ namespace TajsCOI.Tweaks
                     tableRow.Add(new Label(row.Name.AsLoc()).Width(new Px(260f)));
                     tableRow.Add(new Label((row.Kind + "  " + row.Status).AsLoc()).Width(new Px(210f)));
                     tableRow.Add(new Label(("(" + row.X + ", " + row.Y + ")").AsLoc()).Width(new Px(120f)));
-                    ButtonText focus = new ButtonText(Button.General, "Focus".AsLoc(), () => TryFocus(row.Id));
+                    var focus = new ButtonText(Button.General, "Focus".AsLoc(), () => TryFocus(row.Id));
                     focus.Width(new Px(90f));
                     tableRow.Add(focus);
                     m_browserContent.Add(tableRow);

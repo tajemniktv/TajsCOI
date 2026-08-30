@@ -3,7 +3,6 @@
 // All Rights Reserved.
 
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using HarmonyLib;
@@ -85,7 +84,7 @@ namespace TajsCOI.Tweaks.Features.World
                     original.Normal = normal;
                     original.Hover = hover;
                 }
-                WorldMapLocation? location = s_locationProperty.GetValue(__instance) as WorldMapLocation;
+                var location = s_locationProperty.GetValue(__instance) as WorldMapLocation;
                 WorldMapMine? mine = location?.Entity.HasValue == true ? location.Entity.Value as WorldMapMine : null;
                 if (mine is null || !IsDepleted(mine))
                 {

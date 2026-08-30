@@ -4,7 +4,6 @@
 
 using System;
 using System.Collections.Generic;
-using Mafi;
 using Mafi.Core;
 using Mafi.Core.Entities;
 using Mafi.Core.Ports;
@@ -85,7 +84,7 @@ namespace TajsCOI.Tweaks.Features.TransportNetwork
     /// </summary>
     public interface ITransportNetworkConnectorAdapter
     {
-        bool TryDescribe(IRenderedEntity entity, out TransportNetworkNodeDescription description);
+        public bool TryDescribe(IRenderedEntity entity, out TransportNetworkNodeDescription description);
     }
 
     /// <summary>
@@ -302,7 +301,10 @@ namespace TajsCOI.Tweaks.Features.TransportNetwork
             private readonly WeakReference<ITransportNetworkConnectorAdapter> m_reference;
             private bool m_disposed;
 
-            internal Registration(WeakReference<ITransportNetworkConnectorAdapter> reference) => m_reference = reference;
+            internal Registration(WeakReference<ITransportNetworkConnectorAdapter> reference)
+            {
+                m_reference = reference;
+            }
 
             public void Dispose()
             {

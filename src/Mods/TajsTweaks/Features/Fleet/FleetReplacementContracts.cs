@@ -77,10 +77,22 @@ namespace TajsCOI.Tweaks.Features.Fleet
             {
                 query = query.Where(vehicle => !vehicle.Assigned);
             }
-            if (filter.DepotId.HasValue) query = query.Where(vehicle => vehicle.DepotId == filter.DepotId);
-            if (filter.ZoneId.HasValue) query = query.Where(vehicle => vehicle.ZoneId == filter.ZoneId);
-            if (filter.AssigneeId.HasValue) query = query.Where(vehicle => vehicle.AssigneeId == filter.AssigneeId);
-            if (nativeCompatible is not null) query = query.Where(nativeCompatible);
+            if (filter.DepotId.HasValue)
+            {
+                query = query.Where(vehicle => vehicle.DepotId == filter.DepotId);
+            }
+            if (filter.ZoneId.HasValue)
+            {
+                query = query.Where(vehicle => vehicle.ZoneId == filter.ZoneId);
+            }
+            if (filter.AssigneeId.HasValue)
+            {
+                query = query.Where(vehicle => vehicle.AssigneeId == filter.AssigneeId);
+            }
+            if (nativeCompatible is not null)
+            {
+                query = query.Where(nativeCompatible);
+            }
             query = string.Equals(filter.AssignmentState, "unassigned-first", StringComparison.OrdinalIgnoreCase)
                 ? query.OrderBy(vehicle => vehicle.Assigned ? 1 : 0).ThenBy(vehicle => vehicle.Id)
                 : query.OrderBy(vehicle => vehicle.Id);

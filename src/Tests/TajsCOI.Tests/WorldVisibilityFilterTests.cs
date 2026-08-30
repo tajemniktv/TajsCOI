@@ -17,10 +17,20 @@ namespace TajsCOI.Tests
         {
             var registry = new WorldVisibilityCategoryRegistry();
             var adapter = new RecordingVisibilityAdapter();
-            Assert.True(registry.Register(new WorldVisibilityCategoryDescriptor(
-                "buildings", "Buildings", _ => true, adapter)));
-            Assert.True(registry.Register(new WorldVisibilityCategoryDescriptor(
-                "trees", "Trees", _ => false, new RecordingVisibilityAdapter())));
+            Assert.True(
+                registry.Register(
+                    new WorldVisibilityCategoryDescriptor(
+                        "buildings",
+                        "Buildings",
+                        _ => true,
+                        adapter)));
+            Assert.True(
+                registry.Register(
+                    new WorldVisibilityCategoryDescriptor(
+                        "trees",
+                        "Trees",
+                        _ => false,
+                        new RecordingVisibilityAdapter())));
 
             registry.ApplyPersisted("trees,unknown; buildings");
 
@@ -70,7 +80,9 @@ namespace TajsCOI.Tests
         public void BulkCancelPolicyBoundsPreviewWithoutChangingState()
         {
             IReadOnlyList<int> values = BulkDeconstructionCancellationPolicy.TakeBounded(
-                Enumerable.Range(1, 4), 2, out bool truncated);
+                Enumerable.Range(1, 4),
+                2,
+                out bool truncated);
 
             Assert.Equal(new[] { 1, 2 }, values);
             Assert.True(truncated);
@@ -85,12 +97,21 @@ namespace TajsCOI.Tests
                 m_calls = calls ?? new List<bool>();
             }
 
-            public void Attach(int entityId, Mafi.Core.Entities.Static.IStaticEntity entity) { }
-            public void Detach(int entityId) { }
+            public void Attach(int entityId, Mafi.Core.Entities.Static.IStaticEntity entity)
+            {
+            }
+
+            public void Detach(int entityId)
+            {
+            }
+
             public void Apply(int entityId, bool visible) => m_calls.Add(visible);
             public bool CanSelect(int entityId, bool visible) => visible;
             public void SetCategoryVisible(bool visible) => m_calls.Add(visible);
-            public void Dispose() { }
+
+            public void Dispose()
+            {
+            }
         }
     }
 }

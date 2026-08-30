@@ -193,8 +193,11 @@ namespace TajsCOI.Tweaks.Features.World
             float maxX = values.Max(point => point.X);
             float minY = values.Min(point => point.Y);
             float maxY = values.Max(point => point.Y);
-            return new MapViewportBounds(minX - Math.Max(0f, padding), maxX + Math.Max(0f, padding),
-                minY - Math.Max(0f, padding), maxY + Math.Max(0f, padding));
+            return new MapViewportBounds(
+                minX - Math.Max(0f, padding),
+                maxX + Math.Max(0f, padding),
+                minY - Math.Max(0f, padding),
+                maxY + Math.Max(0f, padding));
         }
 
         internal static float DeriveMinimumZoom(MapViewportBounds extents, float viewportWidth, float viewportHeight, float baseZoom)
@@ -210,8 +213,11 @@ namespace TajsCOI.Tweaks.Features.World
         internal static MapPanBounds DerivePanBounds(MapViewportBounds extents, float padding)
         {
             float safePadding = Math.Max(0f, padding);
-            return new MapPanBounds(extents.MinX - safePadding, extents.MaxX + safePadding,
-                extents.MinY - safePadding, extents.MaxY + safePadding);
+            return new MapPanBounds(
+                extents.MinX - safePadding,
+                extents.MaxX + safePadding,
+                extents.MinY - safePadding,
+                extents.MaxY + safePadding);
         }
     }
 

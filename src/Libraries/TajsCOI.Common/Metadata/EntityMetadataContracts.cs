@@ -34,7 +34,7 @@ namespace TajsCOI.Common.Metadata
         public override bool Equals(object? obj) => obj is EntityMetadataIdentity other && Equals(other);
 
         public override int GetHashCode() =>
-            (EntityId * 397) ^ StringComparer.Ordinal.GetHashCode(PrototypeFingerprint ?? string.Empty);
+            EntityId * 397 ^ StringComparer.Ordinal.GetHashCode(PrototypeFingerprint ?? string.Empty);
 
         public static bool operator ==(EntityMetadataIdentity left, EntityMetadataIdentity right) => left.Equals(right);
         public static bool operator !=(EntityMetadataIdentity left, EntityMetadataIdentity right) => !left.Equals(right);
@@ -114,7 +114,7 @@ namespace TajsCOI.Common.Metadata
             {
                 normalized = normalized.Substring(1);
             }
-            if ((normalized.Length != 6 && normalized.Length != 8) ||
+            if (normalized.Length != 6 && normalized.Length != 8 ||
                 !long.TryParse(normalized, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out _))
             {
                 throw new ArgumentException("Group color must be a six- or eight-digit hexadecimal value.", nameof(value));
@@ -129,14 +129,14 @@ namespace TajsCOI.Common.Metadata
     /// </summary>
     public interface IEntityMetadataLookup
     {
-        IReadOnlyList<EntityMetadataRecord> GetEntityMetadataSnapshot();
+        public IReadOnlyList<EntityMetadataRecord> GetEntityMetadataSnapshot();
 
-        IReadOnlyList<EntityMetadataGroup> GetGroupSnapshot();
+        public IReadOnlyList<EntityMetadataGroup> GetGroupSnapshot();
 
-        bool TryGetEntityMetadata(EntityMetadataIdentity identity, out EntityMetadataRecord? metadata);
+        public bool TryGetEntityMetadata(EntityMetadataIdentity identity, out EntityMetadataRecord? metadata);
 
-        bool TryGetGroup(string groupId, out EntityMetadataGroup? group);
+        public bool TryGetGroup(string groupId, out EntityMetadataGroup? group);
 
-        IReadOnlyList<EntityMetadataRecord> ResolveLiveMetadata(IEnumerable<EntityMetadataIdentity> liveEntities);
+        public IReadOnlyList<EntityMetadataRecord> ResolveLiveMetadata(IEnumerable<EntityMetadataIdentity> liveEntities);
     }
 }
