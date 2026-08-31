@@ -82,6 +82,8 @@ namespace TajsCOI.Tweaks
         internal static bool WorldOperations;
         internal static bool AutoWorldDelivery;
         internal static bool AutoExploration;
+        internal static double AutoExplorationSafetyMarginPercent = 25d;
+        internal static bool AutoExplorationAllowUnknownStrength;
         internal static string WorldVisibilityHiddenCategories = string.Empty;
         internal static bool ShipPreload;
         internal static string ShipPreloadData = string.Empty;
@@ -304,6 +306,8 @@ namespace TajsCOI.Tweaks
             WorldOperations = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.WorldOperations);
             AutoWorldDelivery = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AutoWorldDelivery);
             AutoExploration = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AutoExploration);
+            AutoExplorationSafetyMarginPercent = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AutoExplorationSafetyMarginPercent);
+            AutoExplorationAllowUnknownStrength = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AutoExplorationAllowUnknownStrength);
             WorldVisibilityHiddenCategories = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.WorldVisibilityHiddenCategories);
             ShipPreload = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShipPreload);
             ShipPreloadData = settings.Get<string>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.ShipPreloadData);
@@ -576,6 +580,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.WorldOperations: WorldOperations = value; break;
                 case TajsTweaksSettingsCatalog.AutoWorldDelivery: AutoWorldDelivery = value; break;
                 case TajsTweaksSettingsCatalog.AutoExploration: AutoExploration = value; break;
+                case TajsTweaksSettingsCatalog.AutoExplorationAllowUnknownStrength: AutoExplorationAllowUnknownStrength = value; break;
                 case TajsTweaksSettingsCatalog.ShipPreload: ShipPreload = value; break;
                 case TajsTweaksSettingsCatalog.ShipyardOutputTransport: ShipyardOutputTransport = value; break;
                 case TajsTweaksSettingsCatalog.RecoverTrucks: RecoverTrucks = value; break;
@@ -682,6 +687,10 @@ namespace TajsCOI.Tweaks
             if (key == TajsTweaksSettingsCatalog.PinnedHysteresis)
             {
                 PinnedHysteresisPercent = value;
+            }
+            if (key == TajsTweaksSettingsCatalog.AutoExplorationSafetyMarginPercent)
+            {
+                AutoExplorationSafetyMarginPercent = value;
             }
             if (key == TajsTweaksSettingsCatalog.RecipePickerSpacing)
             {

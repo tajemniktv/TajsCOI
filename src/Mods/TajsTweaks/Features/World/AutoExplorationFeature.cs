@@ -75,21 +75,28 @@ namespace TajsCOI.Tweaks.Features.World
                     s_arbiter.Release(ship.Id.Value, WorldShipOrderOwner.AutoReturn);
                     return;
                 }
-                if (!ExplorationCandidatePolicy.IsViable(
+                if (!ExplorationCandidatePolicy.IsReady(
                         ship.IsDocked,
                         ship.IsAtHomeCell,
                         ship.InBattle,
                         ship.AssignedDock.HasValue && ship.AssignedDock.Value.IsRepairing,
                         ship.Cargo.Any(pair => pair.Value is not null && pair.Value.Quantity.IsPositive),
-                        ship.FuelQuantity.Value >= ship.FuelBuffer.Capacity.Value / 4,
-                        knownEnemy: false,
-                        enemyMargin: 0,
-                        requiredMargin: 0,
-                        allowUnknownStrength: true) ||
+                        ship.FuelQuantity.Value >= ship.FuelBuffer.Capacity.Value / 4) ||
                     ship.IsExploring || !ship.CanOperate || s_arbiter.ManualOrderActive(ship.Id.Value) ||
                     owner != WorldShipOrderOwner.None)
                 {
                     return;
+                }
+
+                int? playerStrength = null;
+                try
+                {
+                    // BattleFleet.GetBattleScore is the native score shown by the fleet UI.
+                    playerStrength = ship.BattleFleet.GetBattleScore();
+                }
+                catch
+                {
+                    // An unavailable score is unknown combat data and is handled fail-safe below.
                 }
 
                 ExplorationCandidate[] candidates = mapManager.Map.Locations
@@ -103,7 +110,38 @@ namespace TajsCOI.Tweaks.Features.World
                             out _,
                             out Quantity fuel);
                         bool fuelSufficient = reachable && fuel <= __instance.TravelingFleet.FuelQuantity;
-                        return new ExplorationCandidate(location.Id.Value, distance, fuelSufficient, false, 0);
+                        bool enemyPresenceKnown = location.IsEnemyKnown;
+                        bool hasEnemy = location.Enemy.HasValue;
+                        int? enemyStrength = null;
+                        if (enemyPresenceKnown && hasEnemy)
+                        {
+                            try
+                            {
+                                // The location's BattleFleet is the native authoritative enemy fleet.
+                                enemyStrength = location.Enemy.Value.GetBattleScore();
+                            }
+                            catch
+                            {
+                                // An unavailable score remains unknown and cannot pass the default policy.
+                            }
+                        }
+
+                        bool combatSafe = ExplorationCandidatePolicy.IsCombatSafe(
+                            enemyPresenceKnown,
+                            hasEnemy,
+                            playerStrength,
+                            enemyStrength,
+                            TajsTweaksRuntimeState.AutoExplorationSafetyMarginPercent,
+                            TajsTweaksRuntimeState.AutoExplorationAllowUnknownStrength);
+                        double enemyMargin = playerStrength.HasValue && enemyStrength.HasValue
+                            ? playerStrength.Value - enemyStrength.Value
+                            : double.NaN;
+                        return new ExplorationCandidate(
+                            location.Id.Value,
+                            distance,
+                            fuelSufficient && combatSafe,
+                            enemyPresenceKnown && hasEnemy,
+                            enemyMargin);
                     })
                     .ToArray();
                 ExplorationCandidate? selected = ExplorationCandidatePolicy.ChooseNearest(candidates);

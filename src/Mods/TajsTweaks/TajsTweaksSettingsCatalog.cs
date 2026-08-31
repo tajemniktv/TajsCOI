@@ -82,6 +82,8 @@ namespace TajsCOI.Tweaks
         internal const string WorldOperations = "world_operations";
         internal const string AutoWorldDelivery = "auto_world_delivery";
         internal const string AutoExploration = "auto_exploration";
+        internal const string AutoExplorationSafetyMarginPercent = "auto_exploration_safety_margin_percent";
+        internal const string AutoExplorationAllowUnknownStrength = "auto_exploration_allow_unknown_strength";
         internal const string WorldVisibilityHiddenCategories = "world_visibility_hidden_categories";
         internal const string ShipPreload = "ship_preload";
         internal const string ShipPreloadData = "ship_preload_data";
@@ -1056,12 +1058,38 @@ namespace TajsCOI.Tweaks
                 DisplayName,
                 AutoExploration,
                 "Automatic exploration dispatch",
-                "Dispatches the native fleet command to the nearest reachable unexplored location when the fleet is idle at home.",
+                "Dispatches the native fleet command to the nearest reachable unexplored location when the fleet is idle at home and passes fuel, repair, cargo, and combat-safety checks.",
                 false,
                 "World map",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced | SettingFlags.Experimental,
                 componentRequirement: WorldOperations),
+            SettingDescriptor.Float(
+                ModId,
+                DisplayName,
+                AutoExplorationSafetyMarginPercent,
+                "Exploration combat safety margin",
+                "Requires the native player fleet battle score to exceed a known enemy fleet score by this percentage. Unknown combat estimates remain blocked.",
+                25,
+                0,
+                500,
+                1,
+                "World map",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental,
+                componentRequirement: AutoExploration,
+                valueFormat: SettingValueFormat.Percentage),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                AutoExplorationAllowUnknownStrength,
+                "Allow unknown exploration combat strength",
+                "Allows exploration dispatch when enemy presence or a native battle score is unavailable. Disabled by default because unknown combat data is not treated as safe.",
+                false,
+                "World map",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced | SettingFlags.Experimental,
+                componentRequirement: AutoExploration),
             SettingDescriptor.Boolean(
                 ModId,
                 DisplayName,
@@ -1112,7 +1140,7 @@ namespace TajsCOI.Tweaks
                 DisplayName,
                 TerrainDesignationPriority,
                 "Terrain designation priority",
-                "Prefers one ready terrain work class while retaining the native eligibility and scorer within that class.",
+                "Prefers one ready terrain work class with a bounded native-score tie-break while retaining native eligibility and lower-priority fallback.",
                 "vanilla",
                 s_terrainDesignationPriorities,
                 "Terrain",

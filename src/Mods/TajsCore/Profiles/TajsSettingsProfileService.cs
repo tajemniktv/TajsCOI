@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using Mafi;
 using Mafi.Collections;
@@ -29,6 +30,38 @@ namespace TajsCOI.Core.Profiles
         private readonly ITajsLogger m_log;
         private readonly string m_rootDirectory;
         private readonly Dictionary<string, SettingsProfile> m_profiles = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<LegacyProfileSource>> m_legacySources = new(StringComparer.OrdinalIgnoreCase);
+
+        private sealed class LegacyProfileSource
+        {
+            internal LegacyProfileSource(string path, bool ambiguous)
+            {
+                Path = path;
+                Ambiguous = ambiguous;
+            }
+
+            internal string Path { get; }
+            internal bool Ambiguous { get; set; }
+        }
+
+        private sealed class ProfileFileCandidate
+        {
+            internal ProfileFileCandidate(string path, SettingsProfile profile, bool current, bool legacy, string legacyPath)
+            {
+                Path = path;
+                Profile = profile;
+                IsCurrent = current;
+                IsLegacy = legacy;
+                LegacyPath = legacyPath;
+            }
+
+            internal string Path { get; }
+            internal SettingsProfile Profile { get; }
+            internal bool IsCurrent { get; }
+            internal bool IsLegacy { get; }
+            internal string LegacyPath { get; }
+            internal bool LegacyAmbiguous { get; set; }
+        }
 
         public TajsSettingsProfileService(ITajsSettings settings, ITajsRuntime runtime)
             : this(

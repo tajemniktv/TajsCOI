@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mafi.Core;
 using Mafi.Core.Terrain.Designation;
 
 namespace TajsCOI.Tweaks.Features.Terrain
@@ -23,6 +24,12 @@ namespace TajsCOI.Tweaks.Features.Terrain
     {
         internal const int MaxTieBand = 4;
 
+        /// <summary>
+        ///     Returns the number of score units to subtract from the native
+        ///     lower-is-better score. The adjustment is deliberately bounded so
+        ///     native distance, reservation, reachability, and product scoring
+        ///     remain authoritative.
+        /// </summary>
         internal static int Adjustment(bool enabled, TerrainWorkClass candidate, TerrainWorkClass preferred, int nativeScore)
         {
             if (!enabled || candidate == TerrainWorkClass.Unknown || preferred == TerrainWorkClass.Unknown || candidate != preferred)
@@ -46,30 +53,44 @@ namespace TajsCOI.Tweaks.Features.Terrain
             return anyEligible ? preferred : TerrainWorkClass.Unknown;
         }
 
-        internal static TerrainWorkClass Classify(TerrainDesignation designation)
+        internal static TerrainWorkClass Classify(TerrainDesignation? designation)
         {
-            string id = designation?.Prototype?.Id.Value ?? string.Empty;
-            if (id.IndexOf("level", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                id.IndexOf("flatten", StringComparison.OrdinalIgnoreCase) >= 0)
+            // ProtoId is the same identity the native mining/dumping managers compare.
+            return ClassifyId(designation?.ProtoId.Value);
+        }
+
+        /// <summary>
+        ///     Only the three native terraforming prototypes are recognized.
+        ///     Modded or otherwise unknown IDs must not be guessed from their
+        ///     names and accidentally receive a native priority.
+        /// </summary>
+        internal static TerrainWorkClass ClassifyId(string? id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                return TerrainWorkClass.Unknown;
+            }
+
+            if (string.Equals(id, IdsCore.TerrainDesignators.LevelDesignator.Value, StringComparison.Ordinal))
             {
                 return TerrainWorkClass.Leveling;
             }
-            if (id.IndexOf("min", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                id.IndexOf("dig", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (string.Equals(id, IdsCore.TerrainDesignators.MiningDesignator.Value, StringComparison.Ordinal))
             {
                 return TerrainWorkClass.Digging;
             }
-            if (id.IndexOf("dump", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                id.IndexOf("fill", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (string.Equals(id, IdsCore.TerrainDesignators.DumpingDesignator.Value, StringComparison.Ordinal))
             {
                 return TerrainWorkClass.Filling;
             }
+
             return TerrainWorkClass.Other;
         }
 
         /// <summary>
-        ///     Materializes the native ready cache once, retaining native eligibility and scoring
-        ///     for the selected class. No second enumeration of the caller's cache is performed.
+        ///     Compatibility helper for callers that need stable class ordering. Every native
+        ///     candidate is retained; native eligibility and scoring remain authoritative. The
+        ///     active feature uses the narrower ScorePartial seam and does not materialize this list.
         /// </summary>
         internal static IReadOnlyList<TerrainDesignation> Prefer(
             IEnumerable<TerrainDesignation> designations,
@@ -82,14 +103,26 @@ namespace TajsCOI.Tweaks.Features.Terrain
             }
 
             var matching = new List<TerrainDesignation>(all.Length);
+            var nonMatching = new List<TerrainDesignation>(all.Length);
             foreach (TerrainDesignation designation in all)
             {
                 if (designation is not null && Classify(designation) == preferred)
                 {
                     matching.Add(designation);
                 }
+                else
+                {
+                    nonMatching.Add(designation!);
+                }
             }
-            return matching.Count == 0 ? all : matching;
+
+            if (matching.Count == 0)
+            {
+                return all;
+            }
+
+            matching.AddRange(nonMatching);
+            return matching;
         }
 
         internal static TerrainWorkClass Parse(string? value)

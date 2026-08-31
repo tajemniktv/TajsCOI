@@ -126,6 +126,22 @@ namespace TajsCOI.Tweaks.Features.World
 
     internal static class ExplorationCandidatePolicy
     {
+        /// <summary>
+        ///     Returns whether the fleet may be sent to a location under the current dispatch
+        ///     readiness checks. Combat safety is evaluated separately for each candidate because
+        ///     only the candidate location has the enemy visibility/strength context.
+        /// </summary>
+        internal static bool IsReady(
+            bool docked,
+            bool home,
+            bool inBattle,
+            bool repairing,
+            bool cargoLoaded,
+            bool fuelSufficient)
+        {
+            return docked && home && !inBattle && !repairing && !cargoLoaded && fuelSufficient;
+        }
+
         internal static bool IsViable(
             bool docked,
             bool home,
@@ -138,11 +154,49 @@ namespace TajsCOI.Tweaks.Features.World
             double requiredMargin,
             bool allowUnknownStrength)
         {
-            if (!docked || !home || inBattle || repairing || cargoLoaded || !fuelSufficient)
+            if (!IsReady(docked, home, inBattle, repairing, cargoLoaded, fuelSufficient))
             {
                 return false;
             }
             return knownEnemy ? enemyMargin >= requiredMargin : allowUnknownStrength;
+        }
+
+        /// <summary>
+        ///     Evaluates combat safety from the native world-map visibility and battle scores.
+        ///     A location with known absence of an enemy is safe. An unknown enemy or unavailable
+        ///     score is safe only when the caller explicitly opts into the existing unknown-data
+        ///     policy; callers should normally pass false.
+        /// </summary>
+        internal static bool IsCombatSafe(
+            bool enemyPresenceKnown,
+            bool hasEnemy,
+            int? playerStrength,
+            int? enemyStrength,
+            double requiredMarginPercent,
+            bool allowUnknownStrength)
+        {
+            if (enemyPresenceKnown && !hasEnemy)
+            {
+                return true;
+            }
+            if (double.IsNaN(requiredMarginPercent) || double.IsInfinity(requiredMarginPercent) ||
+                requiredMarginPercent < 0)
+            {
+                return false;
+            }
+            if (!enemyPresenceKnown || !playerStrength.HasValue || !enemyStrength.HasValue)
+            {
+                return allowUnknownStrength;
+            }
+            if (playerStrength.Value < 0 || enemyStrength.Value < 0)
+            {
+                // A negative native battle score is malformed data, not an unknown estimate.
+                return false;
+            }
+
+            double requiredStrength = enemyStrength.Value * (1d + requiredMarginPercent / 100d);
+            return !double.IsNaN(requiredStrength) && !double.IsInfinity(requiredStrength) &&
+                   playerStrength.Value >= requiredStrength;
         }
 
         internal static ExplorationCandidate? ChooseNearest(IEnumerable<ExplorationCandidate> candidates)
