@@ -84,6 +84,47 @@ namespace TajsCOI.Core.Profiles
             }
         }
 
+        public bool TryCapture(
+            string name,
+            IReadOnlyList<string>? categories,
+            IReadOnlyList<string>? modules,
+            out SettingsProfile? profile,
+            out string error)
+        {
+            profile = null;
+            error = string.Empty;
+            try
+            {
+                string profileName = name?.Trim() ?? string.Empty;
+                string[] selectedCategories = NormalizeList(categories);
+                string[] selectedModules = NormalizeList(modules);
+                Dictionary<string, object> values = m_settings.GetSnapshot()
+                    .Where(snapshot => snapshot.Descriptor.Flags.HasFlag(SettingFlags.ProfileSafe) &&
+                                       (selectedCategories.Length == 0 || selectedCategories.Contains(snapshot.Descriptor.Category, StringComparer.Ordinal)) &&
+                                       (selectedModules.Length == 0 || selectedModules.Contains(snapshot.Descriptor.ModId, StringComparer.Ordinal)))
+                    .ToDictionary(snapshot => snapshot.Descriptor.StableId, snapshot => snapshot.Value, StringComparer.Ordinal);
+                profile = new SettingsProfile(
+                    CurrentSchema,
+                    typeof(TajsSettingsProfileService).Assembly.GetName().Version?.ToString() ?? "unknown",
+                    profileName,
+                    selectedCategories,
+                    selectedModules,
+                    values);
+                if (!TrySave(profile, out error))
+                {
+                    profile = null;
+                    return false;
+                }
+                return true;
+            }
+            catch (Exception exception)
+            {
+                profile = null;
+                error = exception.Message;
+                return false;
+            }
+        }
+
         public SettingsProfilePreview Preview(SettingsProfile profile)
         {
             if (profile is null)
@@ -201,6 +242,36 @@ namespace TajsCOI.Core.Profiles
             }
 
             return new SettingsProfileApplyResult(applied, preview.SkippedIds, errors);
+        }
+
+        public SettingsProfileApplyResult RestoreDefaults(SettingsProfile? scope)
+        {
+            var errors = new List<string>();
+            int applied = 0;
+            foreach (SettingSnapshot snapshot in m_settings.GetSnapshot()
+                         .Where(snapshot => snapshot.Descriptor.Flags.HasFlag(SettingFlags.ProfileSafe) &&
+                                            (scope is null || IsSelected(scope, snapshot.Descriptor))))
+            {
+                if (Equals(snapshot.Value, snapshot.Descriptor.DefaultValue))
+                {
+                    continue;
+                }
+
+                SettingSetResult result = m_settings.TrySet(
+                    snapshot.Descriptor.ModId,
+                    snapshot.Descriptor.Key,
+                    snapshot.Descriptor.DefaultValue);
+                if (result.Success)
+                {
+                    applied++;
+                }
+                else
+                {
+                    errors.Add(snapshot.Descriptor.StableId + ": " + result.Error);
+                }
+            }
+
+            return new SettingsProfileApplyResult(applied, Array.Empty<string>(), errors);
         }
 
         public bool TrySave(SettingsProfile profile, out string error)
@@ -378,29 +449,25 @@ namespace TajsCOI.Core.Profiles
             customCommandName: "tajs_profile_capture")]
         public string CaptureProfile(string? name, string? categories = "", string? modules = "")
         {
-            string profileName = name?.Trim() ?? string.Empty;
-            if (profileName.Length == 0)
+            if (!TryCapture(
+                    name ?? string.Empty,
+                    SplitList(categories),
+                    SplitList(modules),
+                    out SettingsProfile? profile,
+                    out string error) || profile is null)
             {
-                return "Usage: tajs_profile_capture <name> [comma-separated-categories] [comma-separated-modules]";
+                return error.Length == 0
+                    ? "Usage: tajs_profile_capture <name> [comma-separated-categories] [comma-separated-modules]"
+                    : "Profile could not be saved: " + error;
             }
-            string[] selectedCategories = SplitList(categories);
-            string[] selectedModules = SplitList(modules);
-            Dictionary<string, object> values = m_settings.GetSnapshot()
-                .Where(snapshot => snapshot.Descriptor.Flags.HasFlag(SettingFlags.ProfileSafe) &&
-                                   (selectedCategories.Length == 0 || selectedCategories.Contains(snapshot.Descriptor.Category, StringComparer.Ordinal)) &&
-                                   (selectedModules.Length == 0 || selectedModules.Contains(snapshot.Descriptor.ModId, StringComparer.Ordinal)))
-                .ToDictionary(snapshot => snapshot.Descriptor.StableId, snapshot => snapshot.Value, StringComparer.Ordinal);
-            var profile = new SettingsProfile(
-                CurrentSchema,
-                typeof(TajsSettingsProfileService).Assembly.GetName().Version?.ToString() ?? "unknown",
-                profileName,
-                selectedCategories,
-                selectedModules,
-                values);
-            return TrySave(profile, out string error)
-                ? "Profile '" + profile.Name + "' saved with " + values.Count + " profile-safe setting(s)."
-                : "Profile could not be saved: " + error;
+            return "Profile '" + profile.Name + "' saved with " + profile.Values.Count + " profile-safe setting(s).";
         }
+
+        [ConsoleCommand(
+            documentation: "Restores profile-safe settings to their descriptor defaults.",
+            customCommandName: "tajs_profile_restore_defaults")]
+        public string RestoreDefaultsCommand() =>
+            FormatRestoreResult(RestoreDefaults(null));
 
         [ConsoleCommand(
             documentation: "Previews a settings profile without changing runtime values.",
@@ -481,6 +548,18 @@ namespace TajsCOI.Core.Profiles
             .Where(item => item.Length != 0)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
+
+        private static string[] NormalizeList(IReadOnlyList<string>? values) =>
+            (values ?? Array.Empty<string>())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        private static string FormatRestoreResult(SettingsProfileApplyResult result) =>
+            "Profile-safe defaults restored: applied=" + result.AppliedCount +
+            ", errors=" + result.Errors.Count +
+            (result.Errors.Count == 0 ? string.Empty : " (" + string.Join(" | ", result.Errors) + ")");
 
         private void LoadExisting()
         {

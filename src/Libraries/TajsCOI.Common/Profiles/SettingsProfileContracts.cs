@@ -148,9 +148,18 @@ namespace TajsCOI.Common.Profiles
 
         public bool TryGet(string name, out SettingsProfile? profile);
 
+        public bool TryCapture(
+            string name,
+            IReadOnlyList<string>? categories,
+            IReadOnlyList<string>? modules,
+            out SettingsProfile? profile,
+            out string error);
+
         public SettingsProfilePreview Preview(SettingsProfile profile);
 
         public SettingsProfileApplyResult Apply(SettingsProfile profile);
+
+        public SettingsProfileApplyResult RestoreDefaults(SettingsProfile? scope);
 
         public bool TrySave(SettingsProfile profile, out string error);
 

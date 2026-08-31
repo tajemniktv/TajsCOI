@@ -123,6 +123,53 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void CaptureAndRestoreDefaultsStayWithinProfileSafeSettings()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI.ProfileTests", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var settings = new TajsSettings(Path.Combine(root, "settings.json"), new SettingsTestsNullLogger());
+                settings.Register(
+                    SettingDescriptor.Boolean(
+                        "ProfileMod",
+                        "Profile Mod",
+                        "safe",
+                        "Safe",
+                        "Safe setting",
+                        false,
+                        flags: SettingFlags.ProfileSafe));
+                settings.Register(
+                    SettingDescriptor.Boolean(
+                        "ProfileMod",
+                        "Profile Mod",
+                        "unsafe",
+                        "Unsafe",
+                        "Unsafe setting",
+                        false));
+                Assert.True(settings.TrySet("ProfileMod", "safe", true).Success);
+                Assert.True(settings.TrySet("ProfileMod", "unsafe", true).Success);
+
+                var service = new TajsSettingsProfileService(settings, new TajsRuntime(), Path.Combine(root, "profiles"));
+                Assert.True(service.TryCapture("selected", Array.Empty<string>(), Array.Empty<string>(), out SettingsProfile? profile, out string captureError), captureError);
+                Assert.NotNull(profile);
+                Assert.True(profile!.Values.ContainsKey("ProfileMod.safe"));
+                Assert.False(profile.Values.ContainsKey("ProfileMod.unsafe"));
+
+                SettingsProfileApplyResult result = service.RestoreDefaults(profile);
+                Assert.Equal(1, result.AppliedCount);
+                Assert.False(settings.Get<bool>("ProfileMod", "safe"));
+                Assert.True(settings.Get<bool>("ProfileMod", "unsafe"));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
         public void ProfileValuesAreRestrictedToJsonPrimitives()
         {
             Assert.Throws<ArgumentException>(() => new SettingsProfile(
