@@ -665,7 +665,7 @@ namespace TajsCOI.Tweaks
                 TweaksKeepFullEmptyMarkerFeature.Apply();
                 TweaksHudLayoutFeature.Apply(m_resolver, m_settings);
                 TweaksSimulationSpeedDisplayFeature.Apply(m_resolver);
-                m_overclocking?.Tick();
+                m_overclocking?.Tick(_);
                 ApplyWorldVisibilityHudIndicator();
                 ApplyDesignModeHudIndicator();
             }
@@ -1042,6 +1042,19 @@ namespace TajsCOI.Tweaks
             }
 
             m_resolver.TryResolve(out GameNameConfig? gameNameConfig);
+            string? loadedSavePath = null;
+            if (gameNameConfig?.LoadedFile is SaveFileInfo loadedFile &&
+                m_resolver.TryResolve(out IFileSystemHelper? fileSystem) && fileSystem is not null)
+            {
+                try
+                {
+                    loadedSavePath = fileSystem.GetSaveFilePath(loadedFile);
+                }
+                catch
+                {
+                    loadedSavePath = null;
+                }
+            }
             string saveName = string.IsNullOrWhiteSpace(saveManager.GameName) ? "current" : saveManager.GameName;
             m_difficulty = new TajsDifficultyFeature(
                 applier,
@@ -1049,7 +1062,8 @@ namespace TajsCOI.Tweaks
                 gameNameConfig,
                 saveManager,
                 saveName,
-                m_runtime.GetLogger(TajsTweaksSettingsCatalog.ModId, TajsDifficultyFeature.ComponentId));
+                m_runtime.GetLogger(TajsTweaksSettingsCatalog.ModId, TajsDifficultyFeature.ComponentId),
+                loadedSavePath);
 
             IReadOnlyList<string> unsupportedPercent = TajsDifficultyOptionCatalog.UnsupportedPercentMembers;
             m_runtime.ReportCompatibility(

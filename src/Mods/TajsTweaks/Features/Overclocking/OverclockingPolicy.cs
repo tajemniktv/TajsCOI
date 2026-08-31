@@ -50,6 +50,14 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         internal int GroupId { get; }
     }
 
+    internal static class OverclockCadence
+    {
+        internal static bool IsDue(double simulationSeconds, double nextDueSeconds) => simulationSeconds >= nextDueSeconds;
+
+        internal static double ScheduleNext(double simulationSeconds, int intervalSeconds) =>
+            simulationSeconds + Math.Max(1, intervalSeconds);
+    }
+
     internal static class OverclockingMath
     {
         internal static int ClampPercent(int percent, int minimum, int maximum) =>

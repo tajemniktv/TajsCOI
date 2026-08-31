@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using TajsCOI.Common.Persistence;
 
 namespace TajsCOI.Tweaks.Features.Overclocking
 {
@@ -43,34 +44,72 @@ namespace TajsCOI.Tweaks.Features.Overclocking
     /// </summary>
     internal sealed class OverclockingStateStore
     {
-        private const string Header = "TajsTweaksOverclockingV1";
+        private const string Header = "TajsTweaksOverclockingV2";
+        private const string LegacyHeader = "TajsTweaksOverclockingV1";
         private readonly Dictionary<int, OverclockEntityPolicy> m_entities = new();
         private readonly List<OverclockGroup> m_groups = new();
+        private readonly string m_rootDirectory;
+        private readonly TajsSaveIdentityRegistry m_identityRegistry;
         private string? m_filePath;
+        private string? m_identityKey;
+        private string? m_revisionKey;
+        private TajsSaveIdentity? m_identity;
+        private bool m_parseValid;
+        private bool m_allowWrite;
+        private bool m_persistenceBlocked;
         private int m_nextGroupId = 1;
         private int m_selectedGroupId = -1;
 
         internal IReadOnlyDictionary<int, OverclockEntityPolicy> Entities => m_entities;
         internal IReadOnlyList<OverclockGroup> Groups => m_groups;
         internal int SelectedGroupId => m_selectedGroupId;
+        internal string LoadStatus { get; private set; } = "overclocking sidecar identity unavailable.";
 
-        internal void LoadForSave(string saveName)
+        internal OverclockingStateStore(string? rootDirectory = null)
         {
+            m_rootDirectory = string.IsNullOrWhiteSpace(rootDirectory)
+                ? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Captain of Industry",
+                    "TajsTweaks",
+                    "Overclocking")
+                : Path.GetFullPath(rootDirectory!);
+            m_identityRegistry = new TajsSaveIdentityRegistry(m_rootDirectory);
+        }
+
+        internal void LoadForSave(TajsSaveIdentity? identity, string? saveName = null)
+        {
+            if (identity?.PhysicalPath is string physicalPath)
+            {
+                identity = m_identityRegistry.Resolve(physicalPath, identity.GameName, identity.DisplayName) ?? identity;
+            }
+
             m_entities.Clear();
             m_groups.Clear();
             m_nextGroupId = 1;
             m_selectedGroupId = -1;
-            string safeName = Sanitize(saveName);
-            string directory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "Captain of Industry",
-                "TajsTweaks",
-                "Overclocking",
-                safeName.Length == 0 ? "current" : safeName);
-            m_filePath = Path.Combine(directory, "state.txt");
+            m_identityKey = identity?.OwnershipKey;
+            m_revisionKey = identity?.RevisionKey;
+            m_identity = identity;
+            m_loadedIdentityMatches = false;
+            m_parseValid = true;
+            m_allowWrite = identity?.IsStronglyVerified == true;
+            m_persistenceBlocked = false;
+            m_filePath = identity?.IsStronglyVerified != true
+                ? null
+                : Path.Combine(m_rootDirectory, identity.OwnershipKey, "state.txt");
+            LoadStatus = identity is null
+                ? "overclocking sidecar identity unavailable; policy is in memory only."
+                : identity.IsStronglyVerified
+                    ? "overclocking sidecar identity verified."
+                    : "overclocking sidecar identity unavailable; metadata-only identity is not trusted for persistence.";
 
-            if (!File.Exists(m_filePath))
+            if (m_filePath is null || !File.Exists(m_filePath))
             {
+                if (saveName is not null && HasLegacySidecar(saveName))
+                {
+                    LoadStatus = "overclocking sidecar unavailable: legacy name-based sidecar requires explicit recapture.";
+                }
                 return;
             }
 
@@ -80,6 +119,13 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 {
                     ParseLine(line);
                 }
+                if (!m_parseValid || !m_loadedIdentityMatches)
+                {
+                    ClearLoadedState();
+                    m_allowWrite = false;
+                    m_persistenceBlocked = true;
+                    LoadStatus = "overclocking sidecar unavailable: identity metadata is invalid or belongs to another save.";
+                }
             }
             catch
             {
@@ -88,7 +134,85 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 m_groups.Clear();
                 m_nextGroupId = 1;
                 m_selectedGroupId = -1;
+                m_allowWrite = false;
+                m_persistenceBlocked = true;
+                LoadStatus = "overclocking sidecar unavailable: sidecar is invalid.";
             }
+        }
+
+        internal void LoadForSave(string saveName) => LoadForSave(null, saveName);
+
+        private bool m_loadedIdentityMatches;
+
+        internal bool RebindAfterSave(string? savePath, string gameName)
+        {
+            if (string.IsNullOrWhiteSpace(savePath) || TajsSaveIdentity.IsAutosavePath(savePath))
+            {
+                return false;
+            }
+
+            TajsSaveIdentity? identity = TajsSaveIdentity.FromFile(savePath!, gameName);
+            if (identity is null)
+            {
+                return false;
+            }
+
+            identity = m_identityRegistry.Rebind(savePath!, gameName, m_identity, identity.DisplayName) ?? identity;
+
+            if (m_identity is null && m_identityKey is null)
+            {
+                // A new game has no prior save owner to protect. Bind its in-memory policy to
+                // the first successful save instead of discarding edits made before that save.
+                m_identityKey = identity.OwnershipKey;
+                m_revisionKey = identity.RevisionKey;
+                m_identity = identity;
+                m_filePath = Path.Combine(m_rootDirectory, identity.OwnershipKey, "state.txt");
+                m_allowWrite = identity.IsStronglyVerified;
+                m_persistenceBlocked = false;
+                LoadStatus = "overclocking sidecar identity verified after first save.";
+                Save();
+                return m_allowWrite;
+            }
+
+            if (string.Equals(m_identityKey, identity.OwnershipKey, StringComparison.Ordinal))
+            {
+                if (m_persistenceBlocked)
+                {
+                    return false;
+                }
+
+                m_revisionKey = identity.RevisionKey;
+                m_identity = identity;
+                m_allowWrite = identity.IsStronglyVerified;
+                Save();
+                return true;
+            }
+
+            string nextPath = Path.Combine(m_rootDirectory, identity.OwnershipKey, "state.txt");
+            if (File.Exists(nextPath))
+            {
+                ClearLoadedState();
+                m_filePath = nextPath;
+                m_identityKey = identity.OwnershipKey;
+                m_revisionKey = identity.RevisionKey;
+                m_identity = identity;
+                m_allowWrite = false;
+                m_persistenceBlocked = true;
+                LoadStatus = "overclocking sidecar unavailable: save identity collision.";
+                return false;
+            }
+
+            // Save-as/copy/replacement is a new ownership key. Do not carry policies keyed by
+            // entity IDs into the unrelated file; leave the old sidecar untouched for recovery.
+            ClearLoadedState();
+            m_filePath = nextPath;
+            m_identityKey = identity.OwnershipKey;
+            m_revisionKey = identity.RevisionKey;
+            m_identity = identity;
+            m_allowWrite = identity.IsStronglyVerified;
+            m_persistenceBlocked = false;
+            LoadStatus = "overclocking sidecar reset: save identity changed.";
+            return false;
         }
 
         internal OverclockEntityPolicy GetOrCreateEntity(int entityId)
@@ -223,11 +347,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
         internal void Save()
         {
-            if (m_filePath is null)
+            if (m_filePath is null || !m_allowWrite || m_persistenceBlocked)
             {
                 return;
             }
 
+            string? temporaryPath = null;
             try
             {
                 string? directory = Path.GetDirectoryName(m_filePath);
@@ -236,7 +361,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     Directory.CreateDirectory(directory);
                 }
 
-                var lines = new List<string> { Header, "S\t" + m_selectedGroupId + "\t" + m_nextGroupId };
+                var lines = new List<string>
+                {
+                    Header,
+                    "I\t" + (m_identityKey ?? string.Empty) + "\t" + (m_revisionKey ?? string.Empty),
+                    "S\t" + m_selectedGroupId + "\t" + m_nextGroupId
+                };
                 foreach (KeyValuePair<int, OverclockEntityPolicy> pair in m_entities.OrderBy(pair => pair.Key))
                 {
                     OverclockEntityPolicy policy = pair.Value;
@@ -274,7 +404,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                             members));
                 }
 
-                string temporaryPath = m_filePath + ".tmp";
+                temporaryPath = m_filePath + ".tmp." + Guid.NewGuid().ToString("N");
                 File.WriteAllLines(temporaryPath, lines);
                 if (File.Exists(m_filePath))
                 {
@@ -284,18 +414,45 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 {
                     File.Move(temporaryPath, m_filePath);
                 }
+                temporaryPath = null;
             }
             catch
             {
                 // Policy persistence is best-effort and never blocks gameplay.
             }
+            finally
+            {
+                if (temporaryPath is not null)
+                {
+                    try { File.Delete(temporaryPath); } catch { }
+                }
+            }
         }
 
         private void ParseLine(string line)
         {
-            string[] fields = line.Split('\t');
-            if (fields.Length == 0 || fields[0] == Header)
+            if (string.IsNullOrWhiteSpace(line))
             {
+                return;
+            }
+
+            string[] fields = line.Split('\t');
+            if (fields.Length == 0)
+            {
+                return;
+            }
+
+            if (fields[0] == Header || fields[0] == LegacyHeader)
+            {
+                return;
+            }
+
+            if (fields[0] == "I" && fields.Length >= 2)
+            {
+                m_loadedIdentityMatches = string.Equals(fields[1], m_identityKey, StringComparison.Ordinal);
+                // The revision is informational only. Always retain the revision observed from
+                // the current native file so a stale sidecar cannot make a later write claim an
+                // obsolete file revision.
                 return;
             }
 
@@ -307,23 +464,31 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return;
             }
 
-            if (fields[0] == "E" && fields.Length >= 9 && int.TryParse(fields[1], out int entityId))
+            if (fields[0] == "E" && fields.Length == 9 && int.TryParse(fields[1], out int entityId) && entityId >= 0 &&
+                TryParseBool(fields[2], out bool hasManualOverride) && int.TryParse(fields[3], out int manualPercent) &&
+                TryParseBool(fields[4], out bool hasAutoOverride) && TryParseBool(fields[5], out bool auto) &&
+                TryParseBool(fields[6], out bool hasBoundsOverride) && int.TryParse(fields[7], out int minPercent) &&
+                int.TryParse(fields[8], out int maxPercent))
             {
                 var policy = new OverclockEntityPolicy
                 {
-                    HasManualOverride = ParseBool(fields[2]),
-                    ManualPercent = ParseInt(fields[3], 100),
-                    HasAutoOverride = ParseBool(fields[4]),
-                    Auto = ParseBool(fields[5]),
-                    HasBoundsOverride = ParseBool(fields[6]),
-                    MinPercent = ParseInt(fields[7], 100),
-                    MaxPercent = ParseInt(fields[8], 300),
+                    HasManualOverride = hasManualOverride,
+                    ManualPercent = manualPercent,
+                    HasAutoOverride = hasAutoOverride,
+                    Auto = auto,
+                    HasBoundsOverride = hasBoundsOverride,
+                    MinPercent = minPercent,
+                    MaxPercent = maxPercent,
                 };
                 m_entities[entityId] = policy;
                 return;
             }
 
-            if (fields[0] == "G" && fields.Length >= 11 && int.TryParse(fields[1], out int groupId))
+            if (fields[0] == "G" && fields.Length == 11 && int.TryParse(fields[1], out int groupId) && groupId > 0 &&
+                TryParseBool(fields[2], out bool locked) && int.TryParse(fields[3], out int colorIndex) &&
+                int.TryParse(fields[4], out int highlightAlpha) && int.TryParse(fields[5], out int manualDefault) &&
+                TryParseBool(fields[6], out bool groupAuto) && int.TryParse(fields[7], out int groupMin) &&
+                int.TryParse(fields[8], out int groupMax))
             {
                 string name;
                 try
@@ -338,13 +503,13 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 var group = new OverclockGroup
                 {
                     Id = groupId,
-                    Locked = ParseBool(fields[2]),
-                    ColorIndex = ParseInt(fields[3], 0),
-                    HighlightAlpha = Math.Max(4, Math.Min(100, ParseInt(fields[4], 85))),
-                    ManualDefault = ParseInt(fields[5], 0),
-                    Auto = ParseBool(fields[6]),
-                    MinPercent = ParseInt(fields[7], 100),
-                    MaxPercent = ParseInt(fields[8], 300),
+                    Locked = locked,
+                    ColorIndex = colorIndex,
+                    HighlightAlpha = Math.Max(4, Math.Min(100, highlightAlpha)),
+                    ManualDefault = manualDefault,
+                    Auto = groupAuto,
+                    MinPercent = groupMin,
+                    MaxPercent = groupMax,
                     Name = CleanName(name),
                 };
                 foreach (string member in fields[10].Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
@@ -358,14 +523,52 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 m_groups.RemoveAll(existing => existing.Id == groupId);
                 m_groups.Add(group);
                 m_nextGroupId = Math.Max(m_nextGroupId, groupId + 1);
+                return;
             }
+
+            m_parseValid = false;
         }
 
         private static string Bool(bool value) => value ? "1" : "0";
-        private static bool ParseBool(string value) => value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase);
-        private static int ParseInt(string value, int fallback) => int.TryParse(value, out int result) ? result : fallback;
+        private static bool TryParseBool(string value, out bool result)
+        {
+            if (value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase))
+            {
+                result = true;
+                return true;
+            }
+
+            if (value == "0" || value.Equals("false", StringComparison.OrdinalIgnoreCase))
+            {
+                result = false;
+                return true;
+            }
+
+            result = false;
+            return false;
+        }
 
         private static string CleanName(string? value) => (value ?? string.Empty).Replace("\t", " ").Replace("\r", " ").Replace("\n", " ").Trim();
+
+        private void ClearLoadedState()
+        {
+            m_entities.Clear();
+            m_groups.Clear();
+            m_nextGroupId = 1;
+            m_selectedGroupId = -1;
+        }
+
+        private bool HasLegacySidecar(string saveName)
+        {
+            string safeName = Sanitize(saveName);
+            if (safeName.Length == 0)
+            {
+                safeName = "current";
+            }
+
+            string path = Path.Combine(m_rootDirectory, safeName, "state.txt");
+            return File.Exists(path);
+        }
 
         private static string Sanitize(string value)
         {

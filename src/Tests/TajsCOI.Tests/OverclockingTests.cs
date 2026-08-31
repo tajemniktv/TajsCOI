@@ -9,12 +9,225 @@ using Mafi.Core;
 using Mafi.Core.Input;
 using Mafi.Serialization;
 using TajsCOI.Tweaks.Features.Overclocking;
+using TajsCOI.Common.Persistence;
 using Xunit;
 
 namespace TajsCOI.Tests
 {
     public sealed class OverclockingTests
     {
+        [Fact]
+        public void AutomaticCadenceUsesSimulationTimeAndDoesNotAdvanceWhilePaused()
+        {
+            double next = OverclockCadence.ScheduleNext(0d, 2);
+            Assert.False(OverclockCadence.IsDue(1.99d, next));
+            Assert.True(OverclockCadence.IsDue(2d, next));
+            // A paused frame has no simulation-time delta; wall-clock/render time is irrelevant.
+            Assert.False(OverclockCadence.IsDue(1.99d, next));
+            // A high simulation speed simply reaches the same simulation deadline sooner in wall time.
+            Assert.True(OverclockCadence.IsDue(20d, next));
+        }
+
+        [Fact]
+        public void SaveScopedPoliciesDoNotCrossContaminateSameNameOrReusedEntityIds()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-Overclocking-" + Guid.NewGuid().ToString("N"));
+            string firstPath = Path.Combine(root, "same-name.save");
+            string secondPath = Path.Combine(root, "other.save");
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(firstPath, new byte[] { 1, 2, 3 });
+                TajsSaveIdentity first = TajsSaveIdentity.FromFile(firstPath, "world")!;
+                var firstStore = new OverclockingStateStore(Path.Combine(root, "sidecars"));
+                firstStore.LoadForSave(first, "world");
+                firstStore.GetOrCreateEntity(42).HasManualOverride = true;
+                firstStore.GetOrCreateEntity(42).ManualPercent = 225;
+                firstStore.Save();
+
+                File.Copy(firstPath, secondPath);
+                TajsSaveIdentity second = TajsSaveIdentity.FromFile(secondPath, "world", "same-name")!;
+                var secondStore = new OverclockingStateStore(Path.Combine(root, "sidecars"));
+                secondStore.LoadForSave(second, "world");
+
+                Assert.Equal(first.DisplayName, second.DisplayName);
+                Assert.NotEqual(first.OwnershipKey, second.OwnershipKey);
+                Assert.False(secondStore.TryGetEntity(42, out _));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void RepeatedNormalSaveRevisionsKeepTheSamePolicyLineage()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-Overclocking-" + Guid.NewGuid().ToString("N"));
+            string savePath = Path.Combine(root, "slot.save");
+            string sidecarRoot = Path.Combine(root, "sidecars");
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(savePath, new byte[] { 1, 2, 3 });
+                TajsSaveIdentity initial = TajsSaveIdentity.FromFile(savePath, "world")!;
+                var store = new OverclockingStateStore(sidecarRoot);
+                store.LoadForSave(initial, "world");
+                store.GetOrCreateEntity(42).ManualPercent = 225;
+                store.Save();
+
+                string replacement = savePath + ".tmp";
+                File.WriteAllBytes(replacement, new byte[] { 1, 2, 3, 4 });
+                File.Replace(replacement, savePath, null);
+
+                Assert.True(store.RebindAfterSave(savePath, "world"));
+                Assert.True(store.TryGetEntity(42, out OverclockEntityPolicy? policy));
+                Assert.Equal(225, policy!.ManualPercent);
+
+                var reloaded = new OverclockingStateStore(sidecarRoot);
+                reloaded.LoadForSave(TajsSaveIdentity.FromFile(savePath, "world"), "world");
+                Assert.True(reloaded.TryGetEntity(42, out OverclockEntityPolicy? reloadedPolicy));
+                Assert.Equal(225, reloadedPolicy!.ManualPercent);
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void SaveAsCollisionDoesNotOverwriteTheTargetPolicySidecar()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-Overclocking-" + Guid.NewGuid().ToString("N"));
+            string firstPath = Path.Combine(root, "first.save");
+            string secondPath = Path.Combine(root, "second.save");
+            string sidecarRoot = Path.Combine(root, "sidecars");
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(firstPath, new byte[] { 1 });
+                File.WriteAllBytes(secondPath, new byte[] { 2 });
+                var firstStore = new OverclockingStateStore(sidecarRoot);
+                firstStore.LoadForSave(TajsSaveIdentity.FromFile(firstPath, "world"), "world");
+                firstStore.GetOrCreateEntity(42).ManualPercent = 225;
+                firstStore.Save();
+
+                var secondStore = new OverclockingStateStore(sidecarRoot);
+                secondStore.LoadForSave(TajsSaveIdentity.FromFile(secondPath, "world"), "world");
+                secondStore.GetOrCreateEntity(99).ManualPercent = 175;
+                secondStore.Save();
+
+                Assert.False(firstStore.RebindAfterSave(secondPath, "world"));
+                Assert.False(firstStore.TryGetEntity(42, out _));
+
+                var target = new OverclockingStateStore(sidecarRoot);
+                target.LoadForSave(TajsSaveIdentity.FromFile(secondPath, "world"), "world");
+                Assert.True(target.TryGetEntity(99, out OverclockEntityPolicy? targetPolicy));
+                Assert.Equal(175, targetPolicy!.ManualPercent);
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void FirstSaveBindsNewGamePoliciesWithoutDroppingThem()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-Overclocking-" + Guid.NewGuid().ToString("N"));
+            string savePath = Path.Combine(root, "new-game.save");
+            try
+            {
+                Directory.CreateDirectory(root);
+                var store = new OverclockingStateStore(Path.Combine(root, "sidecars"));
+                store.LoadForSave(null, "world");
+                store.GetOrCreateEntity(42).ManualPercent = 225;
+                File.WriteAllBytes(savePath, new byte[] { 1 });
+
+                Assert.True(store.RebindAfterSave(savePath, "world"));
+                Assert.True(store.TryGetEntity(42, out OverclockEntityPolicy? policy));
+                Assert.Equal(225, policy!.ManualPercent);
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void LegacyNameSidecarIsPreservedAndNeverImported()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-Overclocking-" + Guid.NewGuid().ToString("N"));
+            string savePath = Path.Combine(root, "same-name.save");
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(savePath, new byte[] { 1 });
+                string legacyPath = Path.Combine(root, "sidecars", "same-name", "state.txt");
+                Directory.CreateDirectory(Path.GetDirectoryName(legacyPath)!);
+                File.WriteAllText(legacyPath, "TajsTweaksOverclockingV1\nE\t42\t1\t250");
+                TajsSaveIdentity identity = TajsSaveIdentity.FromFile(savePath, "world")!;
+                var store = new OverclockingStateStore(Path.Combine(root, "sidecars"));
+                store.LoadForSave(identity, "same-name");
+
+                Assert.False(store.TryGetEntity(42, out _));
+                Assert.Contains("legacy", store.LoadStatus, StringComparison.OrdinalIgnoreCase);
+                Assert.Equal("TajsTweaksOverclockingV1\nE\t42\t1\t250", File.ReadAllText(legacyPath));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void MalformedIdentitySidecarIsPreservedAndBlocksWrites()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-Overclocking-" + Guid.NewGuid().ToString("N"));
+            string savePath = Path.Combine(root, "slot.save");
+            string sidecarRoot = Path.Combine(root, "sidecars");
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(savePath, new byte[] { 1 });
+                TajsSaveIdentity identity = TajsSaveIdentity.FromFile(savePath, "world")!;
+                string sidecar = Path.Combine(sidecarRoot, identity.OwnershipKey, "state.txt");
+                Directory.CreateDirectory(Path.GetDirectoryName(sidecar)!);
+                string original = "TajsTweaksOverclockingV2\nI\t" + identity.OwnershipKey + "\nE\t42\tbad";
+                File.WriteAllText(sidecar, original);
+
+                var store = new OverclockingStateStore(sidecarRoot);
+                store.LoadForSave(identity, "world");
+                store.Save();
+
+                Assert.False(store.TryGetEntity(42, out _));
+                Assert.Equal(original, File.ReadAllText(sidecar));
+                Assert.Contains("invalid", store.LoadStatus, StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
         [Fact]
         public void CostCurveMatchesConfiguredExponent()
         {

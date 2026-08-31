@@ -7,6 +7,7 @@ using System.IO;
 using System.Reflection;
 using TajsCOI.Common.Build;
 using TajsCOI.Common.Compatibility;
+using TajsCOI.Common.Persistence;
 using TajsCOI.Common.Settings;
 using Xunit;
 
@@ -14,6 +15,102 @@ namespace TajsCOI.Tests
 {
     public sealed class CommonContractsTests
     {
+        [Fact]
+        public void SaveIdentityKeepsLineageAcrossRevisionsAndRenamesButNotCopies()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-SaveIdentity-" + Guid.NewGuid().ToString("N"));
+            string original = Path.Combine(root, "same-name.save");
+            string renamed = Path.Combine(root, "renamed.save");
+            string copy = Path.Combine(root, "copy.save");
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(original, new byte[] { 1, 2, 3 });
+                TajsSaveIdentity first = TajsSaveIdentity.FromFile(original, "world")!;
+                using (var stream = new FileStream(original, FileMode.Append, FileAccess.Write, FileShare.Read))
+                {
+                    stream.WriteByte(4);
+                }
+                TajsSaveIdentity revision = TajsSaveIdentity.FromFile(original, "world")!;
+
+                Assert.Equal(first.OwnershipKey, revision.OwnershipKey);
+                Assert.NotEqual(first.RevisionKey, revision.RevisionKey);
+
+                File.Move(original, renamed);
+                TajsSaveIdentity renamedIdentity = TajsSaveIdentity.FromFile(renamed, "world")!;
+                Assert.Equal(first.OwnershipKey, renamedIdentity.OwnershipKey);
+
+                File.Copy(renamed, copy);
+                TajsSaveIdentity copied = TajsSaveIdentity.FromFile(copy, "world")!;
+                Assert.NotEqual(first.OwnershipKey, copied.OwnershipKey);
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void SaveIdentityDoesNotReuseDeletedAndRecreatedFile()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-SaveIdentity-" + Guid.NewGuid().ToString("N"));
+            string path = Path.Combine(root, "same-name.save");
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(path, new byte[] { 1 });
+                var registry = new TajsSaveIdentityRegistry(Path.Combine(root, "sidecars"));
+                TajsSaveIdentity first = registry.Resolve(path, "world")!;
+                File.Delete(path);
+                File.WriteAllBytes(path, new byte[] { 1 });
+                TajsSaveIdentity recreated = registry.Resolve(path, "world")!;
+                Assert.NotEqual(first.OwnershipKey, recreated.OwnershipKey);
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void SaveIdentityRegistryDistinguishesRenameFromSaveAs()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-SaveIdentity-" + Guid.NewGuid().ToString("N"));
+            string original = Path.Combine(root, "original.save");
+            string renamed = Path.Combine(root, "renamed.save");
+            string copy = Path.Combine(root, "copy.save");
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(original, new byte[] { 1, 2, 3 });
+                var registry = new TajsSaveIdentityRegistry(Path.Combine(root, "sidecars"));
+                TajsSaveIdentity first = registry.Resolve(original, "world")!;
+
+                File.Move(original, renamed);
+                TajsSaveIdentity renamedRaw = TajsSaveIdentity.FromFile(renamed, "world")!;
+                TajsSaveIdentity renamedIdentity = registry.Rebind(renamed, "world", first)!;
+                Assert.Equal(first.OwnershipKey, renamedIdentity.OwnershipKey);
+                Assert.Equal(first.RevisionKey, renamedRaw.RevisionKey);
+
+                File.Copy(renamed, copy);
+                TajsSaveIdentity copied = registry.Rebind(copy, "world", renamedIdentity)!;
+                Assert.NotEqual(first.OwnershipKey, copied.OwnershipKey);
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
         [Fact]
         public void CompatibilityReportIsImmutableAndRequiresStableIds()
         {

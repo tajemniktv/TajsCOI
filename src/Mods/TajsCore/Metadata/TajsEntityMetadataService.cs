@@ -7,8 +7,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using Mafi;
 using Mafi.Core;
 using Mafi.Core.Console;
@@ -19,6 +17,7 @@ using Mafi.Core.SaveGame;
 using TajsCOI.Common.Diagnostics;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Metadata;
+using TajsCOI.Common.Persistence;
 using TajsCOI.Common.Runtime;
 
 namespace TajsCOI.Core.Metadata
@@ -57,8 +56,8 @@ namespace TajsCOI.Core.Metadata
                 "TajsCOI",
                 "EntityMetadata");
             m_store = new EntityMetadataStateStore(root);
-            string? identity = TryGetLoadedIdentity(resolver, saveManager.GameName);
-            m_store.Load(identity);
+            TajsSaveIdentity? identity = TryGetLoadedIdentity(resolver, saveManager.GameName);
+            m_store.LoadIdentity(identity);
             m_saveManager.OnSaveDone += OnSaveDone;
             entitiesManager.EntityRemovedFull.AddNonSaveable(this, OnEntityRemoved);
             gameLoop.SyncUpdate.AddNonSaveable(this, OnSyncUpdate);
@@ -514,7 +513,12 @@ namespace TajsCOI.Core.Metadata
                 return;
             }
 
-            string? identity = CreateSaveIdentity(path, m_saveManager.GameName);
+            if (TajsSaveIdentity.IsAutosavePath(path))
+            {
+                return;
+            }
+
+            TajsSaveIdentity? identity = TajsSaveIdentity.FromFile(path, m_saveManager.GameName);
             if (identity is null)
             {
                 m_log.Warning("Entity metadata sidecar was not rebound because the saved file identity was unavailable.");
@@ -523,7 +527,7 @@ namespace TajsCOI.Core.Metadata
 
             lock (m_gate)
             {
-                if (!m_store.Rebind(identity) || !m_store.Save())
+                if (!m_store.RebindIdentity(identity) || !m_store.Save())
                 {
                     m_log.Warning("Entity metadata sidecar could not be written after the native save completed.");
                 }
@@ -559,61 +563,24 @@ namespace TajsCOI.Core.Metadata
             return true;
         }
 
-        private static string? TryGetLoadedIdentity(DependencyResolver resolver, string gameName)
+        private static TajsSaveIdentity? TryGetLoadedIdentity(DependencyResolver resolver, string gameName)
         {
             try
             {
-                return resolver.TryResolve(out GameNameConfig? config) && config is not null && config.LoadedFile is SaveFileInfo file
-                    ? CreateSaveIdentity(file, gameName)
-                    : null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private static string? CreateSaveIdentity(string path, string gameName)
-        {
-            try
-            {
-                FileInfo file = new(path);
-                return file.Exists
-                    ? CreateSaveIdentity(
-                        new SaveFileInfo(
-                            Path.GetFileNameWithoutExtension(file.Name),
-                            gameName,
-                            file.LastWriteTimeUtc,
-                            file.Length,
-                            file.Extension),
-                        gameName)
-                    : null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private static string CreateSaveIdentity(SaveFileInfo file, string gameName)
-        {
-            string canonical = string.Join(
-                "\n",
-                file.GameName ?? gameName,
-                file.NameNoExtension ?? string.Empty,
-                file.Extension ?? string.Empty,
-                file.WriteTimestamp.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture),
-                file.SizeBytes.ToString(CultureInfo.InvariantCulture));
-            using (var sha256 = SHA256.Create())
-            {
-                byte[] bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(canonical));
-                var builder = new StringBuilder(bytes.Length * 2);
-                foreach (byte item in bytes)
+                if (!resolver.TryResolve(out GameNameConfig? config) || config is null || config.LoadedFile is not SaveFileInfo file ||
+                    !resolver.TryResolve(out IFileSystemHelper? fileSystem) || fileSystem is null)
                 {
-                    builder.Append(item.ToString("x2", CultureInfo.InvariantCulture));
+                    return null;
                 }
-                return builder.ToString();
+
+                string path = fileSystem.GetSaveFilePath(file);
+                return TajsSaveIdentity.FromFile(path, file.GameName ?? gameName, file.NameNoExtension);
+            }
+            catch
+            {
+                return null;
             }
         }
+
     }
 }

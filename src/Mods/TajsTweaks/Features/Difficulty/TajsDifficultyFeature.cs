@@ -13,6 +13,7 @@ using Mafi.Core.Game;
 using Mafi.Core.Input;
 using Mafi.Core.SaveGame;
 using TajsCOI.Common.Logging;
+using TajsCOI.Common.Persistence;
 
 namespace TajsCOI.Tweaks.Features.Difficulty
 {
@@ -42,7 +43,8 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             GameNameConfig? gameNameConfig,
             ISaveManager saveManager,
             string saveName,
-            ITajsLogger log)
+            ITajsLogger log,
+            string? loadedSavePath = null)
         {
             m_applier = applier ?? throw new ArgumentNullException(nameof(applier));
             m_inputScheduler = inputScheduler ?? throw new ArgumentNullException(nameof(inputScheduler));
@@ -81,7 +83,9 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             TajsDifficultySaveIdentity? identity = null;
             if (gameNameConfig?.LoadedFile is SaveFileInfo loadedFile)
             {
-                identity = TajsDifficultySaveIdentity.FromSaveFile(loadedFile);
+                identity = !string.IsNullOrWhiteSpace(loadedSavePath)
+                    ? TajsDifficultySaveIdentity.FromSavePath(loadedSavePath!, loadedFile.GameName)
+                    : TajsDifficultySaveIdentity.FromSaveFile(loadedFile);
             }
 
             m_store.LoadOrCapture(identity, saveName, m_applier.DifficultyConfig, m_properties);
@@ -229,6 +233,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
         private void OnSaveDone(SaveResult result)
         {
             if (result.FilePath.ValueOrNull is string path &&
+                !TajsSaveIdentity.IsAutosavePath(path) &&
                 !m_store.RebindAfterSave(path, m_saveManager.GameName))
             {
                 m_log.Warning("Original-save difficulty baseline was not rebound after save; it remains unavailable if the save identity was ambiguous.");

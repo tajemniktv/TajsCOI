@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using TajsCOI.Common.Metadata;
+using TajsCOI.Common.Persistence;
 
 namespace TajsCOI.Core.Metadata
 {
@@ -23,7 +24,9 @@ namespace TajsCOI.Core.Metadata
         private readonly Dictionary<EntityMetadataIdentity, EntityMetadataRecord> m_entities = new();
         private readonly Dictionary<string, EntityMetadataGroup> m_groups = new(StringComparer.Ordinal);
         private readonly string m_rootDirectory;
+        private readonly TajsSaveIdentityRegistry m_identityRegistry;
         private string? m_filePath;
+        private TajsSaveIdentity? m_identity;
         private bool m_allowWrite;
 
         internal EntityMetadataStateStore(string rootDirectory)
@@ -31,6 +34,7 @@ namespace TajsCOI.Core.Metadata
             m_rootDirectory = string.IsNullOrWhiteSpace(rootDirectory)
                 ? throw new ArgumentException("Metadata root directory cannot be empty.", nameof(rootDirectory))
                 : Path.GetFullPath(rootDirectory);
+            m_identityRegistry = new TajsSaveIdentityRegistry(m_rootDirectory);
         }
 
         internal IReadOnlyDictionary<EntityMetadataIdentity, EntityMetadataRecord> Entities => m_entities;
@@ -41,6 +45,7 @@ namespace TajsCOI.Core.Metadata
         {
             m_entities.Clear();
             m_groups.Clear();
+            m_identity = null;
             m_filePath = null;
             m_allowWrite = false;
             if (string.IsNullOrWhiteSpace(saveIdentity))
@@ -52,6 +57,46 @@ namespace TajsCOI.Core.Metadata
             m_filePath = Path.Combine(directory, "metadata.tsv");
             m_allowWrite = true;
             if (!File.Exists(m_filePath))
+            {
+                return;
+            }
+
+            try
+            {
+                string[] lines = File.ReadAllLines(m_filePath, Encoding.UTF8);
+                if (lines.Length == 0 || !string.Equals(lines[0], Header, StringComparison.Ordinal))
+                {
+                    ClearLoadedState();
+                    return;
+                }
+
+                foreach (string line in lines.Skip(1))
+                {
+                    TryParseLine(line);
+                }
+            }
+            catch
+            {
+                // Optional metadata must never prevent a save from loading.
+                ClearLoadedState();
+            }
+        }
+
+        internal void LoadIdentity(TajsSaveIdentity? identity)
+        {
+            if (identity?.PhysicalPath is string physicalPath)
+            {
+                identity = m_identityRegistry.Resolve(physicalPath, identity.GameName, identity.DisplayName) ?? identity;
+            }
+
+            m_entities.Clear();
+            m_groups.Clear();
+            m_identity = identity;
+            m_filePath = identity?.IsStronglyVerified != true
+                ? null
+                : Path.Combine(m_rootDirectory, identity!.OwnershipKey, "metadata.tsv");
+            m_allowWrite = identity?.IsStronglyVerified == true;
+            if (m_filePath is null || !File.Exists(m_filePath))
             {
                 return;
             }
@@ -112,11 +157,75 @@ namespace TajsCOI.Core.Metadata
             return true;
         }
 
+        internal bool RebindIdentity(TajsSaveIdentity? identity)
+        {
+            if (identity is null)
+            {
+                return false;
+            }
+
+            if (identity.PhysicalPath is string physicalPath)
+            {
+                identity = m_identityRegistry.Rebind(
+                    physicalPath,
+                    identity.GameName,
+                    m_identity,
+                    identity.DisplayName) ?? identity;
+            }
+
+            if (m_identity is null && m_filePath is null)
+            {
+                // A new game has no prior save owner to protect. Bind any in-memory metadata
+                // to the first successful save instead of dropping edits made before saving.
+                m_identity = identity;
+                m_filePath = identity.IsStronglyVerified
+                    ? Path.Combine(m_rootDirectory, identity.OwnershipKey, "metadata.tsv")
+                    : null;
+                m_allowWrite = identity.IsStronglyVerified;
+                return m_allowWrite;
+            }
+
+            if (!identity.IsStronglyVerified)
+            {
+                ClearLoadedState();
+                m_filePath = null;
+                m_identity = identity;
+                m_allowWrite = false;
+                return false;
+            }
+
+            string nextPath = Path.Combine(m_rootDirectory, identity.OwnershipKey, "metadata.tsv");
+            if (string.Equals(m_filePath, nextPath, StringComparison.OrdinalIgnoreCase))
+            {
+                m_identity = identity;
+                m_allowWrite = true;
+                return true;
+            }
+
+            if (File.Exists(nextPath))
+            {
+                ClearLoadedState();
+                m_filePath = nextPath;
+                m_identity = identity;
+                m_allowWrite = false;
+                return false;
+            }
+
+            // A changed ownership key denotes save-as/copy/replacement. Do not transfer entity
+            // IDs or groups into the new file; leave a clean binding for future edits.
+            ClearLoadedState();
+            m_filePath = nextPath;
+            m_identity = identity;
+            m_allowWrite = true;
+            return false;
+        }
+
         internal void Unbind()
         {
             m_entities.Clear();
             m_groups.Clear();
             m_filePath = null;
+            m_identity = null;
             m_allowWrite = false;
         }
 

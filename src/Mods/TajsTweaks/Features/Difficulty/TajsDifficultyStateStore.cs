@@ -8,39 +8,47 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Security.Cryptography;
 using System.Text;
 using Mafi;
 using Mafi.Core;
 using Mafi.Core.Game;
+using TajsCOI.Common.Persistence;
 
 namespace TajsCOI.Tweaks.Features.Difficulty
 {
     /// <summary>
-    ///     The 0.8.7b save metadata has no immutable save id. This fingerprint combines the
-    ///     native file identity fields instead of using the display name alone. File timestamp
-    ///     and size change when a save is written, so the owning feature rebinds the sidecar only
-    ///     after a successful native save.
+    ///     Compatibility facade for the shared sidecar identity. SaveFileInfo alone is metadata
+    ///     only and therefore remains unverified; path-based identities use the stable filesystem
+    ///     file identity and keep timestamp/size in a separate revision marker.
     /// </summary>
     internal sealed class TajsDifficultySaveIdentity
     {
-        private TajsDifficultySaveIdentity(string fingerprint)
+        private TajsDifficultySaveIdentity(TajsSaveIdentity identity, string fingerprint)
         {
+            Inner = identity;
             Fingerprint = fingerprint;
         }
 
+        internal TajsSaveIdentity Inner { get; }
         internal string Fingerprint { get; }
+        internal string OwnershipKey => Inner.OwnershipKey;
+        internal string RevisionKey => Inner.RevisionKey;
+        internal bool IsVerified => Inner.IsVerified;
+        internal bool IsStronglyVerified => Inner.IsStronglyVerified;
+        internal string DisplayName => Inner.DisplayName;
+
+        internal static TajsDifficultySaveIdentity FromInner(TajsSaveIdentity identity) =>
+            new TajsDifficultySaveIdentity(identity, identity.RevisionKey);
 
         internal static TajsDifficultySaveIdentity FromSaveFile(SaveFileInfo save)
         {
-            string canonical = string.Join(
-                "\n",
-                save.GameName ?? string.Empty,
-                save.NameNoExtension ?? string.Empty,
-                save.Extension ?? string.Empty,
-                save.WriteTimestamp.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture),
-                save.SizeBytes.ToString(CultureInfo.InvariantCulture));
-            return new TajsDifficultySaveIdentity(Hash(canonical));
+            TajsSaveIdentity identity = TajsSaveIdentity.FromMetadata(
+                save.GameName,
+                save.NameNoExtension,
+                save.Extension,
+                save.WriteTimestamp,
+                save.SizeBytes);
+            return new TajsDifficultySaveIdentity(identity, identity.RevisionKey);
         }
 
         internal static TajsDifficultySaveIdentity? FromSavePath(string path, string gameName)
@@ -58,13 +66,8 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                     return null;
                 }
 
-                return FromSaveFile(
-                    new SaveFileInfo(
-                        Path.GetFileNameWithoutExtension(file.Name),
-                        gameName,
-                        file.LastWriteTimeUtc,
-                        file.Length,
-                        file.Extension));
+                TajsSaveIdentity? identity = TajsSaveIdentity.FromFile(path, gameName);
+                return identity is null ? null : new TajsDifficultySaveIdentity(identity, identity.RevisionKey);
             }
             catch
             {
@@ -72,20 +75,6 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             }
         }
 
-        private static string Hash(string value)
-        {
-            using (var sha256 = SHA256.Create())
-            {
-                byte[] bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(value));
-                var builder = new StringBuilder(bytes.Length * 2);
-                foreach (byte item in bytes)
-                {
-                    builder.Append(item.ToString("x2", CultureInfo.InvariantCulture));
-                }
-
-                return builder.ToString();
-            }
-        }
     }
 
     /// <summary>
@@ -100,8 +89,11 @@ namespace TajsCOI.Tweaks.Features.Difficulty
 
         private readonly Dictionary<string, string> m_originalValues = new(StringComparer.Ordinal);
         private readonly string m_rootDirectory;
+        private readonly TajsSaveIdentityRegistry m_identityRegistry;
         private string? m_filePath;
         private string? m_identityFingerprint;
+        private string? m_revisionFingerprint;
+        private TajsDifficultySaveIdentity? m_identity;
         private bool m_allowWrite;
         private bool m_baselineAvailable;
         private string m_baselineStatus = "original-save baseline unavailable.";
@@ -114,7 +106,8 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                     "Captain of Industry",
                     "TajsTweaks",
                     "Difficulty")
-                : rootDirectory!;
+                : Path.GetFullPath(rootDirectory!);
+            m_identityRegistry = new TajsSaveIdentityRegistry(m_rootDirectory);
         }
 
         internal IReadOnlyDictionary<string, string> OriginalValues => m_originalValues;
@@ -131,18 +124,52 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             GameDifficultyConfig current,
             IReadOnlyDictionary<string, PropertyInfo> properties)
         {
+            if (identity?.Inner.PhysicalPath is string physicalPath)
+            {
+                TajsSaveIdentity? resolved = m_identityRegistry.Resolve(
+                    physicalPath,
+                    identity.Inner.GameName,
+                    identity.Inner.DisplayName);
+                if (resolved is not null)
+                {
+                    identity = TajsDifficultySaveIdentity.FromInner(resolved);
+                }
+            }
+
             m_originalValues.Clear();
-            m_filePath = identity is null
+            m_identity = identity;
+            bool hasVerifiedFileIdentity = identity?.IsStronglyVerified == true;
+            m_filePath = !hasVerifiedFileIdentity
                 ? null
-                : Path.Combine(m_rootDirectory, identity.Fingerprint, "state.txt");
-            m_identityFingerprint = identity?.Fingerprint;
+                : Path.Combine(m_rootDirectory, identity!.OwnershipKey, "state.txt");
+            m_identityFingerprint = identity?.OwnershipKey;
+            m_revisionFingerprint = identity?.RevisionKey;
             m_allowWrite = false;
             m_baselineAvailable = false;
             m_baselineStatus = "original-save baseline unavailable.";
 
+            if (identity is not null && !hasVerifiedFileIdentity)
+            {
+                if (HasLegacySidecar(saveName))
+                {
+                    // V1 is keyed only by a sanitized name. Preserve it, but never guess that it
+                    // belongs to the active save and never silently migrate it.
+                    m_baselineStatus = "original-save baseline unavailable: legacy name-based sidecar requires explicit recapture.";
+                    return;
+                }
+
+                // SaveFileInfo metadata is useful for diagnostics but is not an ownership
+                // proof: timestamp/size/name can describe an unrelated save. Keep the native
+                // baseline in memory only until a concrete file identity is available.
+                CaptureMissing(current, properties);
+                m_baselineAvailable = true;
+                m_baselineStatus = "original-save baseline captured in memory only: verified file identity was unavailable.";
+                return;
+            }
+
             if (identity is not null && File.Exists(m_filePath))
             {
-                if (!TryRead(m_filePath!, identity.Fingerprint, properties))
+                if (!TryRead(m_filePath!, identity.OwnershipKey, properties))
                 {
                     // Do not replace a file that may contain recoverable data. The native
                     // difficulty UI and console remain usable without the optional baseline.
@@ -152,7 +179,9 @@ namespace TajsCOI.Tweaks.Features.Difficulty
 
                 m_baselineAvailable = true;
                 m_allowWrite = true;
-                m_baselineStatus = "original-save baseline identity verified.";
+                m_baselineStatus = identity.IsVerified
+                    ? "original-save baseline identity verified."
+                    : "original-save baseline loaded from metadata-only identity.";
                 if (CaptureMissing(current, properties))
                 {
                     Save();
@@ -173,8 +202,10 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             m_baselineAvailable = true;
             m_baselineStatus = identity is null
                 ? "original-save baseline is in memory only: native save identity was unavailable."
-                : "original-save baseline captured with verified save identity.";
-            m_allowWrite = identity is not null;
+                : identity.IsVerified
+                    ? "original-save baseline captured with verified save identity."
+                    : "original-save baseline captured from metadata-only identity.";
+            m_allowWrite = hasVerifiedFileIdentity;
             if (m_allowWrite)
             {
                 Save();
@@ -198,25 +229,65 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 return false;
             }
 
-            if (string.Equals(m_identityFingerprint, identity.Fingerprint, StringComparison.Ordinal))
+            TajsSaveIdentity? rebound = m_identityRegistry.Rebind(
+                savePath!,
+                gameName,
+                m_identity?.Inner,
+                identity.DisplayName);
+            if (rebound is not null)
             {
+                identity = TajsDifficultySaveIdentity.FromInner(rebound);
+            }
+
+            if (m_identity is null && m_identityFingerprint is null)
+            {
+                // A new game has no prior save owner to protect. Bind the in-memory baseline to
+                // the first successful save instead of dropping values captured before that save.
+                m_identity = identity;
+                m_identityFingerprint = identity.OwnershipKey;
+                m_revisionFingerprint = identity.RevisionKey;
+                m_filePath = identity.IsStronglyVerified
+                    ? Path.Combine(m_rootDirectory, identity.OwnershipKey, "state.txt")
+                    : null;
+                m_allowWrite = identity.IsStronglyVerified;
+                m_baselineStatus = identity.IsStronglyVerified
+                    ? "original-save baseline captured with verified save identity."
+                    : "original-save baseline remains in memory only: verified file identity was unavailable.";
                 return m_allowWrite && Save();
             }
 
-            string nextPath = Path.Combine(m_rootDirectory, identity.Fingerprint, "state.txt");
+            if (string.Equals(m_identityFingerprint, identity.OwnershipKey, StringComparison.Ordinal))
+            {
+                m_identity = identity;
+                m_revisionFingerprint = identity.RevisionKey;
+                return m_allowWrite && Save();
+            }
+
+            string nextPath = Path.Combine(m_rootDirectory, identity.OwnershipKey, "state.txt");
             if (File.Exists(nextPath))
             {
+                m_originalValues.Clear();
                 m_baselineAvailable = false;
                 m_allowWrite = false;
+                m_identityFingerprint = identity.OwnershipKey;
+                m_revisionFingerprint = identity.RevisionKey;
+                m_identity = identity;
+                m_filePath = nextPath;
                 m_baselineStatus = "original-save baseline unavailable: save identity collides with an existing sidecar.";
                 return false;
             }
 
-            m_identityFingerprint = identity.Fingerprint;
+            // A changed ownership key means save-as/copy/replacement. Never carry the old
+            // baseline into that unrelated file; preserve the old sidecar and fail closed.
+            m_originalValues.Clear();
+            m_baselineAvailable = false;
+            m_allowWrite = false;
+            m_identityFingerprint = identity.OwnershipKey;
+            m_revisionFingerprint = identity.RevisionKey;
+            m_identity = identity;
             m_filePath = nextPath;
-            m_allowWrite = true;
-            m_baselineStatus = "original-save baseline identity verified.";
-            return Save();
+            m_baselineStatus = "original-save baseline unavailable: save identity changed; recapture is required.";
+            return false;
         }
 
         internal bool TryGetOriginal(string memberName, PropertyInfo property, out object? value)
@@ -246,7 +317,13 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 temporary = m_filePath + ".tmp." + Guid.NewGuid().ToString("N");
                 File.WriteAllLines(
                     temporary,
-                    new[] { Header, "schema=" + SchemaVersion.ToString(CultureInfo.InvariantCulture), "identity=" + m_identityFingerprint }.Concat(
+                    new[]
+                    {
+                        Header,
+                        "schema=" + SchemaVersion.ToString(CultureInfo.InvariantCulture),
+                        "identity=" + m_identityFingerprint,
+                        "revision=" + (m_revisionFingerprint ?? string.Empty)
+                    }.Concat(
                         m_originalValues
                             .OrderBy(pair => pair.Key, StringComparer.Ordinal)
                             .Select(pair => pair.Key + "=" + pair.Value)),

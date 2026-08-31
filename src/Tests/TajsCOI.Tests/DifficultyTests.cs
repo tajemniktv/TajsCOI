@@ -152,14 +152,16 @@ namespace TajsCOI.Tests
             string root = Path.Combine(Path.GetTempPath(), "TajsCOI-DifficultyTests-" + Guid.NewGuid().ToString("N"));
             try
             {
-                TajsDifficultySaveIdentity identity = TajsDifficultySaveIdentity.FromSaveFile(
-                    new SaveFileInfo("slot", "world", DateTime.UtcNow, 100));
+                string savePath = Path.Combine(root, "slot.save");
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(savePath, new byte[] { 1, 2, 3 });
+                TajsDifficultySaveIdentity identity = TajsDifficultySaveIdentity.FromSavePath(savePath, "world")!;
                 var current = (GameDifficultyConfig)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(GameDifficultyConfig));
                 var properties = new Dictionary<string, System.Reflection.PropertyInfo>(StringComparer.Ordinal);
                 var store = new TajsDifficultyStateStore(root);
                 store.LoadOrCapture(identity, "world", current, properties);
 
-                string path = Path.Combine(root, identity.Fingerprint, "state.txt");
+                string path = Path.Combine(root, identity.OwnershipKey, "state.txt");
                 File.WriteAllText(path, "not a valid sidecar");
                 var reloaded = new TajsDifficultyStateStore(root);
                 reloaded.LoadOrCapture(identity, "world", current, properties);
@@ -209,7 +211,7 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
-        public void SuccessfulSaveRebindsBaselineWithoutDeletingPreviousSidecar()
+        public void SaveAsDoesNotMoveBaselineIntoUnrelatedIdentity()
         {
             string root = Path.Combine(Path.GetTempPath(), "TajsCOI-DifficultyTests-" + Guid.NewGuid().ToString("N"));
             try
@@ -217,9 +219,7 @@ namespace TajsCOI.Tests
                 string firstPath = Path.Combine(root, "slot.save");
                 Directory.CreateDirectory(root);
                 File.WriteAllBytes(firstPath, new byte[] { 1, 2, 3 });
-                DateTime firstWrite = File.GetLastWriteTimeUtc(firstPath);
-                TajsDifficultySaveIdentity firstIdentity = TajsDifficultySaveIdentity.FromSaveFile(
-                    new SaveFileInfo("slot", "world", firstWrite, 3));
+                TajsDifficultySaveIdentity firstIdentity = TajsDifficultySaveIdentity.FromSavePath(firstPath, "world")!;
                 var store = new TajsDifficultyStateStore(Path.Combine(root, "sidecars"));
                 var current = (GameDifficultyConfig)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(GameDifficultyConfig));
                 store.LoadOrCapture(
@@ -230,10 +230,81 @@ namespace TajsCOI.Tests
 
                 string secondPath = Path.Combine(root, "slot-copy.save");
                 File.WriteAllBytes(secondPath, new byte[] { 1, 2, 3, 4 });
-                XAssert.True(store.RebindAfterSave(secondPath, "world"));
+                XAssert.False(store.RebindAfterSave(secondPath, "world"));
 
-                XAssert.True(File.Exists(Path.Combine(root, "sidecars", firstIdentity.Fingerprint, "state.txt")));
-                XAssert.NotEqual(firstIdentity.Fingerprint, store.IdentityFingerprint);
+                XAssert.True(File.Exists(Path.Combine(root, "sidecars", firstIdentity.OwnershipKey, "state.txt")));
+                XAssert.NotEqual(firstIdentity.OwnershipKey, store.IdentityFingerprint);
+                XAssert.False(store.IsBaselineAvailable);
+                XAssert.False(File.Exists(Path.Combine(root, "sidecars", store.IdentityFingerprint!, "state.txt")));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void RepeatedSaveRevisionsDoNotCreateObsoleteBaselineDirectories()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-DifficultyTests-" + Guid.NewGuid().ToString("N"));
+            string savePath = Path.Combine(root, "slot.save");
+            string sidecarRoot = Path.Combine(root, "sidecars");
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(savePath, new byte[] { 1, 2, 3 });
+                TajsDifficultySaveIdentity initial = TajsDifficultySaveIdentity.FromSavePath(savePath, "world")!;
+                var current = (GameDifficultyConfig)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(GameDifficultyConfig));
+                var store = new TajsDifficultyStateStore(sidecarRoot);
+                store.LoadOrCapture(
+                    initial,
+                    "world",
+                    current,
+                    new Dictionary<string, System.Reflection.PropertyInfo>(StringComparer.Ordinal));
+
+                string replacement = savePath + ".tmp";
+                File.WriteAllBytes(replacement, new byte[] { 1, 2, 3, 4 });
+                File.Replace(replacement, savePath, null);
+
+                XAssert.True(store.RebindAfterSave(savePath, "world"));
+                XAssert.Equal(initial.OwnershipKey, store.IdentityFingerprint);
+                string[] baselineDirectories = Directory.GetDirectories(sidecarRoot)
+                    .Where(path => !string.Equals(Path.GetFileName(path), "_identity-bindings.tsv", StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                XAssert.Single(baselineDirectories);
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void FirstSaveBindsNewGameBaselineWithoutDroppingIt()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-DifficultyTests-" + Guid.NewGuid().ToString("N"));
+            string savePath = Path.Combine(root, "new-game.save");
+            try
+            {
+                Directory.CreateDirectory(root);
+                var current = (GameDifficultyConfig)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(GameDifficultyConfig));
+                var store = new TajsDifficultyStateStore(Path.Combine(root, "sidecars"));
+                store.LoadOrCapture(
+                    null,
+                    "world",
+                    current,
+                    new Dictionary<string, System.Reflection.PropertyInfo>(StringComparer.Ordinal));
+                File.WriteAllBytes(savePath, new byte[] { 1 });
+
+                XAssert.True(store.RebindAfterSave(savePath, "world"));
+                XAssert.True(store.IsBaselineAvailable);
+                XAssert.NotNull(store.IdentityFingerprint);
                 XAssert.True(File.Exists(Path.Combine(root, "sidecars", store.IdentityFingerprint!, "state.txt")));
             }
             finally

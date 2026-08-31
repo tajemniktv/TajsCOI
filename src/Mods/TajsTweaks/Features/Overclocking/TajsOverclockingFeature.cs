@@ -4,14 +4,15 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using Mafi;
+using Mafi.Core;
 using Mafi.Core.Buildings.Offices;
 using Mafi.Core.Buildings.OreSorting;
 using Mafi.Core.Buildings.Waste;
+using Mafi.Core.Game;
 using Mafi.Core.Entities;
 using Mafi.Core.Factory.ElectricPower;
 using Mafi.Core.Factory.Machines;
@@ -24,6 +25,7 @@ using Mafi.Core.SaveGame;
 using Mafi.Unity.Entities;
 using TajsCOI.Common.Logging;
 using TajsCOI.Common.Metadata;
+using TajsCOI.Common.Persistence;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
 using UnityEngine;
@@ -43,7 +45,6 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         private const int DefaultPercent = 100;
         private const int MaxTransportExtraMovesPerTick = 8;
         private const float MaxTransportPendingMoves = MaxTransportExtraMovesPerTick;
-        private const int MaxLegacyImportRecords = 100000;
 
         private sealed class AutoPlan
         {
@@ -71,6 +72,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         private readonly ITajsLogger m_log;
         private readonly OverclockingStateStore m_store = new();
         private readonly IEntitiesManager m_entities;
+        private readonly ISaveManager? m_saveManager;
         private IInputScheduler? m_inputScheduler;
         private readonly IProductsManager? m_products;
         private readonly IElectricityManager? m_electricity;
@@ -85,7 +87,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         private readonly MethodInfo? m_officeTimerDecrement;
         private readonly FieldInfo? m_wasteRecipeTimer;
         private readonly MethodInfo? m_wasteTimerDecrement;
-        private float m_nextAutoTime;
+        private double m_nextAutoTime;
         private int m_maintenanceTick;
         private readonly Dictionary<int, float> m_extraCycleAccumulators = new();
         private readonly Dictionary<int, float> m_transportExtraMoveAccumulators = new();
@@ -119,6 +121,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             resolver.TryResolve(out m_workers);
             resolver.TryResolve(out m_rendering);
             resolver.TryResolve(out m_metadata);
+            resolver.TryResolve(out m_saveManager);
             m_selection = new OverclockingSelectionTool(m_entities, this, canSelectId);
 
             BindingFlags privateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -146,11 +149,9 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 // settings can then be changed live without recreating the scene.
             }
 
-            m_store.LoadForSave(GetSaveName());
+            m_store.LoadForSave(GetSaveIdentity(), GetSaveName());
             OverclockingPatches.Install(harmony, this);
             TransportOverclockingPatches.Install(harmony);
-            ImportLegacyBoostsIfNeeded();
-            ImportLegacyTransportBoostsIfNeeded();
             if (TajsTweaksRuntimeState.Overclocking)
             {
                 ReconcileLoadedMachines();
@@ -173,11 +174,15 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             {
                 m_log.Exception(exception, "Overclocking inspector integration unavailable; gameplay controls remain active.");
             }
+            if (m_saveManager is not null)
+            {
+                m_saveManager.OnSaveDone += OnSaveDone;
+            }
             m_installed = true;
             s_current = this;
         }
 
-        internal void Tick()
+        internal void Tick(GameTime gameTime)
         {
             if (!m_installed || !TajsTweaksRuntimeState.Overclocking)
             {
@@ -190,12 +195,15 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 m_store.Prune(IsKnownSupportedEntity);
             }
 
-            if (Time.realtimeSinceStartup < m_nextAutoTime)
+            double simulationSeconds = gameTime.TimeSinceLoadMs.ToDouble() / 1000d;
+            if (!OverclockCadence.IsDue(simulationSeconds, m_nextAutoTime))
             {
                 return;
             }
 
-            m_nextAutoTime = Time.realtimeSinceStartup + Math.Max(1, TajsTweaksRuntimeState.OverclockAutoIntervalSeconds);
+            m_nextAutoTime = OverclockCadence.ScheduleNext(
+                simulationSeconds,
+                TajsTweaksRuntimeState.OverclockAutoIntervalSeconds);
             RunAutoCycle();
         }
 
@@ -207,6 +215,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
 
             m_store.Save();
+            if (m_saveManager is not null)
+            {
+                m_saveManager.OnSaveDone -= OnSaveDone;
+            }
             m_transportExtraMoveAccumulators.Clear();
             m_transportSpeedDisabled.Clear();
             ClearHighlights();
@@ -294,7 +306,9 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             // COI's non-machine production timers only have a safe accelerated path. Keep
             // ore sorting, offices, and waste sorting at vanilla speed when underclocking is
             // requested; Machines alone support the 10%..100% range.
-            if (TryGetSupportedEntity(new EntityId(entityId), out object? supported) && supported is not Machine)
+            bool hasSupportedEntity = TryGetSupportedEntity(new EntityId(entityId), out object? supported);
+            bool autoEligible = hasSupportedEntity && CanAutoOverclock(supported!);
+            if (hasSupportedEntity && supported is not Machine)
             {
                 min = Math.Max(100, min);
                 max = Math.Max(min, max);
@@ -305,6 +319,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     ? group.ManualDefault
                     : DefaultPercent;
             bool auto = entity is not null && entity.HasAutoOverride ? entity.Auto : group?.Auto == true;
+            auto &= autoEligible;
             return new OverclockEffectivePolicy(
                 OverclockingMath.ClampPercent(manual, min, max),
                 auto,
@@ -641,6 +656,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             if (!TryGetSupportedEntity(id, out object? entity))
             {
                 message = "Entity '" + id.Value + "' is not a supported overclocking entity.";
+                return false;
+            }
+
+            if (enabled && !CanAutoOverclock(entity!))
+            {
+                message = "Auto mode currently requires a Machine demand signal; this entity family keeps manual overclock semantics.";
                 return false;
             }
 
@@ -989,6 +1010,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 group.MaxPercent = bounds.MaxPercent;
             }
 
+            int unsupported = 0;
             foreach (int id in group.Members.ToArray())
             {
                 if (m_store.TryGetEntity(id, out OverclockEntityPolicy? policy) && policy!.HasAutoOverride)
@@ -998,12 +1020,18 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
                 if (TryGetSupportedEntity(new EntityId(id), out object? entity))
                 {
+                    if (enabled && !CanAutoOverclock(entity!))
+                    {
+                        unsupported++;
+                        continue;
+                    }
                     ApplyRate(entity!, enabled ? DefaultPercent : GetEffectivePolicy(id).ManualPercent);
                 }
             }
 
             m_store.Save();
-            message = "Auto mode " + (enabled ? "enabled" : "disabled") + " for group " + groupId + ".";
+            message = "Auto mode " + (enabled ? "enabled" : "disabled") + " for group " + groupId +
+                      (unsupported == 0 ? "." : "; " + unsupported + " non-machine members remain manual.");
             return true;
         }
 
@@ -1017,7 +1045,8 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             OverclockEffectivePolicy policy = GetEffectivePolicy(id.Value);
             string display = GetMetadataDisplay(id, out string note);
             return "Entity " + id.Value + display + ": rate=" + GetPercent(id) + "%, auto=" + policy.Auto +
-                   ", bounds=" + policy.MinPercent + "-" + policy.MaxPercent + "%, group=" + policy.GroupId + note + ".";
+                   ", bounds=" + policy.MinPercent + "-" + policy.MaxPercent + "%, group=" + policy.GroupId + note +
+                   ". " + m_store.LoadStatus;
         }
 
         internal string ListEntities(string? typeFilter, string? stateFilter, int? groupId, string? sort)
@@ -1378,6 +1407,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             m_store.Save();
         }
 
+        // Auto currently consumes Machine electricity/worker demand signals. OreSortingPlant,
+        // OfficeBuilding, WasteSortingPlant, and Transport are supported by the general manual
+        // overclock stack, but each needs separate native timing/capacity semantics before an
+        // automatic controller can safely change its rate.
+        private static bool CanAutoOverclock(object entity) => entity is Machine;
+
         private float? GetOutputFill(Machine machine)
         {
             if (m_products is null)
@@ -1731,60 +1766,6 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             };
         }
 
-        private void ImportLegacyTransportBoostsIfNeeded()
-        {
-            try
-            {
-                string saveName = Sanitize(GetSaveName());
-                string root = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "Captain of Industry",
-                    "Mori++ Saved settings",
-                    "Boost++ Saved settings");
-                string[] candidates = { Path.Combine(root, saveName, "transports.txt"), Path.Combine(root, "transports.txt") };
-                string? legacy = candidates.FirstOrDefault(File.Exists);
-                if (legacy is null)
-                {
-                    return;
-                }
-
-                int imported = 0;
-                foreach (string line in File.ReadAllLines(legacy).Take(MaxLegacyImportRecords))
-                {
-                    string[] fields = line.Split('=');
-                    if (fields.Length != 2 || !int.TryParse(fields[0], out int id) ||
-                        !float.TryParse(
-                            fields[1],
-                            System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture,
-                            out float multiplier) ||
-                        multiplier <= 1f || !TryGetSupportedEntity(new EntityId(id), out object? entity) ||
-                        entity is not Transport || m_store.TryGetEntity(id, out OverclockEntityPolicy? existing) && existing!.HasManualOverride)
-                    {
-                        continue;
-                    }
-
-                    OverclockEntityPolicy policy = m_store.GetOrCreateEntity(id);
-                    policy.HasManualOverride = true;
-                    policy.ManualPercent = OverclockingMath.ClampPercent(
-                        (int)Math.Round(multiplier * 100f),
-                        100,
-                        TajsTweaksRuntimeState.OverclockMaxPercent);
-                    imported++;
-                }
-
-                if (imported > 0)
-                {
-                    m_store.Save();
-                    m_log.Info("Imported " + imported + " legacy Boost++ belt/pipe policies into TajsTweaks.");
-                }
-            }
-            catch (Exception exception)
-            {
-                m_log.Exception(exception, "Legacy Boost++ belt/pipe policy import failed open.");
-            }
-        }
-
         private bool IsKnownSupportedEntity(int id) => TryGetSupportedEntity(new EntityId(id), out _);
 
         private void ApplyGroupMembers(OverclockGroup group, Action<object> action)
@@ -1886,57 +1867,6 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
         }
 
-        private void ImportLegacyBoostsIfNeeded()
-        {
-            if (m_store.Entities.Count > 0 || m_store.Groups.Count > 0)
-            {
-                return;
-            }
-
-            try
-            {
-                string saveName = GetSaveName();
-                string safeName = Sanitize(saveName);
-                string root = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "Captain of Industry",
-                    "Mori++ Saved settings",
-                    "Boost++ Saved settings");
-                string[] candidates = { Path.Combine(root, safeName, "boosts.txt"), Path.Combine(root, "boosts.txt") };
-                string? legacy = candidates.FirstOrDefault(File.Exists);
-                if (legacy is null)
-                {
-                    return;
-                }
-
-                int imported = 0;
-                foreach (string line in File.ReadAllLines(legacy).Take(MaxLegacyImportRecords))
-                {
-                    string[] fields = line.Split('=');
-                    if (fields.Length != 2 || !int.TryParse(fields[0], out int id) || !int.TryParse(fields[1], out int percent) ||
-                        !TryGetSupportedEntity(new EntityId(id), out _))
-                    {
-                        continue;
-                    }
-
-                    OverclockEntityPolicy policy = m_store.GetOrCreateEntity(id);
-                    policy.HasManualOverride = true;
-                    policy.ManualPercent = OverclockingMath.ClampPercent(percent, 10, TajsTweaksRuntimeState.OverclockMaxPercent);
-                    imported++;
-                }
-
-                if (imported > 0)
-                {
-                    m_store.Save();
-                    m_log.Info("Imported " + imported + " legacy Boost++ machine policies into TajsTweaks.");
-                }
-            }
-            catch (Exception exception)
-            {
-                m_log.Exception(exception, "Legacy Boost++ policy import failed open.");
-            }
-        }
-
         private string GetSaveName()
         {
             try
@@ -1951,6 +1881,39 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             }
 
             return "current";
+        }
+
+        private TajsSaveIdentity? GetSaveIdentity()
+        {
+            try
+            {
+                if (m_resolver.TryResolve(out GameNameConfig? config) &&
+                    config is not null && config.LoadedFile is SaveFileInfo loadedFile &&
+                    m_resolver.TryResolve(out IFileSystemHelper? fileSystem) && fileSystem is not null)
+                {
+                    string path = fileSystem.GetSaveFilePath(loadedFile);
+                    return TajsSaveIdentity.FromFile(path, loadedFile.GameName, loadedFile.NameNoExtension);
+                }
+            }
+            catch
+            {
+                // Optional sidecar identity is fail-open when the resolver has no loaded save.
+            }
+
+            return null;
+        }
+
+        private void OnSaveDone(SaveResult result)
+        {
+            if (result.FilePath.ValueOrNull is not string path || TajsSaveIdentity.IsAutosavePath(path))
+            {
+                return;
+            }
+
+            if (!m_store.RebindAfterSave(path, GetSaveName()))
+            {
+                m_log.Warning("Overclocking sidecar was not rebound after save; policy state was reset because save identity changed or was ambiguous.");
+            }
         }
 
         private static Type? FindType(string fullName) => typeof(Machine).Assembly.GetType(fullName);
@@ -2010,15 +1973,5 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             return false;
         }
 
-        private static string Sanitize(string value)
-        {
-            string result = value ?? string.Empty;
-            foreach (char invalid in Path.GetInvalidFileNameChars())
-            {
-                result = result.Replace(invalid, '_');
-            }
-
-            return result.Trim();
-        }
     }
 }
