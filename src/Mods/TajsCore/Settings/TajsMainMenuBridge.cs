@@ -13,6 +13,7 @@ using Mafi.Unity.MainMenu;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
 using TajsCOI.Bootstrap;
+using TajsCOI.Common.Localization;
 using TajsCOI.Common.Profiles;
 using TajsCOI.Common.Runtime;
 using TajsCOI.Common.Settings;
@@ -147,16 +148,19 @@ namespace TajsCOI.Core.Settings
     internal sealed class TajsMainMenuWindow : Window
     {
         private readonly ISettingsProfileService m_profiles;
+        private readonly ILocalizationService m_localization;
         private readonly ITajsSettings m_settings;
         private readonly ITajsRuntime m_runtime;
 
         public TajsMainMenuWindow(
             ISettingsProfileService profiles,
+            ILocalizationService localization,
             ITajsSettings settings,
             ITajsRuntime runtime)
             : base("TajsCOI Control Center".AsLoc())
         {
             m_profiles = profiles ?? throw new ArgumentNullException(nameof(profiles));
+            m_localization = localization ?? throw new ArgumentNullException(nameof(localization));
             m_settings = settings ?? throw new ArgumentNullException(nameof(settings));
             m_runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
             Build();
@@ -189,60 +193,7 @@ namespace TajsCOI.Core.Settings
             return panel;
         }
 
-        private Panel BuildProfiles()
-        {
-            Panel panel = TajsDashboardUi.Card("Settings profiles", "Preview or apply profile-safe values before entering a save.");
-            IReadOnlyList<SettingsProfile> profiles = m_profiles.List();
-            if (profiles.Count == 0)
-            {
-                panel.Body.Add(new Label("No saved profiles.".AsLoc()).FontSize(11));
-                return panel;
-            }
-
-            foreach (SettingsProfile profile in profiles)
-            {
-                Label feedback = new Label().FontSize(11).Hide();
-                Row actions = new Row(2.pt()).AlignItemsCenter();
-                actions.Add(
-                    TajsDashboardUi.ActionButton(
-                        Button.Area,
-                        "Preview",
-                        "Assets/Unity/UserInterface/General/Configure.svg",
-                        () =>
-                        {
-                            SettingsProfilePreview preview = m_profiles.Preview(profile);
-                            feedback.Value(
-                                (profile.Name + ": " + string.Join(
-                                    ", ",
-                                    preview.Entries
-                                        .GroupBy(entry => entry.State)
-                                        .Select(group => group.Key + "=" + group.Count()))).AsLoc()).Show();
-                        }),
-                    TajsDashboardUi.ActionButton(
-                        Button.Area,
-                        "Apply",
-                        "Assets/Unity/UserInterface/General/Configure.svg",
-                        () =>
-                        {
-                            SettingsProfileApplyResult result = m_profiles.Apply(profile);
-                            feedback.Value(
-                                (profile.Name + ": applied=" + result.AppliedCount +
-                                 ", skipped=" + result.SkippedIds.Count + ", errors=" + result.Errors.Count).AsLoc()).Show();
-                        }));
-                panel.Body.Add(
-                    new Row(3.pt())
-                    {
-                        new Column(1.pt())
-                        {
-                            new Label(profile.Name.AsLoc()).FontBold(),
-                            new Label((profile.Values.Count + " saved value(s)").AsLoc()).FontSize(11),
-                            feedback,
-                        }.FlexGrow(1f),
-                        actions,
-                    }.AlignItemsCenter());
-            }
-            return panel;
-        }
+        private Panel BuildProfiles() => TajsDashboardProfilesPanel.Build(m_profiles, m_localization, () => { });
 
         private Panel BuildDiagnostics()
         {
