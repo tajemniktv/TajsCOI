@@ -726,10 +726,10 @@ namespace TajsCOI.Core.Settings
                     m_logsPage!.Update(ReadProfilerSnapshot());
                     break;
                 case DashboardPage.Shortcuts:
-                    if (m_builtPages.Add(m_selectedPage))
-                    {
-                        AddShortcutsPage();
-                    }
+                    // Bindings and conflict approvals can change immediately from settings or
+                    // the capture/console path; rebuild this small page so diagnostics stay live.
+                    CurrentPage.Clear();
+                    AddShortcutsPage();
                     break;
                 case DashboardPage.Settings:
                     // Settings controls are dynamic and may change shape when descriptors are
@@ -1035,6 +1035,20 @@ namespace TajsCOI.Core.Settings
                             "dashboard.shortcuts.description",
                             "Central bindings are persisted by Core and dispatched only when text fields, modals, tools, and UI do not capture input.")
                         .AsLoc()).FontSize(12));
+            IReadOnlyList<ShortcutConflictSnapshot> conflicts = m_shortcuts.GetConflictSnapshot();
+            if (conflicts.Count != 0)
+            {
+                CurrentPage.Add(
+                    new Label(
+                        "Conflicts remain visible even when explicitly accepted. Accepted conflicts dispatch the ordinal-first action; unaccepted conflicts are rejected on change/load."
+                            .AsLoc()).FontSize(11));
+                foreach (ShortcutConflictSnapshot conflict in conflicts)
+                {
+                    string participants = string.Join(", ", conflict.ActionIds.Concat(conflict.VanillaActionIds));
+                    string state = conflict.IsAccepted ? "accepted (ordinal-first dispatch)" : "requires explicit acceptance";
+                    CurrentPage.Add(new Label((conflict.Combination + " · " + participants + " · " + state).AsLoc()).FontSize(11));
+                }
+            }
             if (shortcuts.Count == 0)
             {
                 CurrentPage.Add(new Label("No suite shortcuts are registered yet.".AsLoc()).FontSize(12));

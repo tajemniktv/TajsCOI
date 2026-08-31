@@ -18,16 +18,23 @@ namespace TajsCOI.Common.Configuration
 
     public sealed class ConfigurationEntityDescriptor
     {
-        public ConfigurationEntityDescriptor(string entityId, string typeId, string prototypeId)
+        public ConfigurationEntityDescriptor(string entityId, string typeId, string? prototypeId = null)
         {
             EntityId = Require(entityId, nameof(entityId));
             TypeId = Require(typeId, nameof(typeId));
-            PrototypeId = Require(prototypeId, nameof(prototypeId));
+            PrototypeId = Optional(prototypeId);
         }
 
         public string EntityId { get; }
         public string TypeId { get; }
-        public string PrototypeId { get; }
+        /// <summary>
+        ///     Stable native prototype identity when the entity exposes one. A null value is
+        ///     intentional for entities that do not have a meaningful prototype; callers must not
+        ///     derive one from <see cref="TypeId"/>.
+        /// </summary>
+        public string? PrototypeId { get; }
+
+        public bool HasPrototype => PrototypeId is not null;
 
         private static string Require(string value, string parameter)
         {
@@ -38,6 +45,9 @@ namespace TajsCOI.Common.Configuration
 
             return value.Trim();
         }
+
+        private static string? Optional(string? value) =>
+            value is null || string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
     public sealed class ConfigurationPayload
@@ -104,15 +114,29 @@ namespace TajsCOI.Common.Configuration
     public sealed class ConfigurationSnapshot
     {
         public ConfigurationSnapshot(IEnumerable<ConfigurationPayload>? payloads)
+            : this(payloads, null)
+        {
+        }
+
+        public ConfigurationSnapshot(
+            IEnumerable<ConfigurationPayload>? payloads,
+            IEnumerable<string>? errors)
         {
             Payloads = Array.AsReadOnly(
                 (payloads ?? Enumerable.Empty<ConfigurationPayload>())
                 .Where(payload => payload is not null)
                 .OrderBy(payload => payload.HandlerId, StringComparer.Ordinal)
                 .ToArray());
+            Errors = Array.AsReadOnly(
+                (errors ?? Enumerable.Empty<string>())
+                .Where(error => !string.IsNullOrWhiteSpace(error))
+                .Select(error => error.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray());
         }
 
         public IReadOnlyList<ConfigurationPayload> Payloads { get; }
+        public IReadOnlyList<string> Errors { get; }
     }
 
     public sealed class ConfigurationHandlerDescriptor

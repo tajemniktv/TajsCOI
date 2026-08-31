@@ -169,6 +169,7 @@ namespace TajsCOI.Tests
 
             ConfigurationSnapshot snapshot = registry.Capture(entity, new object());
             Assert.Single(snapshot.Payloads);
+            Assert.Single(snapshot.Errors);
             ConfigurationSnapshot oldSnapshot = new(
                 new[]
                 {
@@ -180,6 +181,60 @@ namespace TajsCOI.Tests
             Assert.Equal(1, result.Skipped);
             Assert.Equal(8, state["value"]);
             Assert.Single(result.Errors);
+        }
+
+        [Fact]
+        public void ConfigurationHandlersRouteDistinctPrototypesSharingOneEntityTypeAndRoundTrip()
+        {
+            var registry = new ConfigurationBlueprintRegistry();
+            var sourceState = new Dictionary<string, object> { ["value"] = 11 };
+            var restoredState = new Dictionary<string, object> { ["value"] = 0 };
+            registry.Register(
+                new ConfigurationHandlerDescriptor(
+                    "Tests.PrototypeA",
+                    "Tests",
+                    1,
+                    entity => entity.PrototypeId == "proto-a",
+                    _ => new Dictionary<string, object> { ["value"] = sourceState["value"] },
+                    (_, values) =>
+                    {
+                        restoredState["value"] = values["value"];
+                        return true;
+                    }));
+            registry.Register(
+                new ConfigurationHandlerDescriptor(
+                    "Tests.PrototypeB",
+                    "Tests",
+                    1,
+                    entity => entity.PrototypeId == "proto-b",
+                    _ => new Dictionary<string, object> { ["value"] = 22 },
+                    (_, values) =>
+                    {
+                        restoredState["value"] = Convert.ToInt32(values["value"]);
+                        return true;
+                    }));
+
+            var entityA = new ConfigurationEntityDescriptor("1", "Shared.Entity", "proto-a");
+            var entityB = new ConfigurationEntityDescriptor("2", "Shared.Entity", "proto-b");
+            ConfigurationSnapshot capturedA = registry.Capture(entityA, new object());
+            ConfigurationSnapshot capturedB = registry.Capture(entityB, new object());
+            Assert.Equal("Tests.PrototypeA", Assert.Single(capturedA.Payloads).HandlerId);
+            Assert.Equal("Tests.PrototypeB", Assert.Single(capturedB.Payloads).HandlerId);
+
+            Assert.True(ConfigurationPayloadCodec.TrySerialize(capturedA, out string encodedA, out string encodeErrorA), encodeErrorA);
+            Assert.True(ConfigurationPayloadCodec.TryDeserialize(encodedA, out ConfigurationSnapshot decodedA, out string decodeErrorA), decodeErrorA);
+            Assert.Equal(1, registry.Apply(entityA, new object(), decodedA).Applied);
+            Assert.Equal(11, restoredState["value"]);
+
+            Assert.True(ConfigurationPayloadCodec.TrySerialize(capturedB, out string encodedB, out string encodeErrorB), encodeErrorB);
+            Assert.True(ConfigurationPayloadCodec.TryDeserialize(encodedB, out ConfigurationSnapshot decodedB, out string decodeErrorB), decodeErrorB);
+            Assert.Equal(1, registry.Apply(entityB, new object(), decodedB).Applied);
+            Assert.Equal(22, restoredState["value"]);
+            Assert.Equal("Shared.Entity", entityA.TypeId);
+            Assert.NotEqual(entityA.PrototypeId, entityB.PrototypeId);
+            ConfigurationEntityDescriptor noPrototype = new("3", "Shared.Entity", null);
+            Assert.False(noPrototype.HasPrototype);
+            Assert.Null(noPrototype.PrototypeId);
         }
 
         [Fact]
@@ -222,6 +277,130 @@ namespace TajsCOI.Tests
             Assert.True(registry.Unregister("Tests.Owned", "Tests.Owner"));
             Assert.Empty(registry.GetHandlerSnapshot());
             Assert.False(registry.Unregister("Tests.Owned", "Tests.Owner"));
+        }
+
+        [Fact]
+        public void ShortcutRegistryFailedLoadIsTransactional()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "tajs-shortcut-transaction-tests-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, "shortcuts.txt");
+            try
+            {
+                var registry = new ShortcutRegistry();
+                registry.Register(Descriptor("TajsTests.First", "F1"));
+                registry.Register(Descriptor("TajsTests.Second", "F2"));
+                registry.TrySetBinding("TajsTests.First", new ShortcutCombination("CTRL+F1"), default);
+                File.WriteAllText(
+                    path,
+                    "TajsCOIShortcutBindingsV1\n" +
+                    "TajsTests.First\tF3\t\n" +
+                    "TajsTests.Second\tF3\t\n");
+
+                Assert.False(registry.TryLoad(path, out string error));
+                Assert.Contains("rejected", error, StringComparison.OrdinalIgnoreCase);
+                Assert.True(registry.TryGet("TajsTests.First", out ShortcutBindingSnapshot first));
+                Assert.Equal("CTRL+F1", first.Primary.Serialized);
+                Assert.True(registry.TryGet("TajsTests.Second", out ShortcutBindingSnapshot second));
+                Assert.Equal("F2", second.Primary.Serialized);
+                Assert.True(registry.TryResolveBinding(new ShortcutCombination("CTRL+F1"), out ShortcutBindingSnapshot resolved));
+                Assert.Equal("TajsTests.First", resolved.Descriptor.ActionId);
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, recursive: true);
+                }
+            }
+        }
+
+        [Fact]
+        public void ShortcutRegistryPersistsExplicitAcceptedConflictsAndResolvesOrdinalFirst()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "tajs-shortcut-conflict-tests-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, "shortcuts.txt");
+            try
+            {
+                var registry = new ShortcutRegistry();
+                registry.Register(Descriptor("TajsTests.First", "F1"));
+                registry.Register(Descriptor("TajsTests.Second", "F2"));
+                ShortcutCombination combination = new("CTRL+K");
+                Assert.True(registry.TrySetBinding("TajsTests.First", combination, default).Success);
+                Assert.Equal(ShortcutSetStatus.Conflict, registry.TrySetBinding("TajsTests.Second", combination, default).Status);
+                Assert.Equal(
+                    ShortcutSetStatus.Applied,
+                    registry.TryAcceptConflict("TajsTests.Second", combination, "TajsTests.First").Status);
+                Assert.True(registry.TrySetBinding("TajsTests.Second", combination, default).Success);
+                ShortcutConflictSnapshot conflict = Assert.Single(registry.GetConflictSnapshot());
+                Assert.True(conflict.IsAccepted);
+                Assert.True(registry.TryResolveBinding(combination, out ShortcutBindingSnapshot resolved));
+                Assert.Equal("TajsTests.First", resolved.Descriptor.ActionId);
+                Assert.True(resolved.IsConflict);
+                Assert.True(registry.TrySave(path, out string saveError), saveError);
+
+                var restored = new ShortcutRegistry();
+                restored.Register(Descriptor("TajsTests.First", "F1"));
+                restored.Register(Descriptor("TajsTests.Second", "F2"));
+                Assert.True(restored.TryLoad(path, out string loadError), loadError);
+                Assert.True(restored.TryResolveBinding(combination, out ShortcutBindingSnapshot restoredResolved));
+                Assert.Equal("TajsTests.First", restoredResolved.Descriptor.ActionId);
+                Assert.True(Assert.Single(restored.GetConflictSnapshot()).IsAccepted);
+
+                Assert.True(restored.TrySetBinding("TajsTests.Second", new ShortcutCombination("F3"), default).Success);
+                Assert.Empty(restored.GetConflictSnapshot());
+                Assert.Equal(ShortcutSetStatus.Conflict, restored.TrySetBinding("TajsTests.Second", combination, default).Status);
+                Assert.True(restored.TryResetBinding("TajsTests.Second").Success);
+                Assert.Equal("F2", restored.GetSnapshot().Single(item => item.Descriptor.ActionId == "TajsTests.Second").Primary.Serialized);
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, recursive: true);
+                }
+            }
+        }
+
+        [Fact]
+        public void ShortcutRegistryRepresentsAndAcceptsVanillaConflictsExplicitly()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "tajs-shortcut-vanilla-tests-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, "shortcuts.txt");
+            try
+            {
+                var registry = new ShortcutRegistry();
+                registry.Register(Descriptor("TajsTests.Action", "F1"));
+                registry.CacheVanillaBindings(
+                    new[] { new KeyValuePair<string, ShortcutCombination>("Vanilla.Build", new ShortcutCombination("F9")) });
+
+                ShortcutCombination combination = new("F9");
+                Assert.Equal(ShortcutSetStatus.Conflict, registry.TrySetBinding("TajsTests.Action", combination, default).Status);
+                Assert.Equal(
+                    ShortcutSetStatus.Applied,
+                    registry.TryAcceptConflict("TajsTests.Action", combination, "vanilla:Vanilla.Build").Status);
+                Assert.True(registry.TrySetBinding("TajsTests.Action", combination, default).Success);
+                ShortcutConflictSnapshot conflict = Assert.Single(registry.GetConflictSnapshot());
+                Assert.Contains("vanilla:Vanilla.Build", conflict.VanillaActionIds);
+                Assert.True(conflict.IsAccepted);
+
+                Assert.True(registry.TrySave(path, out string saveError), saveError);
+                var restored = new ShortcutRegistry();
+                restored.Register(Descriptor("TajsTests.Action", "F1"));
+                Assert.True(restored.TryLoad(path, out string loadError), loadError);
+                restored.CacheVanillaBindings(
+                    new[] { new KeyValuePair<string, ShortcutCombination>("Vanilla.Build", combination) });
+                Assert.True(Assert.Single(restored.GetConflictSnapshot()).IsAccepted);
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, recursive: true);
+                }
+            }
         }
 
         private static ShortcutDescriptor Descriptor(

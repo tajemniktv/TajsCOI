@@ -199,17 +199,68 @@ namespace TajsCOI.Common.Shortcuts
             ShortcutCombination primary,
             ShortcutCombination secondary,
             bool isDefault)
+            : this(descriptor, primary, secondary, isDefault, isConflict: false)
+        {
+        }
+
+        public ShortcutBindingSnapshot(
+            ShortcutDescriptor descriptor,
+            ShortcutCombination primary,
+            ShortcutCombination secondary,
+            bool isDefault,
+            bool isConflict = false)
         {
             Descriptor = descriptor ?? throw new ArgumentNullException(nameof(descriptor));
             Primary = primary;
             Secondary = secondary;
             IsDefault = isDefault;
+            IsConflict = isConflict;
         }
 
         public ShortcutDescriptor Descriptor { get; }
         public ShortcutCombination Primary { get; }
         public ShortcutCombination Secondary { get; }
         public bool IsDefault { get; }
+        public bool IsConflict { get; }
+    }
+
+    /// <summary>
+    ///     A currently active combination conflict. Vanilla action IDs are prefixed with
+    ///     <c>vanilla:</c> so callers can distinguish them from Tajs action IDs. An accepted
+    ///     conflict is still surfaced; dispatch uses the ordinal-first Tajs action deterministically.
+    /// </summary>
+    public sealed class ShortcutConflictSnapshot
+    {
+        public ShortcutConflictSnapshot(
+            string combination,
+            IEnumerable<string> actionIds,
+            IEnumerable<string> vanillaActionIds,
+            bool isAccepted)
+        {
+            Combination = string.IsNullOrWhiteSpace(combination)
+                ? throw new ArgumentException("Shortcut conflict combination cannot be empty.", nameof(combination))
+                : combination.Trim();
+            ActionIds = Array.AsReadOnly(
+                (actionIds ?? Enumerable.Empty<string>())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray());
+            VanillaActionIds = Array.AsReadOnly(
+                (vanillaActionIds ?? Enumerable.Empty<string>())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray());
+            IsAccepted = isAccepted;
+        }
+
+        public string Combination { get; }
+        public IReadOnlyList<string> ActionIds { get; }
+        public IReadOnlyList<string> VanillaActionIds { get; }
+        public bool IsAccepted { get; }
     }
 
     public sealed class ShortcutRegistrationResult
@@ -246,6 +297,8 @@ namespace TajsCOI.Common.Shortcuts
 
         public ShortcutSetResult TrySetBinding(string actionId, ShortcutCombination primary, ShortcutCombination secondary);
 
+        public ShortcutSetResult TryResetBinding(string actionId);
+
         public bool TryGet(string actionId, out ShortcutBindingSnapshot snapshot);
 
         /// <summary>
@@ -255,6 +308,14 @@ namespace TajsCOI.Common.Shortcuts
         public bool TryResolveBinding(ShortcutCombination combination, out ShortcutBindingSnapshot snapshot);
 
         public IReadOnlyList<ShortcutBindingSnapshot> GetSnapshot();
+
+        /// <summary>
+        ///     Approves one concrete action/combination conflict. Approval is separate from
+        ///     binding mutation so accidental conflicts remain rejected by <see cref="TrySetBinding"/>.
+        /// </summary>
+        public ShortcutSetResult TryAcceptConflict(string actionId, ShortcutCombination combination, string conflictingActionId);
+
+        public IReadOnlyList<ShortcutConflictSnapshot> GetConflictSnapshot();
 
         public void CacheVanillaBindings(IEnumerable<KeyValuePair<string, ShortcutCombination>> bindings);
 

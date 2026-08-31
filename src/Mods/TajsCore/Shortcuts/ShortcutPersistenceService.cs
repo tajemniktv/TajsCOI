@@ -4,6 +4,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Mafi;
 using Mafi.Core.Console;
@@ -46,6 +47,14 @@ namespace TajsCOI.Core.Shortcuts
                 builder.Append(binding.Descriptor.ActionId).Append(" = ").Append(primary).Append(secondary).AppendLine();
             }
 
+            foreach (ShortcutConflictSnapshot conflict in m_registry.GetConflictSnapshot())
+            {
+                string participants = string.Join(", ", conflict.ActionIds.Concat(conflict.VanillaActionIds));
+                builder.Append("conflict ").Append(conflict.Combination).Append(" = ").Append(participants)
+                    .Append(conflict.IsAccepted ? " [accepted; ordinal-first]" : " [unaccepted]")
+                    .AppendLine();
+            }
+
             return builder.Length == 0 ? "No Taj's COI shortcuts are registered." : builder.ToString().TrimEnd();
         }
 
@@ -67,6 +76,25 @@ namespace TajsCOI.Core.Shortcuts
             return m_registry.TryLoad(m_filePath, out string error)
                 ? "TajsCOI shortcuts reloaded."
                 : "TajsCOI shortcuts could not be reloaded: " + error;
+        }
+
+        [ConsoleCommand(
+            documentation: "Explicitly accepts one named shortcut conflict for the requested combination.",
+            customCommandName: "tajs_shortcuts_accept_conflict")]
+        public string AcceptConflict(string? actionId, string? combination, string? conflictingActionId)
+        {
+            if (!ShortcutCombination.TryParse(combination, out ShortcutCombination parsed) || parsed.IsEmpty)
+            {
+                return "Usage: tajs_shortcuts_accept_conflict <actionId> <combination> <conflictingActionId>";
+            }
+
+            ShortcutSetResult result = m_registry.TryAcceptConflict(
+                actionId ?? string.Empty,
+                parsed,
+                conflictingActionId ?? string.Empty);
+            return result.Success
+                ? result.Message
+                : "Shortcut conflict was not accepted: " + result.Message;
         }
     }
 }

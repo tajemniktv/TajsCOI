@@ -60,6 +60,12 @@ namespace TajsCOI.Tweaks.Configuration
             try
             {
                 ConfigurationSnapshot snapshot = registry.Capture(Describe(entity), runtimeEntity);
+                if (snapshot.Errors.Count != 0)
+                {
+                    Warn(
+                        "Configuration copy skipped one or more extension handlers: " +
+                        string.Join(" | ", snapshot.Errors.Take(4)));
+                }
                 if (snapshot.Payloads.Count == 0)
                 {
                     return false;
@@ -74,10 +80,11 @@ namespace TajsCOI.Tweaks.Configuration
                 data.SetString(ConfigDataKey, encoded);
                 return true;
             }
-            catch
+            catch (Exception exception)
             {
                 // Extension capture is optional. The caller retains its legacy compatibility
                 // fallback and never prevents vanilla config copy from completing.
+                Warn("Configuration copy extension capture failed: " + exception.GetType().Name);
                 return false;
             }
         }
@@ -113,8 +120,9 @@ namespace TajsCOI.Tweaks.Configuration
                 }
                 return result.Applied > 0 || result.Skipped > 0;
             }
-            catch
+            catch (Exception exception)
             {
+                Warn("Configuration copy extension apply failed: " + exception.GetType().Name);
                 return false;
             }
         }
@@ -157,10 +165,23 @@ namespace TajsCOI.Tweaks.Configuration
         private static ConfigurationEntityDescriptor Describe(IEntity entity)
         {
             string type = entity.GetType().FullName ?? entity.GetType().Name;
+            string? prototypeId = null;
+            try
+            {
+                // Entity.Prototype.Id is the native stable identity. Two different prototypes can
+                // share one CLR entity class, so the runtime type is not a valid prototype key.
+                prototypeId = entity.Prototype?.Id.Value;
+            }
+            catch
+            {
+                // Some transient/native entities may not expose a meaningful prototype. The
+                // descriptor carries that absence explicitly instead of fabricating one from type.
+            }
+
             return new ConfigurationEntityDescriptor(
                 entity.Id.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 type,
-                type);
+                prototypeId);
         }
     }
 }

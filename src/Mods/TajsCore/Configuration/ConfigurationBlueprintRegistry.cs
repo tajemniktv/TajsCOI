@@ -82,6 +82,7 @@ namespace TajsCOI.Core.Configuration
 
             ConfigurationHandlerDescriptor[] handlers = GetHandlerSnapshot().ToArray();
             var payloads = new List<ConfigurationPayload>();
+            var errors = new List<string>();
             foreach (ConfigurationHandlerDescriptor handler in handlers)
             {
                 try
@@ -104,14 +105,16 @@ namespace TajsCOI.Core.Configuration
                             handler.SchemaVersion,
                             values));
                 }
-                catch
+                catch (Exception exception)
                 {
                     // An extension is optional: malformed/failed reads must not remove the
-                    // native configuration or prevent other handlers from being copied.
+                    // native configuration or prevent other handlers from being copied. Keep a
+                    // bounded, value-only diagnostic so the bridge can report it once.
+                    errors.Add(handler.HandlerId + ": " + exception.GetType().Name);
                 }
             }
 
-            return new ConfigurationSnapshot(payloads);
+            return new ConfigurationSnapshot(payloads, errors);
         }
 
         public ConfigurationApplyResult Apply(
@@ -140,9 +143,10 @@ namespace TajsCOI.Core.Configuration
             {
                 ConfigurationHandlerDescriptor? handler = handlers.FirstOrDefault(item =>
                     string.Equals(item.HandlerId, payload.HandlerId, StringComparison.Ordinal));
-                if (handler is null || !handler.Supports(entity))
+                if (handler is null)
                 {
                     skipped++;
+                    errors.Add(payload.HandlerId + ": handler unavailable");
                     continue;
                 }
                 if (!string.Equals(payload.Owner, handler.Owner, StringComparison.Ordinal))
@@ -154,6 +158,12 @@ namespace TajsCOI.Core.Configuration
 
                 try
                 {
+                    if (!handler.Supports(entity))
+                    {
+                        skipped++;
+                        continue;
+                    }
+
                     IReadOnlyDictionary<string, object>? values = payload.Values;
                     if (payload.SchemaVersion != handler.SchemaVersion)
                     {
