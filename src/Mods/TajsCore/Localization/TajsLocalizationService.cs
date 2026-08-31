@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using Mafi;
@@ -23,8 +24,54 @@ namespace TajsCOI.Core.Localization
         private readonly Dictionary<string, string> m_lookupCache = new(StringComparer.Ordinal);
         private readonly HashSet<string> m_negativeLookupCache = new(StringComparer.Ordinal);
         private readonly HashSet<string> m_missing = new(StringComparer.Ordinal);
+        private readonly HashSet<string> m_formattingFailures = new(StringComparer.Ordinal);
         private string m_activeLocale = "default";
         private bool m_debugKeys;
+
+        public TajsLocalizationService()
+        {
+            // Keep Core's own fallback catalog available even when no optional language pack is
+            // installed. Feature panels still resolve through this service, so a later regional
+            // catalog can replace these values without another UI-specific string table.
+            Register(
+                new LocalizationCatalog(
+                    "TajsCore",
+                    "default",
+                    new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["dashboard.profiles.title"] = "Settings profiles",
+                        ["dashboard.profiles.description"] = "Profiles contain only settings explicitly marked profile-safe. Preview validates every entry before apply; unknown IDs are skipped and reported.",
+                        ["dashboard.profiles.empty"] = "No profiles saved. Capture one with tajs_profile_capture <name> from the console.",
+                        ["dashboard.profiles.column.name"] = "Name",
+                        ["dashboard.profiles.column.values"] = "Values",
+                        ["dashboard.profiles.column.schema"] = "Schema",
+                        ["dashboard.profiles.column.scope"] = "Scope",
+                        ["dashboard.profiles.scope.allCategories"] = "all categories",
+                        ["dashboard.profiles.scope.allModules"] = "all modules",
+                        ["dashboard.profiles.selected"] = "Selected profile: ",
+                        ["dashboard.profiles.preview"] = "Preview",
+                        ["dashboard.profiles.apply"] = "Apply",
+                        ["dashboard.profiles.delete"] = "Delete",
+                        ["dashboard.profiles.deleteFailed"] = "Profile could not be deleted: ",
+                        ["dashboard.harmony.title"] = "Harmony ownership and collision diagnostics",
+                        ["dashboard.harmony.description"] = "Read-only, on-demand metadata from the shared Core inspector. Detailed rows are bounded and expandable.",
+                        ["dashboard.harmony.tajsTargets"] = "Tajs targets",
+                        ["dashboard.harmony.sharedTargets"] = "Shared targets",
+                        ["dashboard.harmony.attention"] = "Attention",
+                        ["dashboard.harmony.tajsPatches"] = "Tajs patches",
+                        ["dashboard.harmony.unavailable"] = "Inspector unavailable: ",
+                        ["dashboard.harmony.none"] = "No shared targets or heuristic collision risks were detected.",
+                        ["dashboard.harmony.column.target"] = "Target",
+                        ["dashboard.harmony.column.risk"] = "Risk",
+                        ["dashboard.harmony.column.shared"] = "Shared owners",
+                        ["dashboard.harmony.column.patches"] = "Patches",
+                        ["dashboard.harmony.column.reason"] = "Reason",
+                        ["dashboard.harmony.details.title"] = "Patch details: ",
+                        ["dashboard.harmony.details.omitted"] = "{0} more patch entries omitted from this bounded view.",
+                        ["dashboard.harmony.additional"] = "Additional shared/risk targets are available in the profiler command and exported trace.",
+                    },
+                    version: "1"));
+        }
 
         public string ActiveLocale
         {
@@ -114,6 +161,33 @@ namespace TajsCOI.Core.Localization
             return DebugKeys ? "[" + missingId + "]" : fallback ?? key;
         }
 
+        public string Format(string source, string key, string? fallback = null, params object[] arguments)
+        {
+            string template = Get(source, key, fallback);
+            try
+            {
+                return string.Format(CultureInfo.CurrentCulture, template, arguments ?? Array.Empty<object>());
+            }
+            catch (FormatException exception)
+            {
+                lock (m_gate)
+                {
+                    m_formattingFailures.Add(
+                        MakeId(source, key) + ": " + exception.Message);
+                }
+                return template;
+            }
+            catch (ArgumentException exception)
+            {
+                lock (m_gate)
+                {
+                    m_formattingFailures.Add(
+                        MakeId(source, key) + ": " + exception.Message);
+                }
+                return template;
+            }
+        }
+
         public bool TryGet(string source, string key, out string value, string? fallbackSource = null)
         {
             value = string.Empty;
@@ -181,6 +255,14 @@ namespace TajsCOI.Core.Localization
             lock (m_gate)
             {
                 return m_missing.OrderBy(value => value, StringComparer.Ordinal).ToArray();
+            }
+        }
+
+        public IReadOnlyList<string> GetFormattingFailuresSnapshot()
+        {
+            lock (m_gate)
+            {
+                return m_formattingFailures.OrderBy(value => value, StringComparer.Ordinal).ToArray();
             }
         }
 

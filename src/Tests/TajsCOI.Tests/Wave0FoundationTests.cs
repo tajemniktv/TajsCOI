@@ -118,6 +118,26 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void LocalizationFormattingUsesCurrentCultureAndDegradesToTemplateOnFailure()
+        {
+            var service = new TajsLocalizationService();
+            service.Register(
+                new LocalizationCatalog(
+                    "FormatTests",
+                    "default",
+                    new Dictionary<string, string>
+                    {
+                        ["count"] = "Count: {0}",
+                        ["broken"] = "Broken {1}",
+                    }));
+
+            Assert.Equal("Count: 3", service.Format("FormatTests", "count", null, 3));
+            Assert.Equal("Broken {1}", service.Format("FormatTests", "broken", null, 3));
+            Assert.Equal(service.GetFormattingFailuresSnapshot(), service.GetFormattingFailuresSnapshot().Distinct(StringComparer.Ordinal).ToArray());
+            Assert.Single(service.GetFormattingFailuresSnapshot());
+        }
+
+        [Fact]
         public void ConfigurationRegistryMigratesAndContinuesAfterOneHandlerFails()
         {
             var registry = new ConfigurationBlueprintRegistry();
@@ -182,6 +202,26 @@ namespace TajsCOI.Tests
             Assert.Equal(true, payload.Values["enabled"]);
             Assert.Equal(123, payload.Values["capacity"]);
             Assert.Equal("A\tB", payload.Values["label"]);
+        }
+
+        [Fact]
+        public void ConfigurationRegistryUnregisterRequiresTheOriginalOwner()
+        {
+            var registry = new ConfigurationBlueprintRegistry();
+            registry.Register(
+                new ConfigurationHandlerDescriptor(
+                    "Tests.Owned",
+                    "Tests.Owner",
+                    1,
+                    _ => true,
+                    _ => new Dictionary<string, object> { ["enabled"] = true },
+                    (_, _) => true));
+
+            Assert.False(registry.Unregister("Tests.Owned", "Tests.Other"));
+            Assert.Single(registry.GetHandlerSnapshot());
+            Assert.True(registry.Unregister("Tests.Owned", "Tests.Owner"));
+            Assert.Empty(registry.GetHandlerSnapshot());
+            Assert.False(registry.Unregister("Tests.Owned", "Tests.Owner"));
         }
 
         private static ShortcutDescriptor Descriptor(

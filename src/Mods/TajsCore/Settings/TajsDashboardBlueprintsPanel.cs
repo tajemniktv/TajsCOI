@@ -152,6 +152,7 @@ namespace TajsCOI.Core.Settings
             TextField deleteConfirmation = new TextField().Placeholder("Type DELETE to remove".AsLoc()).MaxWidth(190.px());
             Label exportText = new Label().FontSize(10).Selectable(true).Hide();
             TextField importText = new TextField().Placeholder("Paste native blueprint/folder payload".AsLoc()).MaxWidth(700.px());
+            TextField importMode = new TextField().Text("create").Placeholder("create | duplicate | overwrite | update".AsLoc()).MaxWidth(260.px());
             Label importPreview = new Label().FontSize(11).Selectable(true);
 
             void BindDetails(BlueprintRow? row)
@@ -321,6 +322,11 @@ namespace TajsCOI.Core.Settings
                     "Assets/Unity/UserInterface/General/Package.svg",
                     () =>
                     {
+                        if (!TryParseImportMode(importMode.GetText(), out BlueprintWriteMode mode, out string modeError))
+                        {
+                            importPreview.Value(("Import rejected: " + modeError).AsLoc());
+                            return;
+                        }
                         if (!TryGetNativePayload(importText.GetText(), out string nativePayload, out string envelopeError))
                         {
                             importPreview.Value(("Import rejected: " + envelopeError).AsLoc());
@@ -337,17 +343,17 @@ namespace TajsCOI.Core.Settings
                             importPreview.Value(("Import rejected; missing content: " + missingContent).AsLoc());
                             return;
                         }
-                        if (!adapter.TryImport(root, nativePayload, out _, out string error))
+                        if (!TryImportWithMode(adapter, root, nativePayload, previewItem!, mode, out string error))
                         {
                             importPreview.Value(("Import rejected: " + error).AsLoc());
                             return;
                         }
 
-                        importPreview.Value("Imported into the native root folder.".AsLoc());
+                        importPreview.Value(("Imported using " + mode.ToString().ToLowerInvariant() + " into the native root folder.").AsLoc());
                         importText.Text(string.Empty);
                         queueRefresh();
                     }));
-            sharing.Body.Add(sharingActions, importText, importPreview, exportText);
+            sharing.Body.Add(new Label("Import mode: create, duplicate, overwrite, or update. Existing items are never replaced implicitly.".AsLoc()).FontSize(11), sharingActions, importMode, importText, importPreview, exportText);
 
             panel.Body.Add(selectedPanel, sharing, BuildRecycleBinPanel(adapter, root, recycleBin, queueRefresh));
             return panel;
@@ -458,6 +464,105 @@ namespace TajsCOI.Core.Settings
         {
             int separator = path.LastIndexOf('/');
             return separator < 0 ? string.Empty : path.Substring(0, separator);
+        }
+
+        private static bool TryParseImportMode(string raw, out BlueprintWriteMode mode, out string error)
+        {
+            switch ((raw ?? string.Empty).Trim().ToLowerInvariant())
+            {
+                case "create": mode = BlueprintWriteMode.Create; break;
+                case "duplicate": mode = BlueprintWriteMode.Duplicate; break;
+                case "overwrite": mode = BlueprintWriteMode.Overwrite; break;
+                case "update": mode = BlueprintWriteMode.Update; break;
+                default:
+                    mode = BlueprintWriteMode.Create;
+                    error = "Import mode must be create, duplicate, overwrite, or update.";
+                    return false;
+            }
+            error = string.Empty;
+            return true;
+        }
+
+        private static bool TryImportWithMode(
+            BlueprintsLibraryNativeAdapter adapter,
+            IBlueprintsFolder root,
+            string nativePayload,
+            IBlueprintItem previewItem,
+            BlueprintWriteMode mode,
+            out string error)
+        {
+            error = string.Empty;
+            bool isFolder = previewItem is IBlueprintsFolder;
+            IBlueprintItem? existing = FindDirectItem(root, previewItem.Name, isFolder);
+            if (mode == BlueprintWriteMode.Create && existing is not null)
+            {
+                error = "An item with this name already exists; choose duplicate, overwrite, or update explicitly.";
+                return false;
+            }
+            if (mode == BlueprintWriteMode.Update && existing is null)
+            {
+                error = "Update requires an existing item with the same name and kind.";
+                return false;
+            }
+            string existingDescription = existing?.Desc ?? string.Empty;
+
+            if (!adapter.TryImport(root, nativePayload, out IBlueprintItem? imported, out error) || imported is null)
+            {
+                return false;
+            }
+
+            if (mode == BlueprintWriteMode.Duplicate)
+            {
+                string duplicateName = FindAvailableName(root, imported.Name);
+                if (!adapter.TryRename(imported, duplicateName, out error))
+                {
+                    adapter.TryDelete(root, imported, out _);
+                    return false;
+                }
+                return true;
+            }
+
+            if (existing is null)
+            {
+                return true;
+            }
+
+            if (!adapter.TryDelete(root, existing, out error))
+            {
+                adapter.TryDelete(root, imported, out _);
+                return false;
+            }
+            if (mode == BlueprintWriteMode.Update && !adapter.TryRename(imported, existing.Name, out error))
+            {
+                adapter.TryDelete(root, imported, out _);
+                return false;
+            }
+            if (mode == BlueprintWriteMode.Update && !adapter.TrySetDescription(imported, existingDescription, out error))
+            {
+                adapter.TryDelete(root, imported, out _);
+                return false;
+            }
+            return true;
+        }
+
+        private static IBlueprintItem? FindDirectItem(IBlueprintsFolder folder, string name, bool isFolder)
+        {
+            if (isFolder)
+            {
+                return folder.Folders.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal));
+            }
+            return folder.Blueprints.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal));
+        }
+
+        private static string FindAvailableName(IBlueprintsFolder folder, string baseName)
+        {
+            string candidate = baseName + " (copy)";
+            int suffix = 2;
+            while (FindDirectItem(folder, candidate, isFolder: false) is not null || FindDirectItem(folder, candidate, isFolder: true) is not null)
+            {
+                candidate = baseName + " (copy " + suffix++.ToString(CultureInfo.InvariantCulture) + ")";
+            }
+            return candidate;
         }
 
         private static IBlueprintsFolder? FindFolder(IBlueprintsFolder root, string path)
@@ -598,6 +703,24 @@ namespace TajsCOI.Core.Settings
                 if (missing.Length > 0)
                 {
                     lines.Add("Missing content:\n" + missing);
+                }
+                BlueprintNativeOperationalStats stats = BlueprintNativeOperationalStatsCalculator.Calculate(blueprint);
+                lines.Add("Operational snapshot (native prototype values; not live simulation):");
+                lines.Add("Workers: " + stats.Workers.ToString("0.##", CultureInfo.InvariantCulture));
+                lines.Add("Electricity/tick: " + stats.Electricity.ToString("0.##", CultureInfo.InvariantCulture));
+                lines.Add("Computing/tick: " + stats.Computing.ToString("0.##", CultureInfo.InvariantCulture));
+                lines.Add("Maintenance/month: " + stats.Maintenance.ToString("0.##", CultureInfo.InvariantCulture));
+                if (stats.UnavailablePrototypes.Count > 0)
+                {
+                    lines.Add("Unavailable prototypes: " + string.Join(", ", stats.UnavailablePrototypes));
+                }
+                if (stats.UnavailableElectricity.Count > 0)
+                {
+                    lines.Add("Electricity unsupported: " + string.Join(", ", stats.UnavailableElectricity));
+                }
+                if (stats.UnavailableComputing.Count > 0)
+                {
+                    lines.Add("Computing unsupported: " + string.Join(", ", stats.UnavailableComputing));
                 }
             }
             return string.Join("\n", lines);

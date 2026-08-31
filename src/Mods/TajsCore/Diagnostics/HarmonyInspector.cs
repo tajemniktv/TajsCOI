@@ -181,6 +181,7 @@ namespace TajsCOI.Core.Diagnostics
                 reasons.Add("multiple prefixes include a bool-returning prefix that can suppress the original");
             }
 
+            string[] allOwners = entries.Select(entry => entry.OwnerId).Distinct(StringComparer.Ordinal).ToArray();
             foreach (IGrouping<HarmonyPatchKind, HarmonyPatchSnapshot> kindGroup in entries.GroupBy(entry => entry.Kind))
             {
                 string[] owners = kindGroup.Select(entry => entry.OwnerId).Distinct(StringComparer.Ordinal).ToArray();
@@ -189,12 +190,15 @@ namespace TajsCOI.Core.Diagnostics
                 {
                     foreach (string before in entry.Before)
                     {
-                        // Harmony's before/after ordering is scoped to one patch category. A
-                        // reference to an owner that is absent from this category is normally an
-                        // optional integration and must not become a false collision warning.
                         if (owners.Contains(before, StringComparer.Ordinal))
                         {
                             AddOrderingEdge(edges, entry.OwnerId, before);
+                        }
+                        else if (!allOwners.Contains(before, StringComparer.Ordinal))
+                        {
+                            reasons.Add(
+                                "Harmony " + kindGroup.Key.ToString().ToLowerInvariant() +
+                                " ordering references absent owner " + before);
                         }
                     }
                     foreach (string after in entry.After)
@@ -202,6 +206,12 @@ namespace TajsCOI.Core.Diagnostics
                         if (owners.Contains(after, StringComparer.Ordinal))
                         {
                             AddOrderingEdge(edges, after, entry.OwnerId);
+                        }
+                        else if (!allOwners.Contains(after, StringComparer.Ordinal))
+                        {
+                            reasons.Add(
+                                "Harmony " + kindGroup.Key.ToString().ToLowerInvariant() +
+                                " ordering references absent owner " + after);
                         }
                     }
                 }

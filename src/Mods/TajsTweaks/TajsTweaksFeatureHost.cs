@@ -79,6 +79,7 @@ namespace TajsCOI.Tweaks
         private readonly ITajsRuntime m_runtime;
         private readonly ITajsSettings m_settings;
         private readonly IShortcutRegistry m_shortcuts;
+        private readonly IConfigurationRegistry m_configurationRegistry;
         private readonly ITajsLogger m_log;
         private readonly TweaksInfiniteGroundwaterFeature m_infiniteGroundwater;
         private readonly TypedBaseValueOverrideRegistry m_baseValueOverrides;
@@ -116,6 +117,7 @@ namespace TajsCOI.Tweaks
             m_runtime = runtime;
             m_settings = settings;
             m_shortcuts = shortcuts;
+            m_configurationRegistry = configurationRegistry ?? throw new ArgumentNullException(nameof(configurationRegistry));
             m_log = runtime.GetLogger(TajsTweaksSettingsCatalog.ModId, "FeatureHost");
             m_infiniteGroundwater = new TweaksInfiniteGroundwaterFeature(resolver, gameLoop, m_log);
             m_baseValueOverrides = new TypedBaseValueOverrideRegistry();
@@ -124,7 +126,7 @@ namespace TajsCOI.Tweaks
             m_transportCapacity = new TransportCapacityFeature(m_baseValueOverrides);
             TajsTweaksSettingsCatalog.RegisterAll(settings);
             TajsTweaksRuntimeState.Load(settings);
-            RegisterConfigurationHandlers(configurationRegistry);
+            RegisterConfigurationHandlers(m_configurationRegistry, m_runtime);
             RegisterShortcutMetadata(shortcuts);
             PolygonConstraintFeature.ConfigureModifiers(shortcuts);
             PolygonConstraintFeature.ConfigureGridSize(TajsTweaksRuntimeState.PolygonGridSize);
@@ -200,10 +202,12 @@ namespace TajsCOI.Tweaks
                     "Features are optional and retain vanilla behavior when a target is unavailable."));
         }
 
-        private static void RegisterConfigurationHandlers(IConfigurationRegistry registry)
+        private static void RegisterConfigurationHandlers(IConfigurationRegistry registry, ITajsRuntime runtime)
         {
-            TajsConfigurationPipeline.Bind(registry);
-            registry.Register(
+            TajsConfigurationPipeline.Bind(registry, runtime.GetLogger(TajsTweaksSettingsCatalog.ModId, "Configuration"));
+            RegisterConfigurationHandler(
+                registry,
+                runtime,
                 new ConfigurationHandlerDescriptor(
                     "TajsTweaks.StorageAdvanced",
                     TajsTweaksSettingsCatalog.ModId,
@@ -211,7 +215,9 @@ namespace TajsCOI.Tweaks
                     entity => entity.TypeId.EndsWith("Storage", StringComparison.Ordinal),
                     TajsStorageAdvancedConfiguration.ReadBlueprintValues,
                     TajsStorageAdvancedConfiguration.ApplyBlueprintValues));
-            registry.Register(
+            RegisterConfigurationHandler(
+                registry,
+                runtime,
                 new ConfigurationHandlerDescriptor(
                     "TajsTweaks.OverclockPolicy",
                     TajsTweaksSettingsCatalog.ModId,
@@ -223,7 +229,9 @@ namespace TajsCOI.Tweaks
                               entity.TypeId.IndexOf(".Buildings.Waste.", StringComparison.Ordinal) >= 0,
                     OverclockingPatches.ReadBlueprintValues,
                     OverclockingPatches.ApplyBlueprintValues));
-            registry.Register(
+            RegisterConfigurationHandler(
+                registry,
+                runtime,
                 new ConfigurationHandlerDescriptor(
                     "TajsTweaks.TransportFlowLimit",
                     TajsTweaksSettingsCatalog.ModId,
@@ -231,6 +239,25 @@ namespace TajsCOI.Tweaks
                     entity => entity.TypeId.EndsWith("Transport", StringComparison.Ordinal),
                     TransportFlowLimitFeature.ReadBlueprintValues,
                     TransportFlowLimitFeature.ApplyBlueprintValues));
+        }
+
+        private static void RegisterConfigurationHandler(
+            IConfigurationRegistry registry,
+            ITajsRuntime runtime,
+            ConfigurationHandlerDescriptor descriptor)
+        {
+            ConfigurationRegistrationResult result = registry.Register(descriptor);
+            if (result.Status == ConfigurationRegistrationStatus.Rejected)
+            {
+                runtime.ReportCompatibility(
+                    new CompatibilityReport(
+                        TajsTweaksSettingsCatalog.ModId,
+                        "ConfigurationRegistry." + descriptor.HandlerId,
+                        CompatibilityState.Degraded,
+                        "unique namespaced configuration handler ownership",
+                        result.Message,
+                        "The conflicting configuration handler was rejected; vanilla copy/apply remains available."));
+            }
         }
 
         private static void RegisterShortcutMetadata(IShortcutRegistry registry)
@@ -1296,6 +1323,10 @@ namespace TajsCOI.Tweaks
         private void OnTerminate()
         {
             m_settings.Changed -= OnSettingChanged;
+            TajsConfigurationPipeline.Unbind(m_configurationRegistry);
+            m_configurationRegistry.Unregister("TajsTweaks.StorageAdvanced", TajsTweaksSettingsCatalog.ModId);
+            m_configurationRegistry.Unregister("TajsTweaks.OverclockPolicy", TajsTweaksSettingsCatalog.ModId);
+            m_configurationRegistry.Unregister("TajsTweaks.TransportFlowLimit", TajsTweaksSettingsCatalog.ModId);
             TweaksAutoShipDeliveryFeature.Reset();
             AutoExplorationFeature.Reset();
             ShipyardOutputTransportFeature.Reset();

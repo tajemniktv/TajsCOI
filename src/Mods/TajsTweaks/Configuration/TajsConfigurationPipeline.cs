@@ -2,8 +2,11 @@
 // Copyright (C) 2026 - 2026 Grzegorz Kaczmarski (TajemnikTV)
 // All Rights Reserved.
 
+using System;
+using System.Linq;
 using Mafi.Core.Entities;
 using TajsCOI.Common.Configuration;
+using TajsCOI.Common.Logging;
 
 namespace TajsCOI.Tweaks.Configuration
 {
@@ -16,13 +19,33 @@ namespace TajsCOI.Tweaks.Configuration
     {
         internal const string ConfigDataKey = "TajsCOI.Configuration.V1";
         private static readonly object s_gate = new();
-        private static IConfigurationRegistry? s_registry;
+        private static WeakReference<IConfigurationRegistry>? s_registry;
+        private static WeakReference<ITajsLogger>? s_log;
 
-        internal static void Bind(IConfigurationRegistry registry)
+        internal static void Bind(IConfigurationRegistry registry, ITajsLogger? log = null)
         {
             lock (s_gate)
             {
-                s_registry = registry;
+                s_registry = new WeakReference<IConfigurationRegistry>(registry ?? throw new ArgumentNullException(nameof(registry)));
+                s_log = log is null ? null : new WeakReference<ITajsLogger>(log);
+            }
+        }
+
+        internal static void Unbind(IConfigurationRegistry registry)
+        {
+            if (registry is null)
+            {
+                return;
+            }
+
+            lock (s_gate)
+            {
+                if (s_registry is not null && s_registry.TryGetTarget(out IConfigurationRegistry? current) &&
+                    ReferenceEquals(current, registry))
+                {
+                    s_registry = null;
+                    s_log = null;
+                }
             }
         }
 
@@ -71,6 +94,12 @@ namespace TajsCOI.Tweaks.Configuration
             try
             {
                 ConfigurationApplyResult result = registry.Apply(Describe(entity), runtimeEntity, snapshot);
+                if (result.Errors.Count != 0 && TryGetLogger(out ITajsLogger? log))
+                {
+                    log!.WarningOnce(
+                        "Configuration copy/apply skipped one or more extension values: " +
+                        string.Join(" | ", result.Errors.Take(4)));
+                }
                 return result.Applied > 0 || result.Skipped > 0;
             }
             catch
@@ -83,8 +112,23 @@ namespace TajsCOI.Tweaks.Configuration
         {
             lock (s_gate)
             {
-                return s_registry;
+                return s_registry is not null && s_registry.TryGetTarget(out IConfigurationRegistry? registry)
+                    ? registry
+                    : null;
             }
+        }
+
+        private static bool TryGetLogger(out ITajsLogger? logger)
+        {
+            lock (s_gate)
+            {
+                if (s_log is not null && s_log.TryGetTarget(out logger))
+                {
+                    return true;
+                }
+            }
+            logger = null;
+            return false;
         }
 
         private static ConfigurationEntityDescriptor Describe(IEntity entity)

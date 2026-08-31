@@ -124,10 +124,19 @@ namespace TajsCOI.Common.Localization
 
         public string Get(string source, string key, string? fallback = null, string? fallbackSource = null);
 
+        /// <summary>
+        ///     Resolves and formats a localized value with the active culture. Formatting failures
+        ///     return the usable template and are recorded for diagnostics instead of breaking UI
+        ///     construction.
+        /// </summary>
+        public string Format(string source, string key, string? fallback = null, params object[] arguments);
+
         public bool TryGet(string source, string key, out string value, string? fallbackSource = null);
 
         public IReadOnlyList<LocalizationCatalog> GetCatalogSnapshot();
 
         public IReadOnlyList<string> GetMissingKeysSnapshot();
+
+        public IReadOnlyList<string> GetFormattingFailuresSnapshot();
     }
 }

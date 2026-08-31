@@ -54,6 +54,21 @@ namespace TajsCOI.Core.Configuration
             }
         }
 
+        public bool Unregister(string handlerId, string owner)
+        {
+            if (string.IsNullOrWhiteSpace(handlerId) || string.IsNullOrWhiteSpace(owner))
+            {
+                return false;
+            }
+
+            lock (m_gate)
+            {
+                return m_handlers.TryGetValue(handlerId.Trim(), out ConfigurationHandlerDescriptor? descriptor) &&
+                       string.Equals(descriptor.Owner, owner.Trim(), StringComparison.Ordinal) &&
+                       m_handlers.Remove(handlerId.Trim());
+            }
+        }
+
         public ConfigurationSnapshot Capture(ConfigurationEntityDescriptor entity, object runtimeEntity)
         {
             if (entity is null)

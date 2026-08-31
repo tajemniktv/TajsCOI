@@ -139,6 +139,34 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void BlueprintLibraryWriteModesNeverSilentlyReplace()
+        {
+            var store = new BlueprintLibraryStore();
+            var original = new BlueprintLibraryEntry(
+                new BlueprintIdentity("bp-mode", "hash-1"),
+                "Factory",
+                "Factories",
+                new[] { "smelter" },
+                new Dictionary<string, string>());
+            Assert.True(store.Write(original, BlueprintWriteMode.Create).Success);
+            Assert.False(store.Write(original, BlueprintWriteMode.Create).Success);
+
+            BlueprintWriteResult duplicate = store.Write(original, BlueprintWriteMode.Duplicate);
+            Assert.True(duplicate.Success);
+            Assert.Equal("Factory (copy)", duplicate.Entry!.Name);
+            Assert.Equal(2, store.Snapshot().Count);
+
+            var replacement = new BlueprintLibraryEntry(
+                new BlueprintIdentity("bp-mode", "hash-2"),
+                "Factory",
+                "Factories",
+                new[] { "smelter" },
+                new Dictionary<string, string> { ["recipe"] = "updated" });
+            Assert.True(store.Write(replacement, BlueprintWriteMode.Overwrite).Success);
+            Assert.Equal("hash-2", store.Snapshot().Single(entry => entry.Identity.StableId == "bp-mode").Identity.ContentHash);
+        }
+
+        [Fact]
         public void PortableBlueprintEnvelopeValidatesContentAndRecycleBinPersistsValueOnly()
         {
             const string nativePayload = "B4:test";

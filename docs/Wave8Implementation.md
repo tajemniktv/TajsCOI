@@ -53,7 +53,9 @@ validated native APIs without replacing the game's authorities.
   notes are included in the snapshot, search, and row display without retaining world-map
   entity references between refreshes.
 - Core's dashboard now exposes the native blueprint library through a scene-owned table. It
-  shows folder/blueprint detail summaries, forwards metadata edits through `BlueprintsLibrary`,
-  wraps native payloads in a versioned Tajs envelope for portable sharing, and stores explicit
-  delete/restore/purge entries as value-only sidecar payloads. Preview parses without mutating
-  the native library; import and purge require explicit actions.
+  shows folder/blueprint detail summaries plus native prototype worker, power, computing, and
+  maintenance snapshots, forwards metadata edits through `BlueprintsLibrary`, wraps native
+  payloads in a versioned Tajs envelope for portable sharing, and stores explicit delete/restore/
+  purge entries as value-only sidecar payloads. Preview parses without mutating the native
+  library; import exposes explicit create/duplicate/overwrite/update modes and rejects missing
+  content before mutation.

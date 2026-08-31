@@ -85,8 +85,8 @@ namespace TajsCOI.Tests
                 400,
                 before: new[] { "Missing.Mod" });
             (risk, reason) = HarmonyInspector.ClassifyRisk(new[] { missingOrdering });
-            Assert.Equal(HarmonyCollisionRisk.None, risk);
-            Assert.Empty(reason);
+            Assert.Equal(HarmonyCollisionRisk.Medium, risk);
+            Assert.Contains("absent owner", reason);
 
             HarmonyPatchSnapshot crossKindPrefix = Patch(
                 HarmonyPatchKind.Prefix,

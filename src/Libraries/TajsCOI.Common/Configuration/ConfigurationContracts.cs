@@ -193,6 +193,12 @@ namespace TajsCOI.Common.Configuration
     {
         public ConfigurationRegistrationResult Register(ConfigurationHandlerDescriptor descriptor);
 
+        /// <summary>
+        ///     Removes a handler only when the caller proves ownership. This lets a scene-scoped
+        ///     feature release its metadata without allowing another module to remove it by key.
+        /// </summary>
+        public bool Unregister(string handlerId, string owner);
+
         public ConfigurationSnapshot Capture(ConfigurationEntityDescriptor entity, object runtimeEntity);
 
         public ConfigurationApplyResult Apply(

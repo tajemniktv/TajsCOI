@@ -287,7 +287,7 @@ namespace TajsCOI.Core.Blueprints
                     entry.Stats,
                     current.State);
             }
-            if (mode == BlueprintWriteMode.Overwrite || mode == BlueprintWriteMode.Update || !exists)
+            if (mode == BlueprintWriteMode.Duplicate || mode == BlueprintWriteMode.Overwrite || mode == BlueprintWriteMode.Update || !exists)
                 m_entries[key] = entry;
             return new BlueprintWriteResult(true, "Blueprint saved.", entry);
         }

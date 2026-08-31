@@ -332,14 +332,14 @@ namespace TajsCOI.Core.Settings
             m_lastParentHeight = parentHeight;
             m_lastViewportWidth = viewportWidth;
             m_lastViewportHeight = viewportHeight;
-            float maxWidth = Math.Max(MinimumWindowWidth, parentWidth * 0.96f);
-            float maxHeight = Math.Max(MinimumWindowHeight, parentHeight * 0.96f);
+            (float minimumWidth, float maximumWidth) = GetWindowBounds(parentWidth, MinimumWindowWidth);
+            (float minimumHeight, float maximumHeight) = GetWindowBounds(parentHeight, MinimumWindowHeight);
             float width = m_isMaximized
-                ? maxWidth
-                : Math.Min(Math.Max(MinimumWindowWidth, m_savedWidth), maxWidth);
+                ? maximumWidth
+                : Math.Min(Math.Max(minimumWidth, m_savedWidth), maximumWidth);
             float height = m_isMaximized
-                ? maxHeight
-                : Math.Min(Math.Max(MinimumWindowHeight, m_savedHeight), maxHeight);
+                ? maximumHeight
+                : Math.Min(Math.Max(minimumHeight, m_savedHeight), maximumHeight);
             WindowSize(width.px(), height.px());
             UpdateResponsiveChrome(width);
         }
@@ -359,6 +359,16 @@ namespace TajsCOI.Core.Settings
         }
 
         private float GetCurrentWindowWidth() => Frame.ResolvedWidth > 1f ? Frame.ResolvedWidth : DefaultWindowWidth;
+
+        private static (float Minimum, float Maximum) GetWindowBounds(float available, float preferredMinimum)
+        {
+            float maximum = Math.Max(1f, available * 0.96f);
+            // A small work area (or a high UI scale) can be smaller than the desktop
+            // default. In that case the effective minimum must yield to the work area
+            // or the window can never be clamped on-screen.
+            float minimum = Math.Min(preferredMinimum, maximum);
+            return (minimum, maximum);
+        }
 
         private void UpdateResizeHandleVisibility()
         {
@@ -390,10 +400,10 @@ namespace TajsCOI.Core.Settings
                 return;
             }
 
-            float maxWidth = Math.Max(MinimumWindowWidth, Parent.Value.ResolvedWidth * 0.96f);
-            float maxHeight = Math.Max(MinimumWindowHeight, Parent.Value.ResolvedHeight * 0.96f);
-            float width = Math.Max(MinimumWindowWidth, Math.Min(maxWidth, Frame.ResolvedWidth + evt.deltaPosition.x));
-            float height = Math.Max(MinimumWindowHeight, Math.Min(maxHeight, Frame.ResolvedHeight + evt.deltaPosition.y));
+            (float minimumWidth, float maximumWidth) = GetWindowBounds(Parent.Value.ResolvedWidth, MinimumWindowWidth);
+            (float minimumHeight, float maximumHeight) = GetWindowBounds(Parent.Value.ResolvedHeight, MinimumWindowHeight);
+            float width = Math.Max(minimumWidth, Math.Min(maximumWidth, Frame.ResolvedWidth + evt.deltaPosition.x));
+            float height = Math.Max(minimumHeight, Math.Min(maximumHeight, Frame.ResolvedHeight + evt.deltaPosition.y));
             WindowSize(width.px(), height.px());
             m_savedWidth = width;
             m_savedHeight = height;
@@ -1112,21 +1122,24 @@ namespace TajsCOI.Core.Settings
         private Panel BuildHarmonyDiagnosticsPanel(HarmonyInspectionSnapshot snapshot)
         {
             Panel panel = TajsDashboardUi.Card(
-                "Harmony ownership and collision diagnostics",
-                "Read-only, on-demand metadata from the shared Core inspector. Detailed rows are bounded and expandable.");
+                Localized("harmony.title", "Harmony ownership and collision diagnostics"),
+                Localized("harmony.description", "Read-only, on-demand metadata from the shared Core inspector. Detailed rows are bounded and expandable."));
             Row summary = new Row(3.pt()).Wrap().AlignItemsStretch();
             summary.Add(
-                TajsDashboardUi.MetricTile("Tajs targets", snapshot.TajsPatchedTargetCount.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan),
-                TajsDashboardUi.MetricTile("Shared targets", snapshot.SharedTargetCount.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Yellow),
+                TajsDashboardUi.MetricTile(Localized("harmony.tajsTargets", "Tajs targets"), snapshot.TajsPatchedTargetCount.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan),
+                TajsDashboardUi.MetricTile(Localized("harmony.sharedTargets", "Shared targets"), snapshot.SharedTargetCount.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Yellow),
                 TajsDashboardUi.MetricTile(
-                    "Attention",
+                    Localized("harmony.attention", "Attention"),
                     snapshot.AttentionCount.ToString(CultureInfo.InvariantCulture),
                     snapshot.AttentionCount == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Red),
-                TajsDashboardUi.MetricTile("Tajs patches", snapshot.TajsPatchCount.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan));
+                TajsDashboardUi.MetricTile(Localized("harmony.tajsPatches", "Tajs patches"), snapshot.TajsPatchCount.ToString(CultureInfo.InvariantCulture), TajsDashboardUi.Cyan));
             panel.Body.Add(summary);
             if (!snapshot.IsAvailable)
             {
-                panel.Body.Add(new Label(("Inspector unavailable: " + snapshot.Error).AsLoc()).FontSize(11).Selectable(true));
+                panel.Body.Add(
+                    new Label((Localized("harmony.unavailable", "Inspector unavailable: ") + snapshot.Error).AsLoc())
+                        .FontSize(11)
+                        .Selectable(true));
                 return panel;
             }
 
@@ -1136,68 +1149,100 @@ namespace TajsCOI.Core.Settings
                 .ToArray();
             if (interesting.Length == 0)
             {
-                panel.Body.Add(new Label("No shared targets or heuristic collision risks were detected.".AsLoc()).FontSize(12));
+                panel.Body.Add(
+                    new Label(Localized("harmony.none", "No shared targets or heuristic collision risks were detected.").AsLoc())
+                        .FontSize(12));
                 return panel;
             }
 
-            foreach (HarmonyTargetSnapshot target in interesting)
+            var tableModel = new DataTableModel<HarmonyTargetSnapshot>(
+                new[]
+                {
+                    DataTableColumn<HarmonyTargetSnapshot>.CreateText(
+                        "target",
+                        Localized("harmony.column.target", "Target"),
+                        target => target.OriginalSignature,
+                        width: DataTableColumnWidth.Constrained(260f, 520f),
+                        visibilityPriority: 10),
+                    DataTableColumn<HarmonyTargetSnapshot>.CreateText(
+                        "risk",
+                        Localized("harmony.column.risk", "Risk"),
+                        target => target.Risk.ToString(),
+                        width: DataTableColumnWidth.Fixed(120f),
+                        visibilityPriority: 9),
+                    DataTableColumn<HarmonyTargetSnapshot>.CreateText(
+                        "shared",
+                        Localized("harmony.column.shared", "Shared owners"),
+                        target => FormatOwners(target.NonTajsOwners),
+                        width: DataTableColumnWidth.Constrained(140f, 300f),
+                        visibilityPriority: 7),
+                    DataTableColumn<HarmonyTargetSnapshot>.Create(
+                        "patches",
+                        Localized("harmony.column.patches", "Patches"),
+                        target => target.Patches.Count,
+                        value => value.ToString(CultureInfo.InvariantCulture),
+                        width: DataTableColumnWidth.Fixed(80f),
+                        alignment: DataTableColumnAlignment.End,
+                        visibilityPriority: 6),
+                    DataTableColumn<HarmonyTargetSnapshot>.CreateText(
+                        "reason",
+                        Localized("harmony.column.reason", "Reason"),
+                        target => target.RiskReason,
+                        width: DataTableColumnWidth.Flex(),
+                        visibilityPriority: 1),
+                },
+                target => target.OriginalAssembly + "|" + target.OriginalSignature,
+                DataTableSelectionMode.Single);
+            var details = new Column(2.pt()).AlignItemsStretch().Hide();
+
+            void RenderDetails(IReadOnlyCollection<string> selectedIds)
             {
-                Column details = new Column(2.pt()).AlignItemsStretch().Hide();
+                details.Clear();
+                HarmonyTargetSnapshot? target = interesting.FirstOrDefault(candidate =>
+                    selectedIds.Contains(candidate.OriginalAssembly + "|" + candidate.OriginalSignature, StringComparer.Ordinal));
+                if (target is null)
+                {
+                    details.Hide();
+                    return;
+                }
+                details.Show();
+                details.Add(
+                    new Label(
+                            (Localized("harmony.details.title", "Patch details: ") + target.OriginalSignature).AsLoc())
+                        .FontBold());
                 foreach (HarmonyPatchSnapshot patch in target.Patches.Take(12))
                 {
                     details.Add(
                         new Label(
-                                $"{patch.Kind} · {patch.OwnerId} · priority={patch.Priority} · before={FormatOwners(patch.Before)} · after={FormatOwners(patch.After)}\n{patch.PatchMethod}"
-                                    .AsLoc())
+                                ($"{patch.Kind} · {patch.OwnerId} · priority={patch.Priority} · before={FormatOwners(patch.Before)} · after={FormatOwners(patch.After)}\n{patch.PatchMethod}"
+                                    ).AsLoc())
                             .FontSize(10)
                             .Selectable(true));
                 }
                 if (target.Patches.Count > 12)
                 {
-                    details.Add(new Label($"{target.Patches.Count - 12} more patch entries omitted from this bounded view.".AsLoc()).FontSize(10));
+                    details.Add(
+                        new Label(
+                                m_localization.Format(
+                                        "TajsCore",
+                                        "dashboard.harmony.details.omitted",
+                                        "{0} more patch entries omitted from this bounded view.",
+                                        target.Patches.Count - 12)
+                                    .AsLoc())
+                            .FontSize(10));
                 }
-
-                bool expanded = false;
-                Button detailsButton = TajsDashboardUi.ActionButton(
-                    Button.Area,
-                    "Show details",
-                    "Assets/Unity/UserInterface/General/Configure.svg",
-                    () =>
-                    {
-                        expanded = !expanded;
-                        if (expanded)
-                        {
-                            details.Show();
-                        }
-                        else
-                        {
-                            details.Hide();
-                        }
-                    });
-                panel.Body.Add(
-                    new Panel(true)
-                        .ReducedPadding()
-                        .BodyGap(2.pt())
-                        .StyleGroupDark()
-                        .BodyAdd(
-                            new Row(4.pt())
-                            {
-                                new Column(1.pt())
-                                {
-                                    new Label(target.OriginalSignature.AsLoc()).FontBold(),
-                                    new Label(
-                                            $"Risk: {target.Risk} · shared owners: {FormatOwners(target.NonTajsOwners)}".AsLoc())
-                                        .FontSize(11)
-                                        .Color(RiskColor(target.Risk)),
-                                    new Label(target.RiskReason.AsLoc()).FontSize(11),
-                                }.FlexGrow(1f),
-                                detailsButton,
-                            }.AlignItemsCenter(),
-                            details));
             }
+
+            var table = new TajsDataTable<HarmonyTargetSnapshot>(tableModel, RenderDetails);
+            table.Refresh(interesting);
+            table.SetAvailableWidth(960f);
+            panel.Body.Add(table, details);
             if (snapshot.Targets.Count(target => target.IsSharedTarget || target.Risk != HarmonyCollisionRisk.None) > interesting.Length)
             {
-                panel.Body.Add(new Label("Additional shared/risk targets are available in the profiler command and exported trace.".AsLoc()).FontSize(11));
+                panel.Body.Add(
+                    new Label(
+                            Localized("harmony.additional", "Additional shared/risk targets are available in the profiler command and exported trace.").AsLoc())
+                        .FontSize(11));
             }
             return panel;
         }
@@ -1206,6 +1251,7 @@ namespace TajsCOI.Core.Settings
         {
             IReadOnlyList<LocalizationCatalog> catalogs = m_localization.GetCatalogSnapshot();
             IReadOnlyList<string> missing = m_localization.GetMissingKeysSnapshot();
+            IReadOnlyList<string> formattingFailures = m_localization.GetFormattingFailuresSnapshot();
             Panel panel = TajsDashboardUi.Card(
                 "Localization diagnostics",
                 "Core-owned catalogs are namespaced and fall back from the active locale to its language and default catalog.");
@@ -1216,6 +1262,9 @@ namespace TajsCOI.Core.Settings
                 TajsDashboardUi.StatusBadge(
                     "Missing: " + missing.Count,
                     missing.Count == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Yellow),
+                TajsDashboardUi.StatusBadge(
+                    "Format failures: " + formattingFailures.Count,
+                    formattingFailures.Count == 0 ? TajsDashboardUi.Green : TajsDashboardUi.Yellow),
                 TajsDashboardUi.StatusBadge(
                     "Debug keys: " + (m_localization.DebugKeys ? "on" : "off"),
                     m_localization.DebugKeys ? TajsDashboardUi.Yellow : TajsDashboardUi.Green));
@@ -1231,6 +1280,13 @@ namespace TajsCOI.Core.Settings
             {
                 panel.Body.Add(
                     new Label(("Missing keys: " + string.Join(", ", missing.Take(12))).AsLoc())
+                        .FontSize(11)
+                        .Selectable(true));
+            }
+            if (formattingFailures.Count > 0)
+            {
+                panel.Body.Add(
+                    new Label(("Format failures: " + string.Join(", ", formattingFailures.Take(12))).AsLoc())
                         .FontSize(11)
                         .Selectable(true));
             }
@@ -1283,7 +1339,7 @@ namespace TajsCOI.Core.Settings
             TajsDashboardMetadataPanel.Build(m_metadata, ExecuteConsoleCommand, QueueRefresh);
 
         private Panel BuildProfilesPanel() =>
-            TajsDashboardProfilesPanel.Build(m_profiles, QueueRefresh);
+            TajsDashboardProfilesPanel.Build(m_profiles, m_localization, QueueRefresh);
 
         private ButtonText CreateInlineCategoryButton(string category, int count)
         {
@@ -1778,6 +1834,9 @@ namespace TajsCOI.Core.Settings
 
         private static string FormatOwners(IReadOnlyList<string> owners) =>
             owners.Count == 0 ? "-" : string.Join(", ", owners);
+
+        private string Localized(string key, string fallback) =>
+            m_localization.Get("TajsCore", "dashboard." + key, fallback);
 
         private static string FormatValue(object value) =>
             Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
