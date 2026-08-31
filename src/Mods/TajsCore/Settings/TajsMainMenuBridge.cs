@@ -151,6 +151,8 @@ namespace TajsCOI.Core.Settings
         private readonly ILocalizationService m_localization;
         private readonly ITajsSettings m_settings;
         private readonly ITajsRuntime m_runtime;
+        private readonly ScrollColumn m_body;
+        private bool m_refreshQueued;
 
         public TajsMainMenuWindow(
             ISettingsProfileService profiles,
@@ -163,18 +165,19 @@ namespace TajsCOI.Core.Settings
             m_localization = localization ?? throw new ArgumentNullException(nameof(localization));
             m_settings = settings ?? throw new ArgumentNullException(nameof(settings));
             m_runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
+            m_body = new ScrollColumn().Fill().AlignItemsStretch().Gap(5.pt());
             Build();
+            AddBodySingle(m_body);
         }
 
         private void Build()
         {
-            ScrollColumn body = new ScrollColumn().Fill().AlignItemsStretch().Gap(4.pt());
-            body.Add(
+            m_body.Clear();
+            m_body.Add(
                 new Label(
                     "Main-menu controls are limited to global settings, profile-safe values, and diagnostics."
                         .AsLoc()).FontSize(12));
-            body.Add(BuildSettingsSummary(), BuildProfiles(), BuildDiagnostics());
-            AddBodySingle(body);
+            m_body.Add(BuildSettingsSummary(), BuildProfiles(), BuildDiagnostics());
         }
 
         private Panel BuildSettingsSummary()
@@ -193,7 +196,25 @@ namespace TajsCOI.Core.Settings
             return panel;
         }
 
-        private Panel BuildProfiles() => TajsDashboardProfilesPanel.Build(m_profiles, m_localization, () => { });
+        private Panel BuildProfiles() => TajsDashboardProfilesPanel.Build(m_profiles, m_localization, QueueRefresh);
+
+        private void QueueRefresh()
+        {
+            if (!IsOpen || m_refreshQueued)
+            {
+                return;
+            }
+
+            m_refreshQueued = true;
+            m_body.Schedule.Execute(() =>
+            {
+                m_refreshQueued = false;
+                if (IsOpen)
+                {
+                    Build();
+                }
+            }).StartingIn(1L);
+        }
 
         private Panel BuildDiagnostics()
         {

@@ -320,12 +320,16 @@ namespace TajsCOI.Core.Profiles
                 return false;
             }
 
-            if (!TryWriteAtomic(path, Serialize(profile), out error))
-            {
-                return false;
-            }
             lock (m_gate)
             {
+                if (!TryValidateStorageTarget(path, profile.Name, out error))
+                {
+                    return false;
+                }
+                if (!TryWriteAtomic(path, Serialize(profile), out error))
+                {
+                    return false;
+                }
                 m_profiles[profile.Name] = profile;
             }
             return true;
@@ -341,10 +345,32 @@ namespace TajsCOI.Core.Profiles
             }
             try
             {
+                List<LegacyProfileSource> legacySources;
+                lock (m_gate)
+                {
+                    legacySources = m_legacySources.TryGetValue(profile.Name, out List<LegacyProfileSource>? sources)
+                        ? sources.ToList()
+                        : new List<LegacyProfileSource>();
+                }
+                if (legacySources.Any(source => source.Ambiguous))
+                {
+                    error = "Profile has an ambiguous legacy file; refusing to delete it automatically.";
+                    return false;
+                }
+
                 File.Delete(GetProfilePath(profile.Name));
+                foreach (LegacyProfileSource source in legacySources)
+                {
+                    if (TryReadProfileFile(source.Path, out SettingsProfile? legacyProfile) &&
+                        StringComparer.OrdinalIgnoreCase.Equals(legacyProfile!.Name, profile.Name))
+                    {
+                        File.Delete(source.Path);
+                    }
+                }
                 lock (m_gate)
                 {
                     m_profiles.Remove(profile.Name);
+                    m_legacySources.Remove(profile.Name);
                 }
                 return true;
             }
@@ -400,6 +426,12 @@ namespace TajsCOI.Core.Profiles
                 error = "A profile with that name already exists.";
                 return false;
             }
+            if (!string.Equals(source.Name, destinationName?.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                HasAmbiguousLegacySource(source.Name))
+            {
+                error = "Profile has an ambiguous legacy file; refusing to rename it automatically.";
+                return false;
+            }
             try
             {
                 profile = source.With(destinationName?.Trim() ?? string.Empty);
@@ -419,9 +451,11 @@ namespace TajsCOI.Core.Profiles
                 if (!string.Equals(source.Name, profile.Name, StringComparison.OrdinalIgnoreCase))
                 {
                     File.Delete(GetProfilePath(source.Name));
+                    DeleteLegacySources(source.Name);
                     lock (m_gate)
                     {
                         m_profiles.Remove(source.Name);
+                        m_legacySources.Remove(source.Name);
                     }
                 }
                 return true;
@@ -602,17 +636,82 @@ namespace TajsCOI.Core.Profiles
                 {
                     return;
                 }
-                foreach (string path in Directory.EnumerateFiles(m_rootDirectory, "*.json", SearchOption.TopDirectoryOnly))
+                var candidates = new List<ProfileFileCandidate>();
+                foreach (string rawPath in Directory.EnumerateFiles(m_rootDirectory, "*.json", SearchOption.TopDirectoryOnly))
                 {
                     try
                     {
+                        string path = Path.GetFullPath(rawPath);
                         SettingsProfile profile = Parse(File.ReadAllText(path));
-                        m_profiles[profile.Name] = profile;
+                        string currentPath = GetProfilePath(profile.Name);
+                        string legacyPath = GetLegacyProfilePath(profile.Name);
+                        bool isCurrent = PathEquals(path, currentPath);
+                        bool isLegacy = PathEquals(path, legacyPath);
+                        if (!isCurrent && !isLegacy)
+                        {
+                            m_log.Warning("Settings profile '" + Path.GetFileName(path) + "' was ignored because its name does not match a managed storage identity.");
+                            continue;
+                        }
+                        candidates.Add(new ProfileFileCandidate(path, profile, isCurrent, isLegacy, legacyPath));
                     }
                     catch (Exception exception)
                     {
-                        m_log.Warning("Settings profile '" + Path.GetFileName(path) + "' was ignored: " + exception.Message);
+                        m_log.Warning("Settings profile '" + Path.GetFileName(rawPath) + "' was ignored: " + exception.Message);
                     }
+                }
+
+                HashSet<string> ambiguousLegacyPaths = candidates
+                    .Where(candidate => candidate.IsLegacy)
+                    .GroupBy(candidate => candidate.LegacyPath, StringComparer.OrdinalIgnoreCase)
+                    .Where(group => group.Count() > 1)
+                    .Select(group => group.Key)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (ProfileFileCandidate candidate in candidates)
+                {
+                    candidate.LegacyAmbiguous = candidate.IsLegacy && ambiguousLegacyPaths.Contains(candidate.LegacyPath);
+                }
+
+                foreach (ProfileFileCandidate candidate in candidates
+                             .OrderByDescending(item => item.IsCurrent)
+                             .ThenBy(item => item.Path, StringComparer.Ordinal))
+                {
+                    if (candidate.IsLegacy)
+                    {
+                        AddLegacySource(candidate.Profile.Name, candidate.Path, candidate.LegacyAmbiguous);
+                    }
+
+                    if (m_profiles.ContainsKey(candidate.Profile.Name))
+                    {
+                        continue;
+                    }
+
+                    // Preserve the legacy source after a successful atomic copy. It is a
+                    // recoverable migration source and is removed only after an explicit rename
+                    // or delete can verify its embedded authoritative name.
+                    if (candidate.IsLegacy && !candidate.LegacyAmbiguous)
+                    {
+                        string currentPath = GetProfilePath(candidate.Profile.Name);
+                        if (!File.Exists(currentPath))
+                        {
+                            if (TryWriteAtomic(currentPath, Serialize(candidate.Profile), out string migrationError))
+                            {
+                                m_log.Info("Migrated legacy settings profile '" + candidate.Profile.Name + "' to its collision-safe storage identity.");
+                            }
+                            else
+                            {
+                                m_log.Warning("Legacy settings profile '" + candidate.Profile.Name + "' was loaded without migration: " + migrationError);
+                            }
+                        }
+                        else if (!TryReadProfileFile(currentPath, out SettingsProfile? currentProfile) ||
+                                 !StringComparer.OrdinalIgnoreCase.Equals(currentProfile!.Name, candidate.Profile.Name))
+                        {
+                            candidate.LegacyAmbiguous = true;
+                            AddLegacySource(candidate.Profile.Name, candidate.Path, ambiguous: true);
+                            m_log.Warning("Legacy settings profile '" + candidate.Profile.Name + "' was not migrated because its collision-safe target is occupied by another or invalid profile.");
+                        }
+                    }
+
+                    m_profiles[candidate.Profile.Name] = candidate.Profile;
                 }
             }
             catch (Exception exception)
@@ -631,16 +730,124 @@ namespace TajsCOI.Core.Profiles
                 return false;
             }
             string normalized = name.Trim();
-            if (normalized.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || normalized is "." or "..")
-            {
-                error = "Profile name contains invalid file-name characters.";
-                return false;
-            }
             path = GetProfilePath(normalized);
             return true;
         }
 
-        private string GetProfilePath(string name) => Path.Combine(m_rootDirectory, Sanitize(name) + ".json");
+        private string GetProfilePath(string name) => Path.Combine(m_rootDirectory, GetStorageFileName(name) + ".json");
+
+        private string GetLegacyProfilePath(string name) => Path.Combine(m_rootDirectory, Sanitize(name) + ".json");
+
+        internal static string GetStorageFileNameForTests(string name) => GetStorageFileName(name);
+
+        private static string GetStorageFileName(string name)
+        {
+            // The registry is OrdinalIgnoreCase, so the identity uses the same invariant case
+            // fold. The readable slug is only a hint; the stable hash and target validation make
+            // punctuation collisions and even accidental hash collisions non-destructive.
+            string normalized = name.Trim();
+            string identity = normalized.ToUpperInvariant();
+            string slug = Sanitize(identity);
+            if (slug.Length > 48)
+            {
+                slug = slug.Substring(0, 48).TrimEnd(' ', '.');
+            }
+
+            byte[] hash;
+            using (SHA256 sha256 = SHA256.Create())
+            {
+                hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(identity));
+            }
+            string shortHash = BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant().Substring(0, 12);
+            return slug + "-" + shortHash;
+        }
+
+        private static bool PathEquals(string left, string right) =>
+            StringComparer.OrdinalIgnoreCase.Equals(Path.GetFullPath(left), Path.GetFullPath(right));
+
+        private bool TryValidateStorageTarget(string path, string profileName, out string error)
+        {
+            error = string.Empty;
+            if (!File.Exists(path))
+            {
+                return true;
+            }
+
+            if (!TryReadProfileFile(path, out SettingsProfile? existing))
+            {
+                error = "Refusing to overwrite invalid profile file '" + Path.GetFileName(path) + "'.";
+                return false;
+            }
+            if (!StringComparer.OrdinalIgnoreCase.Equals(existing!.Name, profileName))
+            {
+                error = "Profile storage identity collision for '" + profileName + "'; existing profile is '" + existing.Name + "'.";
+                return false;
+            }
+            return true;
+        }
+
+        private static bool TryReadProfileFile(string path, out SettingsProfile? profile)
+        {
+            profile = null;
+            try
+            {
+                profile = Parse(File.ReadAllText(path));
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void AddLegacySource(string profileName, string path, bool ambiguous)
+        {
+            lock (m_gate)
+            {
+                if (!m_legacySources.TryGetValue(profileName, out List<LegacyProfileSource>? sources))
+                {
+                    sources = new List<LegacyProfileSource>();
+                    m_legacySources[profileName] = sources;
+                }
+                LegacyProfileSource? existing = sources.FirstOrDefault(source => PathEquals(source.Path, path));
+                if (existing is null)
+                {
+                    sources.Add(new LegacyProfileSource(path, ambiguous));
+                }
+                else
+                {
+                    existing.Ambiguous |= ambiguous;
+                }
+            }
+        }
+
+        private bool HasAmbiguousLegacySource(string profileName)
+        {
+            lock (m_gate)
+            {
+                return m_legacySources.TryGetValue(profileName, out List<LegacyProfileSource>? sources) &&
+                       sources.Any(source => source.Ambiguous);
+            }
+        }
+
+        private void DeleteLegacySources(string profileName)
+        {
+            List<LegacyProfileSource> sources;
+            lock (m_gate)
+            {
+                sources = m_legacySources.TryGetValue(profileName, out List<LegacyProfileSource>? stored)
+                    ? stored.ToList()
+                    : new List<LegacyProfileSource>();
+            }
+            foreach (LegacyProfileSource source in sources)
+            {
+                if (TryReadProfileFile(source.Path, out SettingsProfile? legacyProfile) &&
+                    StringComparer.OrdinalIgnoreCase.Equals(legacyProfile!.Name, profileName))
+                {
+                    File.Delete(source.Path);
+                }
+            }
+        }
 
         private bool ProfileExists(string name)
         {
@@ -657,8 +864,8 @@ namespace TajsCOI.Core.Profiles
             {
                 builder.Append(char.IsLetterOrDigit(character) || character is '-' or '_' or ' ' ? character : '_');
             }
-            string result = builder.ToString().Trim();
-            return result.Length == 0 ? "profile" : result;
+            string result = builder.ToString().Trim().TrimEnd('.');
+            return result.Length == 0 || result is "." or ".." ? "profile" : result;
         }
 
         private static bool IsSelected(SettingsProfile profile, SettingDescriptor descriptor) =>

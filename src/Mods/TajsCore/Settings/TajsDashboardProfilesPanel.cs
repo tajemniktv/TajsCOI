@@ -218,14 +218,20 @@ namespace TajsCOI.Core.Settings
 
             var actions = new Column(2.pt()).AlignItemsStretch();
             SettingsProfile? selected = null;
+            SettingsProfilePreview? confirmedPreview = null;
             Label feedback = new Label().FontSize(11).Hide();
 
             void RenderActions(IReadOnlyCollection<string> selectedIds)
             {
+                string? previousName = selected?.Name;
                 selected = savedProfiles
                     .Where(row => selectedIds.Contains(row.Profile.Name, StringComparer.OrdinalIgnoreCase))
                     .Select(row => row.Profile)
                     .FirstOrDefault();
+                if (!string.Equals(previousName, selected?.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    confirmedPreview = null;
+                }
                 actions.Clear();
                 if (selected is null)
                 {
@@ -252,13 +258,60 @@ namespace TajsCOI.Core.Settings
                 buttons.Add(
                     TajsDashboardUi.ActionButton(
                         Button.Area,
+                        Text(localization, "profiles.rename", "Rename"),
+                        "Assets/Unity/UserInterface/General/Configure.svg",
+                        () =>
+                        {
+                            if (profiles.TryRename(profile.Name, renameName.GetText(), out SettingsProfile? renamed, out string error) && renamed is not null)
+                            {
+                                feedback.Value(Text(localization, "profiles.renamed", "Profile renamed.").AsLoc()).Show();
+                                confirmedPreview = null;
+                                queueRefresh();
+                            }
+                            else
+                            {
+                                feedback.Value((Text(localization, "profiles.rename.failed", "Profile was not renamed: ") + error).AsLoc()).Show();
+                            }
+                        }),
+                    TajsDashboardUi.ActionButton(
+                        Button.Area,
+                        Text(localization, "profiles.duplicate", "Duplicate"),
+                        "Assets/Unity/UserInterface/General/Configure.svg",
+                        () =>
+                        {
+                            if (profiles.TryDuplicate(profile.Name, duplicateName.GetText(), out SettingsProfile? duplicate, out string error) && duplicate is not null)
+                            {
+                                feedback.Value(Text(localization, "profiles.duplicated", "Profile duplicated.").AsLoc()).Show();
+                                queueRefresh();
+                            }
+                            else
+                            {
+                                feedback.Value((Text(localization, "profiles.duplicate.failed", "Profile was not duplicated: ") + error).AsLoc()).Show();
+                            }
+                        }),
+                    TajsDashboardUi.ActionButton(
+                        Button.Area,
+                        Text(localization, "profiles.export", "Export"),
+                        "Assets/Unity/UserInterface/General/ExportToString.svg",
+                        () =>
+                        {
+                            if (profiles.TryExport(profile.Name, exportPath.GetText(), out string error))
+                            {
+                                feedback.Value(Text(localization, "profiles.exported", "Profile exported.").AsLoc()).Show();
+                            }
+                            else
+                            {
+                                feedback.Value((Text(localization, "profiles.export.failed", "Profile was not exported: ") + error).AsLoc()).Show();
+                            }
+                        }),
+                    TajsDashboardUi.ActionButton(
+                        Button.Area,
                         Text(localization, "profiles.preview", "Preview"),
                         "Assets/Unity/UserInterface/General/Configure.svg",
                         () =>
                         {
-                            SettingsProfilePreview preview = profiles.Preview(profile);
-                            feedback.Value(PreviewText(preview).AsLoc())
-                                .Show();
+                            confirmedPreview = profiles.Preview(profile);
+                            feedback.Value(PreviewText(confirmedPreview).AsLoc()).Show();
                         }),
                     TajsDashboardUi.ActionButton(
                         Button.Area,
@@ -266,12 +319,35 @@ namespace TajsCOI.Core.Settings
                         "Assets/Unity/UserInterface/General/Configure.svg",
                         () =>
                         {
+                            if (confirmedPreview is null)
+                            {
+                                feedback.Value(Text(localization, "profiles.apply.previewRequired", "Preview this profile before applying it.").AsLoc()).Show();
+                                return;
+                            }
+
+                            SettingsProfilePreview latestPreview = profiles.Preview(profile);
+                            if (!confirmedPreview.Matches(latestPreview))
+                            {
+                                confirmedPreview = latestPreview;
+                                feedback.Value(
+                                        (Text(localization, "profiles.apply.changed", "Settings changed since the preview; review the refreshed preview before applying.") +
+                                         "\n" + PreviewText(latestPreview)).AsLoc())
+                                    .Show();
+                                return;
+                            }
+                            if (!latestPreview.CanApply)
+                            {
+                                feedback.Value(PreviewText(latestPreview).AsLoc()).Show();
+                                return;
+                            }
+
                             SettingsProfileApplyResult result = profiles.Apply(profile);
                             feedback.Value(
                                     (profile.Name + ": applied=" + result.AppliedCount + ", skipped=" + result.SkippedIds.Count +
                                      ", errors=" + result.Errors.Count +
                                      (result.Errors.Count == 0 ? string.Empty : " (" + string.Join(" | ", result.Errors.Take(4)) + ")")).AsLoc())
                                 .Show();
+                            confirmedPreview = null;
                             queueRefresh();
                         }),
                     TajsDashboardUi.ActionButton(
@@ -338,7 +414,7 @@ namespace TajsCOI.Core.Settings
                 entry.StableId + " [" + entry.State + "]" +
                 (entry.State == SettingsProfilePreviewState.Proposed
                     ? " " + FormatValue(entry.CurrentValue) + " -> " + FormatValue(entry.ProposedValue)
-                    : string.Empty)));
+                    : string.IsNullOrWhiteSpace(entry.Message) ? string.Empty : " " + entry.Message)));
             string omitted = preview.Entries.Count > 12
                 ? "; ... " + (preview.Entries.Count - 12) + " more"
                 : string.Empty;

@@ -111,7 +111,40 @@ namespace TajsCOI.Tests
                 var reloaded = new TajsSettingsProfileService(settings, new TajsRuntime(), Path.Combine(root, "profiles"));
                 Assert.True(reloaded.TryGet("demo", out _));
                 Assert.True(reloaded.TryGet("copy", out _));
-                Assert.True(File.Exists(Path.Combine(root, "profiles", "demo.json")));
+                Assert.True(File.Exists(Path.Combine(
+                    root,
+                    "profiles",
+                    TajsSettingsProfileService.GetStorageFileNameForTests("demo") + ".json")));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void PreviewApprovalBecomesStaleWhenUnderlyingSettingChanges()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI.ProfileTests", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var settings = new TajsSettings(Path.Combine(root, "settings.json"), new SettingsTestsNullLogger());
+                settings.Register(SettingDescriptor.Boolean("ProfileMod", "Profile Mod", "safe", "Safe", "Safe", false, flags: SettingFlags.ProfileSafe));
+                Assert.True(settings.TrySet("ProfileMod", "safe", true).Success);
+                var service = new TajsSettingsProfileService(settings, new TajsRuntime(), root);
+                Assert.True(service.TryCapture("demo", Array.Empty<string>(), Array.Empty<string>(), out SettingsProfile? profile, out string captureError), captureError);
+                Assert.NotNull(profile);
+
+                SettingsProfilePreview approved = service.Preview(profile!);
+                Assert.True(approved.CanApply);
+                Assert.True(settings.TrySet("ProfileMod", "safe", false).Success);
+                SettingsProfilePreview changed = service.Preview(profile!);
+                Assert.False(approved.Matches(changed));
+                Assert.True(service.Apply(profile!).Success);
+                Assert.True(settings.Get<bool>("ProfileMod", "safe"));
             }
             finally
             {
@@ -218,6 +251,107 @@ namespace TajsCOI.Tests
                 Assert.True(service.TryDelete("imported", out string deleteError), deleteError);
                 Assert.False(service.TryGet("imported", out _));
                 Assert.False(File.Exists(Path.Combine(root, "profiles", "imported.json")));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void StorageIdentityKeepsSanitizedNamesDistinctAndCaseInsensitiveNamesStable()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI.ProfileTests", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var settings = new TajsSettings(Path.Combine(root, "settings.json"), new SettingsTestsNullLogger());
+                settings.Register(SettingDescriptor.Boolean("ProfileMod", "Profile Mod", "safe", "Safe", "Safe", false, flags: SettingFlags.ProfileSafe));
+                var service = new TajsSettingsProfileService(settings, new TajsRuntime(), Path.Combine(root, "profiles"));
+
+                Assert.True(service.TryCapture("a.b", Array.Empty<string>(), Array.Empty<string>(), out _, out string firstError), firstError);
+                Assert.True(service.TryCapture("a_b", Array.Empty<string>(), Array.Empty<string>(), out _, out string secondError), secondError);
+                Assert.True(service.TryCapture("Δ punctuation!", Array.Empty<string>(), Array.Empty<string>(), out _, out string unicodeError), unicodeError);
+                Assert.True(service.TryCapture("a:b/c?", Array.Empty<string>(), Array.Empty<string>(), out _, out string punctuationError), punctuationError);
+                Assert.True(service.TryCapture("Case", Array.Empty<string>(), Array.Empty<string>(), out _, out string caseError), caseError);
+                Assert.True(service.TryCapture("case", Array.Empty<string>(), Array.Empty<string>(), out _, out string caseVariantError), caseVariantError);
+
+                Assert.Equal(5, service.List().Count);
+                Assert.NotEqual(
+                    TajsSettingsProfileService.GetStorageFileNameForTests("a.b"),
+                    TajsSettingsProfileService.GetStorageFileNameForTests("a_b"));
+                Assert.Equal(
+                    TajsSettingsProfileService.GetStorageFileNameForTests("Case"),
+                    TajsSettingsProfileService.GetStorageFileNameForTests("case"));
+                Assert.Equal(5, Directory.EnumerateFiles(Path.Combine(root, "profiles"), "*.json").Count());
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void LegacyProfileMigratesWithoutOverwritingCollisionAndRenameDuplicateDeleteUseNewIdentity()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI.ProfileTests", Guid.NewGuid().ToString("N"));
+            string profilesRoot = Path.Combine(root, "profiles");
+            try
+            {
+                Directory.CreateDirectory(profilesRoot);
+                File.WriteAllText(
+                    Path.Combine(profilesRoot, "a_b.json"),
+                    "{\"schema\":1,\"suite_version\":\"test\",\"name\":\"a.b\",\"categories\":[],\"modules\":[],\"values\":{}}");
+                var settings = new TajsSettings(Path.Combine(root, "settings.json"), new SettingsTestsNullLogger());
+                var service = new TajsSettingsProfileService(settings, new TajsRuntime(), profilesRoot);
+
+                string migratedPath = Path.Combine(profilesRoot, TajsSettingsProfileService.GetStorageFileNameForTests("a.b") + ".json");
+                Assert.True(service.TryGet("a.b", out _));
+                Assert.True(File.Exists(migratedPath));
+                Assert.True(File.Exists(Path.Combine(profilesRoot, "a_b.json")));
+
+                Assert.True(service.TryRename("a.b", "a_b", out _, out string renameError), renameError);
+                Assert.False(service.TryGet("a.b", out _));
+                Assert.True(service.TryGet("a_b", out _));
+                Assert.False(File.Exists(migratedPath));
+                Assert.False(File.Exists(Path.Combine(profilesRoot, "a_b.json")));
+
+                Assert.True(service.TryDuplicate("a_b", "a.b", out _, out string duplicateError), duplicateError);
+                Assert.True(service.TryDelete("a.b", out string deleteError), deleteError);
+                Assert.False(service.TryGet("a.b", out _));
+                Assert.True(service.TryGet("a_b", out _));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void StorageIdentityCollisionRefusesToOverwriteExistingJson()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI.ProfileTests", Guid.NewGuid().ToString("N"));
+            string profilesRoot = Path.Combine(root, "profiles");
+            try
+            {
+                Directory.CreateDirectory(profilesRoot);
+                string target = Path.Combine(profilesRoot, TajsSettingsProfileService.GetStorageFileNameForTests("a.b") + ".json");
+                const string existing = "{\"schema\":1,\"suite_version\":\"test\",\"name\":\"a_b\",\"categories\":[],\"modules\":[],\"values\":{}}";
+                File.WriteAllText(target, existing);
+                var settings = new TajsSettings(Path.Combine(root, "settings.json"), new SettingsTestsNullLogger());
+                var service = new TajsSettingsProfileService(settings, new TajsRuntime(), profilesRoot);
+
+                Assert.False(service.TryCapture("a.b", Array.Empty<string>(), Array.Empty<string>(), out _, out string error));
+                Assert.Contains("collision", error, StringComparison.OrdinalIgnoreCase);
+                Assert.Equal(existing, File.ReadAllText(target));
             }
             finally
             {

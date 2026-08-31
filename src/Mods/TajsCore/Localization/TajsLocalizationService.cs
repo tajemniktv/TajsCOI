@@ -51,6 +51,8 @@ namespace TajsCOI.Core.Localization
                         ["dashboard.profiles.selected"] = "Selected profile: ",
                         ["dashboard.profiles.preview"] = "Preview",
                         ["dashboard.profiles.apply"] = "Apply",
+                        ["dashboard.profiles.apply.previewRequired"] = "Preview this profile before applying it.",
+                        ["dashboard.profiles.apply.changed"] = "Settings changed since the preview; review the refreshed preview before applying.",
                         ["dashboard.profiles.delete"] = "Delete",
                         ["dashboard.profiles.deleteFailed"] = "Profile could not be deleted: ",
                         ["dashboard.profiles.capture.name"] = "Profile name",

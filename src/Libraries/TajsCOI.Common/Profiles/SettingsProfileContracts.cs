@@ -125,6 +125,35 @@ namespace TajsCOI.Common.Profiles
 
         public bool CanApply =>
             Entries.All(entry => entry.State != SettingsProfilePreviewState.Invalid);
+
+        /// <summary>
+        ///     Compares the observed preview inputs, including current values. A changed current
+        ///     value therefore invalidates a previous UI confirmation and requires a fresh preview.
+        /// </summary>
+        public bool Matches(SettingsProfilePreview other)
+        {
+            if (other is null ||
+                !StringComparer.OrdinalIgnoreCase.Equals(Profile.Name, other.Profile.Name) ||
+                !SkippedIds.SequenceEqual(other.SkippedIds, StringComparer.Ordinal) ||
+                Entries.Count != other.Entries.Count)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < Entries.Count; index++)
+            {
+                SettingsProfilePreviewEntry left = Entries[index];
+                SettingsProfilePreviewEntry right = other.Entries[index];
+                if (!StringComparer.Ordinal.Equals(left.StableId, right.StableId) ||
+                    left.State != right.State ||
+                    !Equals(left.CurrentValue, right.CurrentValue) ||
+                    !Equals(left.ProposedValue, right.ProposedValue))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 
     public sealed class SettingsProfileApplyResult
