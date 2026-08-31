@@ -60,8 +60,14 @@ namespace TajsCOI.Tweaks.Configuration
             try
             {
                 ConfigurationSnapshot snapshot = registry.Capture(Describe(entity), runtimeEntity);
-                if (snapshot.Payloads.Count == 0 || !ConfigurationPayloadCodec.TrySerialize(snapshot, out string encoded, out _))
+                if (snapshot.Payloads.Count == 0)
                 {
+                    return false;
+                }
+
+                if (!ConfigurationPayloadCodec.TrySerialize(snapshot, out string encoded, out string encodeError))
+                {
+                    Warn("Configuration copy extension payload was not serialized: " + encodeError);
                     return false;
                 }
 
@@ -85,9 +91,14 @@ namespace TajsCOI.Tweaks.Configuration
             }
 
             string? encoded = data.GetString(ConfigDataKey).ValueOrNull;
-            if (string.IsNullOrWhiteSpace(encoded) ||
-                !ConfigurationPayloadCodec.TryDeserialize(encoded, out ConfigurationSnapshot snapshot, out _))
+            if (string.IsNullOrWhiteSpace(encoded))
             {
+                return false;
+            }
+
+            if (!ConfigurationPayloadCodec.TryDeserialize(encoded, out ConfigurationSnapshot snapshot, out string decodeError))
+            {
+                Warn("Configuration copy extension payload was ignored: " + decodeError);
                 return false;
             }
 
@@ -129,6 +140,18 @@ namespace TajsCOI.Tweaks.Configuration
             }
             logger = null;
             return false;
+        }
+
+        private static void Warn(string message)
+        {
+            if (message.Length > 256)
+            {
+                message = message.Substring(0, 256) + "...";
+            }
+            if (TryGetLogger(out ITajsLogger? logger))
+            {
+                logger!.WarningOnce(message);
+            }
         }
 
         private static ConfigurationEntityDescriptor Describe(IEntity entity)
