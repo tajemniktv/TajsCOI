@@ -10,18 +10,32 @@ namespace TajsCOI.Tweaks.Features.Research
 {
     internal readonly struct ResearchQueueEntry
     {
-        internal ResearchQueueEntry(string prototypeId, bool available, bool researched, bool locked)
+        internal ResearchQueueEntry(
+            string prototypeId,
+            bool available,
+            bool researched,
+            bool locked,
+            bool inProgress = false,
+            int queueIndex = -1,
+            int progressPercent = 0)
         {
             PrototypeId = prototypeId?.Trim() ?? string.Empty;
             Available = available;
             Researched = researched;
             Locked = locked;
+            InProgress = inProgress;
+            QueueIndex = queueIndex;
+            ProgressPercent = Math.Max(0, Math.Min(100, progressPercent));
         }
 
         internal string PrototypeId { get; }
         internal bool Available { get; }
         internal bool Researched { get; }
         internal bool Locked { get; }
+        internal bool InProgress { get; }
+        internal int QueueIndex { get; }
+        internal int ProgressPercent { get; }
+        internal bool InQueue => QueueIndex >= 0;
         internal bool CanQueue => Available && !Researched && !Locked && PrototypeId.Length > 0;
     }
 
@@ -64,6 +78,15 @@ namespace TajsCOI.Tweaks.Features.Research
             result.Remove(prototypeId);
             result.Insert(Math.Min(targetIndex, result.Count), prototypeId);
             return result;
+        }
+
+        internal static IReadOnlyList<ResearchQueueEntry> OrderForDisplay(IEnumerable<ResearchQueueEntry> entries)
+        {
+            return (entries ?? Array.Empty<ResearchQueueEntry>())
+                .OrderBy(entry => entry.InProgress ? 0 : entry.InQueue ? 1 : 2)
+                .ThenBy(entry => entry.InQueue ? entry.QueueIndex : int.MaxValue)
+                .ThenBy(entry => entry.PrototypeId, StringComparer.Ordinal)
+                .ToArray();
         }
     }
 }

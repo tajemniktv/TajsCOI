@@ -37,6 +37,10 @@ namespace TajsCOI.Tweaks.Features.Research
             ? m_manager.CurrentResearch.Value.Proto.Id.Value
             : string.Empty;
 
+        internal int CurrentProgressPercent => m_manager.CurrentResearch.HasValue
+            ? m_manager.CurrentResearch.Value.ProgressInPerc.ToIntPercentRounded()
+            : 0;
+
         internal IReadOnlyList<ResearchQueueEntry> Snapshot()
         {
             return m_manager.AllNodes
@@ -44,42 +48,50 @@ namespace TajsCOI.Tweaks.Features.Research
                     node.Proto.Id.Value,
                     node.Proto.IsAvailable,
                     node.State == ResearchNodeState.Researched,
-                    node.IsLockedByCondition))
+                    node.IsLockedByCondition,
+                    node.State == ResearchNodeState.InProgress,
+                    node.IndexInQueue,
+                    node.ProgressInPerc.ToIntPercentRounded()))
                 .ToArray();
         }
 
-        internal bool TryQueue(string prototypeId, out string reason)
+        internal bool TryQueue(string prototypeId, out string reason, out IInputCommand? command)
         {
+            command = null;
             if (!TryGetNode(prototypeId, out ResearchNodeProto? proto, out reason))
             {
                 return false;
             }
-            m_scheduler.ScheduleInputCmd(new ResearchQueueDequeueCmd(proto!.Id, isEnqueue: true));
+            command = m_scheduler.ScheduleInputCmd(new ResearchQueueDequeueCmd(proto!.Id, isEnqueue: true));
             reason = string.Empty;
             return true;
         }
 
-        internal bool TryDequeue(string prototypeId, out string reason)
+        internal bool TryDequeue(string prototypeId, out string reason, out IInputCommand? command)
         {
+            command = null;
             if (!TryGetNode(prototypeId, out ResearchNodeProto? proto, out reason))
             {
                 return false;
             }
-            m_scheduler.ScheduleInputCmd(new ResearchQueueDequeueCmd(proto!.Id, isEnqueue: false));
+            command = m_scheduler.ScheduleInputCmd(new ResearchQueueDequeueCmd(proto!.Id, isEnqueue: false));
             reason = string.Empty;
             return true;
         }
 
-        internal bool TryStart(string prototypeId, out string reason)
+        internal bool TryStart(string prototypeId, out string reason, out IInputCommand? command)
         {
+            command = null;
             if (!TryGetNode(prototypeId, out ResearchNodeProto? proto, out reason))
             {
                 return false;
             }
-            m_scheduler.ScheduleInputCmd(new ResearchStartCmd(proto!.Id));
+            command = m_scheduler.ScheduleInputCmd(new ResearchStartCmd(proto!.Id));
             reason = string.Empty;
             return true;
         }
+
+        internal IInputCommand ScheduleStop() => m_scheduler.ScheduleInputCmd(new ResearchStopCmd());
 
         private bool TryGetNode(string prototypeId, out ResearchNodeProto? proto, out string reason)
         {

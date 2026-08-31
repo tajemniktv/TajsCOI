@@ -80,6 +80,7 @@ namespace TajsCOI.Tweaks
         internal static bool AllowSteam;
         internal static bool AllowExhaust;
         internal static bool WorldOperations;
+        internal static bool MineDepletedTint = true;
         internal static bool AutoWorldDelivery;
         internal static bool AutoExploration;
         internal static double AutoExplorationSafetyMarginPercent = 25d;
@@ -304,6 +305,7 @@ namespace TajsCOI.Tweaks
             AllowSteam = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AllowSteam);
             AllowExhaust = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AllowExhaust);
             WorldOperations = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.WorldOperations);
+            MineDepletedTint = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.MineDepletedTint);
             AutoWorldDelivery = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AutoWorldDelivery);
             AutoExploration = settings.Get<bool>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AutoExploration);
             AutoExplorationSafetyMarginPercent = settings.Get<double>(TajsTweaksSettingsCatalog.ModId, TajsTweaksSettingsCatalog.AutoExplorationSafetyMarginPercent);
@@ -578,6 +580,7 @@ namespace TajsCOI.Tweaks
                 case TajsTweaksSettingsCatalog.AllowSteam: AllowSteam = value; break;
                 case TajsTweaksSettingsCatalog.AllowExhaust: AllowExhaust = value; break;
                 case TajsTweaksSettingsCatalog.WorldOperations: WorldOperations = value; break;
+                case TajsTweaksSettingsCatalog.MineDepletedTint: MineDepletedTint = value; break;
                 case TajsTweaksSettingsCatalog.AutoWorldDelivery: AutoWorldDelivery = value; break;
                 case TajsTweaksSettingsCatalog.AutoExploration: AutoExploration = value; break;
                 case TajsTweaksSettingsCatalog.AutoExplorationAllowUnknownStrength: AutoExplorationAllowUnknownStrength = value; break;

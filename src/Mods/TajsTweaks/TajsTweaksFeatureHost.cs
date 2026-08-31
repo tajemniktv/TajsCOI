@@ -521,6 +521,10 @@ namespace TajsCOI.Tweaks
             {
                 TweaksAutoShipDeliveryFeature.Reset();
             }
+            if (change.Descriptor.Key == TajsTweaksSettingsCatalog.MineDepletedTint)
+            {
+                MineDepletedTintFeature.SetEnabled(TajsTweaksRuntimeState.MineDepletedTint);
+            }
             if (change.Descriptor.Key == TajsTweaksSettingsCatalog.GroundwaterPolicy ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.GroundwaterRegenerationPercent ||
                 change.Descriptor.Key == TajsTweaksSettingsCatalog.GroundwaterMinimumPercent ||
@@ -645,6 +649,13 @@ namespace TajsCOI.Tweaks
 
         private void OnRenderUpdateEnd(GameTime _)
         {
+            // Research commands are processed on the simulation thread. Reconcile the window
+            // only after IInputScheduler.OnCommandProcessed, rather than reading stale queue data
+            // immediately after scheduling an input command.
+            if (m_researchQueueWindow.HasValue)
+            {
+                m_researchQueueWindow.Value.RefreshPending();
+            }
             EnsureWorldVisibilityFilters();
             EnsureOverclockingFeature();
             EnsureEntityMetadataSelection();
@@ -2724,9 +2735,15 @@ namespace TajsCOI.Tweaks
             EntityId? parsedDepotId = null;
             if (!string.IsNullOrWhiteSpace(depotId))
             {
-                if (!int.TryParse(depotId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int depotValue) ||
-                    !entities.TryGetEntity<VehicleDepotBase>(new EntityId(depotValue), out VehicleDepotBase depot) ||
-                    depot.IsDestroyed || !depot.CanAcceptForUpgrade(source, target))
+                if (!int.TryParse(depotId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int depotValue))
+                {
+                    return "Fleet manager: the selected replacement depot is missing, destroyed, or cannot accept this prototype pair.";
+                }
+                VehicleDepotBase? depot = entities.TryGetEntity<VehicleDepotBase>(new EntityId(depotValue), out VehicleDepotBase resolvedDepot)
+                    ? resolvedDepot
+                    : null;
+                if (!FleetReplacementPlanner.IsDepotScopeValid(true, depot is not null, depot?.IsDestroyed == true) ||
+                    depot is null || !depot.CanAcceptForUpgrade(source, target))
                 {
                     return "Fleet manager: the selected replacement depot is missing, destroyed, or cannot accept this prototype pair.";
                 }
@@ -2767,7 +2784,10 @@ namespace TajsCOI.Tweaks
                         vehicle.Id.Value,
                         vehicle.Prototype.Id.Value,
                         vehicle.AssignedTo.HasValue,
-                        null,
+                        // AddVehicleReplacementTaskCmd's depot is the destination scope. CoI does
+                        // not expose a source-vehicle depot owner, so selected scope is carried into
+                        // every preview row instead of silently broadening to unrestricted.
+                        parsedDepotId.HasValue ? parsedDepotId.Value.Value : (int?)null,
                         assignedZone?.Id.Value,
                         assignee?.Id.Value,
                         vehicle.ZoneMask);
@@ -2778,7 +2798,7 @@ namespace TajsCOI.Tweaks
                 sourceId,
                 targetId,
                 onlyUnassigned ? "unassigned" : string.Empty,
-                null,
+                parsedDepotId.HasValue ? parsedDepotId.Value.Value : (int?)null,
                 parsedAssigneeId.HasValue ? null : parsedZoneId,
                 parsedAssigneeId?.Value,
                 requested,
@@ -2808,7 +2828,7 @@ namespace TajsCOI.Tweaks
                        ", source=" + source.Id.Value + " -> " + target.Id.Value +
                        ", zone=" + zone.Id.Value +
                        ", unassigned-only=" + onlyUnassigned +
-                       (parsedDepotId.HasValue ? ", depot=" + parsedDepotId.Value.Value : string.Empty) +
+                       ", depot=" + (parsedDepotId.HasValue ? parsedDepotId.Value.Value.ToString(CultureInfo.InvariantCulture) : "any") +
                        (parsedAssigneeId.HasValue ? ", assignee=" + parsedAssigneeId.Value.Value : string.Empty) + ".";
             }
             catch (Exception exception)

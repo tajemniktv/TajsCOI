@@ -65,6 +65,9 @@ namespace TajsCOI.Tweaks.Features.Fleet
 
     internal static class FleetReplacementPlanner
     {
+        internal static bool IsDepotScopeValid(bool scopeSpecified, bool exists, bool destroyed) =>
+            !scopeSpecified || exists && !destroyed;
+
         internal static IReadOnlyList<int> Match(
             IEnumerable<FleetVehicleSnapshot> vehicles,
             FleetReplacementFilterSnapshot filter,

@@ -9,6 +9,8 @@ using TajsCOI.Tweaks.Features.Research;
 using TajsCOI.Tweaks.Features.Ships;
 using TajsCOI.Tweaks.Features.Trains;
 using TajsCOI.Tweaks.Features.World;
+using TajsCOI.Common.Settings;
+using TajsCOI.Tweaks;
 using Xunit;
 
 namespace TajsCOI.Tests.RuntimeContracts
@@ -90,6 +92,24 @@ namespace TajsCOI.Tests.RuntimeContracts
         }
 
         [Fact]
+        public void MineDepletedTintToggleReconcilesPolicy()
+        {
+            Assert.True(MineDepletedTintFeature.ShouldTint(true, true, 0));
+            Assert.False(MineDepletedTintFeature.ShouldTint(false, true, 0));
+            Assert.False(MineDepletedTintFeature.ShouldTint(true, false, 0));
+            Assert.False(MineDepletedTintFeature.ShouldTint(true, true, null));
+        }
+
+        [Fact]
+        public void MineDepletedTintSettingIsImmediateAndEnabledByDefault()
+        {
+            var descriptor = TajsTweaksSettingsCatalog.All.Single(
+                item => item.Key == TajsTweaksSettingsCatalog.MineDepletedTint);
+            Assert.Equal(true, descriptor.DefaultValue);
+            Assert.Equal(SettingApplyMode.Immediate, descriptor.ApplyMode);
+        }
+
+        [Fact]
         public void ShipUnloadSelectorProtectsReservationsAndChoosesSmallest()
         {
             UnloadBufferCandidate? selected = ShipUnloadSelector.Select(
@@ -118,6 +138,21 @@ namespace TajsCOI.Tests.RuntimeContracts
             IReadOnlyList<ResearchQueueEntry> validated = ResearchQueuePolicy.Validate(entries);
             Assert.Single(validated);
             Assert.False(ResearchQueuePolicy.CanReorder(new[] { "a", "b" }, "missing", 0));
+        }
+
+        [Fact]
+        public void ResearchQueueDisplayPreservesNativeQueueOrderAndProgress()
+        {
+            IReadOnlyList<ResearchQueueEntry> ordered = ResearchQueuePolicy.OrderForDisplay(new[]
+            {
+                new ResearchQueueEntry("available", true, false, false),
+                new ResearchQueueEntry("second", true, false, false, queueIndex: 1),
+                new ResearchQueueEntry("first", true, false, false, inProgress: true, queueIndex: 0, progressPercent: 42),
+            });
+
+            Assert.Equal(new[] { "first", "second", "available" }, ordered.Select(entry => entry.PrototypeId));
+            Assert.Equal(42, ordered[0].ProgressPercent);
+            Assert.True(ordered[0].InProgress);
         }
 
         [Fact]
@@ -151,6 +186,28 @@ namespace TajsCOI.Tests.RuntimeContracts
                 new FleetReplacementFilterSnapshot("truck", "truck-t2", string.Empty, null, null, null, 10, 0b0100UL));
 
             Assert.Equal(new[] { 2 }, selected);
+        }
+
+        [Fact]
+        public void FleetPlannerHonorsDepotScopeIncludingNonmatchingAndUnrestricted()
+        {
+            var vehicles = new[]
+            {
+                new FleetVehicleSnapshot(1, "truck", false, 10, null, null),
+                new FleetVehicleSnapshot(2, "truck", false, 20, null, null),
+            };
+
+            Assert.Equal(new[] { 1, 2 }, FleetReplacementPlanner.Match(
+                vehicles,
+                new FleetReplacementFilterSnapshot("truck", "truck-t2", string.Empty, null, null, null, 10)));
+            Assert.Equal(new[] { 1 }, FleetReplacementPlanner.Match(
+                vehicles,
+                new FleetReplacementFilterSnapshot("truck", "truck-t2", string.Empty, 10, null, null, 10)));
+            Assert.Empty(FleetReplacementPlanner.Match(
+                vehicles,
+                new FleetReplacementFilterSnapshot("truck", "truck-t2", string.Empty, 99, null, null, 10)));
+            Assert.False(FleetReplacementPlanner.IsDepotScopeValid(true, exists: true, destroyed: true));
+            Assert.False(FleetReplacementPlanner.IsDepotScopeValid(true, exists: false, destroyed: false));
         }
 
         [Fact]

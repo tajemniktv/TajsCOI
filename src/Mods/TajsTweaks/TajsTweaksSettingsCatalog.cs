@@ -80,6 +80,7 @@ namespace TajsCOI.Tweaks
         internal const string AllowExhaust = "allow_exhaust";
 
         internal const string WorldOperations = "world_operations";
+        internal const string MineDepletedTint = "mine_depleted_tint";
         internal const string AutoWorldDelivery = "auto_world_delivery";
         internal const string AutoExploration = "auto_exploration";
         internal const string AutoExplorationSafetyMarginPercent = "auto_exploration_safety_margin_percent";
@@ -1039,6 +1040,16 @@ namespace TajsCOI.Tweaks
                 "World operations manager",
                 "Enables the read-only, save-aware world-operations command surface and ship preload list.",
                 false,
+                "World map",
+                applyMode: SettingApplyMode.Immediate,
+                flags: SettingFlags.Advanced),
+            SettingDescriptor.Boolean(
+                ModId,
+                DisplayName,
+                MineDepletedTint,
+                "Depleted mine pin tint",
+                "Marks owned, known-depleted world-map mines while preserving vanilla pin colors when disabled.",
+                true,
                 "World map",
                 applyMode: SettingApplyMode.Immediate,
                 flags: SettingFlags.Advanced),
