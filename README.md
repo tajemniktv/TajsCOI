@@ -17,6 +17,8 @@ Core is intended to be quiet on its own and does not add gameplay changes by its
 Core also owns optional per-save entity metadata. Aliases, notes, and groups are keyed by the
 native entity ID plus a prototype fingerprint, so recycled IDs do not inherit old labels. Use
 `tajs_metadata_list` to inspect the active sidecar and `tajs_metadata_set` to update a record.
+Use `tajs_metadata_clear` to remove all metadata for one identity or `tajs_metadata_ungroup` to
+remove only its group membership while retaining its alias and note.
 Metadata is supplementary: other suite modules may display it, but gameplay remains valid without
 the sidecar.
 

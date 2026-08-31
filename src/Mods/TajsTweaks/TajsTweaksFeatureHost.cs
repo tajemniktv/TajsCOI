@@ -91,6 +91,7 @@ namespace TajsCOI.Tweaks
         private bool m_overclockingInitializationAttempted;
         private bool m_metadataSelectionInitializationAttempted;
         private EntityMetadataSelectionTool? m_metadataSelection;
+        private IEntityMetadataLookup? m_metadataInspectorLookup;
         private bool m_safeAreaCleanupInitializationAttempted;
         private SafeAreaCleanupFeature? m_safeAreaCleanup;
         private bool m_bulkDeconstructionInitializationAttempted;
@@ -431,7 +432,7 @@ namespace TajsCOI.Tweaks
             var harmony = new Harmony(HarmonyId + ".EntityMetadataInspector");
             try
             {
-                EntityMetadataInspectorPatch.Install(harmony, m_resolver);
+                m_metadataInspectorLookup = EntityMetadataInspectorPatch.Install(harmony, m_resolver);
             }
             catch
             {
@@ -1323,6 +1324,8 @@ namespace TajsCOI.Tweaks
         private void OnTerminate()
         {
             m_settings.Changed -= OnSettingChanged;
+            EntityMetadataInspectorPatch.Unbind(m_metadataInspectorLookup);
+            m_metadataInspectorLookup = null;
             TajsConfigurationPipeline.Unbind(m_configurationRegistry);
             m_configurationRegistry.Unregister("TajsTweaks.StorageAdvanced", TajsTweaksSettingsCatalog.ModId);
             m_configurationRegistry.Unregister("TajsTweaks.OverclockPolicy", TajsTweaksSettingsCatalog.ModId);

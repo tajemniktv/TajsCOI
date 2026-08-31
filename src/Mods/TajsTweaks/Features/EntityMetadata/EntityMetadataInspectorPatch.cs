@@ -25,31 +25,175 @@ namespace TajsCOI.Tweaks.Features.EntityMetadata
     /// </summary>
     internal static class EntityMetadataInspectorPatch
     {
+        private static readonly object s_gate = new();
+
         private sealed class Marker
         {
             internal readonly List<UiComponent> Elements = new();
         }
 
+        // Marker values contain only inspector-owned UI elements. Weak keys ensure this process-
+        // static cache cannot keep an old scene's inspector (or its UI tree) alive.
         private static readonly ConditionalWeakTable<object, Marker> s_augmented = new();
-        private static IEntityMetadataLookup? s_lookup;
+        private static WeakReference<IEntityMetadataLookup>? s_lookup;
+        private static bool s_installed;
 
-        internal static void Install(Harmony harmony, DependencyResolver resolver)
+        internal static IEntityMetadataLookup Install(Harmony harmony, DependencyResolver resolver)
         {
             if (!resolver.TryResolve(out IEntityMetadataLookup? lookup) || lookup is null)
             {
                 throw new InvalidOperationException("Core entity metadata lookup is unavailable.");
             }
-            s_lookup = lookup;
-            MethodBase[] targets = FindTargets().ToArray();
-            if (targets.Length == 0)
+
+            return Install(harmony, lookup);
+        }
+
+        internal static IEntityMetadataLookup Install(Harmony harmony, IEntityMetadataLookup lookup)
+        {
+            if (harmony is null)
             {
-                throw new MissingMethodException("Mafi.Unity entity inspector activation targets were not found.");
+                throw new ArgumentNullException(nameof(harmony));
             }
-            foreach (MethodBase target in targets)
+
+            if (lookup is null)
             {
-                harmony.Patch(
-                    target,
-                    postfix: new HarmonyMethod(typeof(EntityMetadataInspectorPatch), nameof(OnInspectorActivated)));
+                throw new ArgumentNullException(nameof(lookup));
+            }
+
+            lock (s_gate)
+            {
+                if (!s_installed)
+                {
+                    MethodBase[] targets = FindTargets().ToArray();
+                    if (targets.Length == 0)
+                    {
+                        throw new MissingMethodException("Mafi.Unity entity inspector activation targets were not found.");
+                    }
+
+                    try
+                    {
+                        foreach (MethodBase target in targets)
+                        {
+                            harmony.Patch(
+                                target,
+                                postfix: new HarmonyMethod(typeof(EntityMetadataInspectorPatch), nameof(OnInspectorActivated)));
+                        }
+                        s_installed = true;
+                    }
+                    catch
+                    {
+                        // The host also rolls back its owner, but doing so here keeps this helper
+                        // transactional for direct/runtime-contract callers as well.
+                        try
+                        {
+                            harmony.UnpatchAll(harmony.Id);
+                        }
+                        catch
+                        {
+                            // Preserve the original compatibility failure.
+                        }
+                        throw;
+                    }
+                }
+
+                // The Harmony callback is process-lived, but its lookup is scene-lived. Rebinding
+                // replaces only the weak target and never gives the process a strong scene root.
+                s_lookup = new WeakReference<IEntityMetadataLookup>(lookup);
+                return lookup;
+            }
+        }
+
+        /// <summary>
+        ///     Binds the current gameplay-scene lookup without creating a process-lifetime strong
+        ///     reference to its resolver-owned service.
+        /// </summary>
+        internal static void Bind(IEntityMetadataLookup lookup)
+        {
+            if (lookup is null)
+            {
+                throw new ArgumentNullException(nameof(lookup));
+            }
+
+            lock (s_gate)
+            {
+                s_lookup = new WeakReference<IEntityMetadataLookup>(lookup);
+            }
+        }
+
+        /// <summary>
+        ///     Disconnects one scene's lookup from the process-lifetime callback. An old host cannot
+        ///     clear a newer scene's binding because the expected lookup is compared by identity.
+        /// </summary>
+        internal static void Unbind(IEntityMetadataLookup? expected)
+        {
+            if (expected is null)
+            {
+                return;
+            }
+
+            lock (s_gate)
+            {
+                if (s_lookup is null || !s_lookup.TryGetTarget(out IEntityMetadataLookup? current) ||
+                    ReferenceEquals(current, expected))
+                {
+                    s_lookup = null;
+                }
+            }
+        }
+
+        internal static void Unbind() => Reset();
+
+        /// <summary>
+        ///     Clears whichever scene binding remains. Harmony installation is intentionally not
+        ///     reset: the target patch is process-lived and is reused by the next gameplay scene.
+        /// </summary>
+        internal static void Reset()
+        {
+            lock (s_gate)
+            {
+                s_lookup = null;
+            }
+        }
+
+        internal static bool IsBoundTo(IEntityMetadataLookup lookup)
+        {
+            if (lookup is null)
+            {
+                return false;
+            }
+
+            lock (s_gate)
+            {
+                return s_lookup is not null && s_lookup.TryGetTarget(out IEntityMetadataLookup? current) &&
+                       ReferenceEquals(current, lookup);
+            }
+        }
+
+        internal static bool HasLiveLookup
+        {
+            get
+            {
+                lock (s_gate)
+                {
+                    if (s_lookup is not null && s_lookup.TryGetTarget(out _))
+                    {
+                        return true;
+                    }
+
+                    s_lookup = null;
+                    return false;
+                }
+            }
+        }
+
+        internal static bool IsInstalled
+        {
+            get
+            {
+                lock (s_gate)
+                {
+                    return s_installed;
+                }
             }
         }
 
@@ -71,7 +215,7 @@ namespace TajsCOI.Tweaks.Features.EntityMetadata
 
         private static void OnInspectorActivated(IEntity entity, ref IEntityInspector inspector)
         {
-            IEntityMetadataLookup? lookup = s_lookup;
+            IEntityMetadataLookup? lookup = GetLookup();
             if (lookup is null || entity is null || inspector is null)
             {
                 return;
@@ -117,6 +261,20 @@ namespace TajsCOI.Tweaks.Features.EntityMetadata
             catch
             {
                 // Optional UI augmentation must never interfere with native inspector behavior.
+            }
+        }
+
+        private static IEntityMetadataLookup? GetLookup()
+        {
+            lock (s_gate)
+            {
+                if (s_lookup is not null && s_lookup.TryGetTarget(out IEntityMetadataLookup? lookup))
+                {
+                    return lookup;
+                }
+
+                s_lookup = null;
+                return null;
             }
         }
 

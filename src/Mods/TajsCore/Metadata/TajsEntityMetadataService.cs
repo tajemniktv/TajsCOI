@@ -310,14 +310,12 @@ namespace TajsCOI.Core.Metadata
             customCommandName: "tajs_metadata_set")]
         public string SetMetadata(string entityId, string prototypeFingerprint, string alias, string note, string? groupId = "")
         {
-            if (!int.TryParse(entityId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedId) || parsedId < 0 ||
-                string.IsNullOrWhiteSpace(prototypeFingerprint))
+            if (!TryParseIdentity(entityId, prototypeFingerprint, out EntityMetadataIdentity identity))
             {
                 return "Usage: tajs_metadata_set <entity-id> <prototype-fingerprint> <alias> <note> [group-id]";
             }
             try
             {
-                var identity = new EntityMetadataIdentity(parsedId, prototypeFingerprint);
                 return TrySetEntityMetadata(identity, alias, note, groupId, out string error)
                     ? "Entity metadata saved for " + identity + "."
                     : "Entity metadata was not saved: " + error;
@@ -326,6 +324,41 @@ namespace TajsCOI.Core.Metadata
             {
                 return "Entity metadata was not saved: " + exception.Message;
             }
+        }
+
+        [ConsoleCommand(
+            documentation: "Clears an entity's alias, note, and group metadata without changing the entity.",
+            customCommandName: "tajs_metadata_clear")]
+        public string ClearMetadata(string entityId, string prototypeFingerprint)
+        {
+            if (!TryParseIdentity(entityId, prototypeFingerprint, out EntityMetadataIdentity identity))
+            {
+                return "Usage: tajs_metadata_clear <entity-id> <prototype-fingerprint>";
+            }
+
+            return TryClearEntityMetadata(identity)
+                ? "Entity metadata cleared for " + identity + "."
+                : "Entity metadata could not be cleared for " + identity + ".";
+        }
+
+        [ConsoleCommand(
+            documentation: "Removes an entity from its group while retaining its alias and note.",
+            customCommandName: "tajs_metadata_ungroup")]
+        public string UngroupMetadata(string entityId, string prototypeFingerprint)
+        {
+            if (!TryParseIdentity(entityId, prototypeFingerprint, out EntityMetadataIdentity identity))
+            {
+                return "Usage: tajs_metadata_ungroup <entity-id> <prototype-fingerprint>";
+            }
+
+            if (!TryGetEntityMetadata(identity, out EntityMetadataRecord? metadata) || metadata is null)
+            {
+                return "No entity metadata exists for " + identity + ".";
+            }
+
+            return TrySetEntityMetadata(identity, metadata.Alias, metadata.Note, null, out string error)
+                ? "Entity " + identity + " was removed from its metadata group."
+                : "Entity metadata was not ungrouped: " + error;
         }
 
         [ConsoleCommand(
@@ -509,6 +542,22 @@ namespace TajsCOI.Core.Metadata
         }
 
         private bool PersistIfBound() => !m_store.IsBound || m_store.Save();
+
+        private static bool TryParseIdentity(
+            string entityId,
+            string prototypeFingerprint,
+            out EntityMetadataIdentity identity)
+        {
+            if (!int.TryParse(entityId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedId) || parsedId < 0 ||
+                string.IsNullOrWhiteSpace(prototypeFingerprint))
+            {
+                identity = default;
+                return false;
+            }
+
+            identity = new EntityMetadataIdentity(parsedId, prototypeFingerprint);
+            return true;
+        }
 
         private static string? TryGetLoadedIdentity(DependencyResolver resolver, string gameName)
         {
