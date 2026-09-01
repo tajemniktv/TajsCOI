@@ -310,7 +310,8 @@ namespace TajsCOI.Common.Shortcuts
         public IReadOnlyList<ShortcutBindingSnapshot> GetSnapshot();
 
         /// <summary>
-        ///     Approves one concrete action/combination conflict. Approval is separate from
+        ///     Approves one concrete active action/combination conflict. Both the requested action
+        ///     and its target must currently use the combination. Approval is separate from
         ///     binding mutation so accidental conflicts remain rejected by <see cref="TrySetBinding"/>.
         /// </summary>
         public ShortcutSetResult TryAcceptConflict(string actionId, ShortcutCombination combination, string conflictingActionId);

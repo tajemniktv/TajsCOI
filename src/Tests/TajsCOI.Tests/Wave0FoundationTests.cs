@@ -316,6 +316,23 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void ShortcutRegistryRejectsAcceptanceWhenRequestedActionDoesNotUseCombination()
+        {
+            var registry = new ShortcutRegistry();
+            registry.Register(Descriptor("TajsTests.First", "F1"));
+            registry.Register(Descriptor("TajsTests.Second", "F2"));
+            ShortcutCombination combination = new("CTRL+K");
+            Assert.True(registry.TrySetBinding("TajsTests.First", combination, default).Success);
+
+            ShortcutSetResult result = registry.TryAcceptConflict(
+                "TajsTests.Second",
+                combination,
+                "TajsTests.First");
+            Assert.Equal(ShortcutSetStatus.Rejected, result.Status);
+            Assert.Equal(ShortcutSetStatus.Conflict, registry.TrySetBinding("TajsTests.Second", combination, default).Status);
+        }
+
+        [Fact]
         public void ShortcutRegistryPersistsExplicitAcceptedConflictsAndResolvesOrdinalFirst()
         {
             string directory = Path.Combine(Path.GetTempPath(), "tajs-shortcut-conflict-tests-" + Guid.NewGuid().ToString("N"));
@@ -327,12 +344,16 @@ namespace TajsCOI.Tests
                 registry.Register(Descriptor("TajsTests.First", "F1"));
                 registry.Register(Descriptor("TajsTests.Second", "F2"));
                 ShortcutCombination combination = new("CTRL+K");
-                Assert.True(registry.TrySetBinding("TajsTests.First", combination, default).Success);
-                Assert.Equal(ShortcutSetStatus.Conflict, registry.TrySetBinding("TajsTests.Second", combination, default).Status);
+                File.WriteAllText(
+                    path,
+                    "TajsCOIShortcutBindingsV2\n" +
+                    "B\tTajsTests.First\tCTRL+K\t\n" +
+                    "B\tTajsTests.Second\tCTRL+K\t\n" +
+                    "C\tTajsTests.Second\tCTRL+K\tTajsTests.First\n");
+                Assert.True(registry.TryLoad(path, out string initialLoadError), initialLoadError);
                 Assert.Equal(
                     ShortcutSetStatus.Applied,
                     registry.TryAcceptConflict("TajsTests.Second", combination, "TajsTests.First").Status);
-                Assert.True(registry.TrySetBinding("TajsTests.Second", combination, default).Success);
                 ShortcutConflictSnapshot conflict = Assert.Single(registry.GetConflictSnapshot());
                 Assert.True(conflict.IsAccepted);
                 Assert.True(registry.TryResolveBinding(combination, out ShortcutBindingSnapshot resolved));
@@ -373,18 +394,21 @@ namespace TajsCOI.Tests
             {
                 var registry = new ShortcutRegistry();
                 registry.Register(Descriptor("TajsTests.Action", "F1"));
-                registry.CacheVanillaBindings(
-                    new[] { new KeyValuePair<string, ShortcutCombination>("Vanilla.Build", new ShortcutCombination("F9")) });
-
                 ShortcutCombination combination = new("F9");
-                Assert.Equal(ShortcutSetStatus.Conflict, registry.TrySetBinding("TajsTests.Action", combination, default).Status);
-                Assert.Equal(
-                    ShortcutSetStatus.Applied,
-                    registry.TryAcceptConflict("TajsTests.Action", combination, "vanilla:Vanilla.Build").Status);
-                Assert.True(registry.TrySetBinding("TajsTests.Action", combination, default).Success);
+                File.WriteAllText(
+                    path,
+                    "TajsCOIShortcutBindingsV2\n" +
+                    "B\tTajsTests.Action\tF9\t\n" +
+                    "C\tTajsTests.Action\tF9\tvanilla:Vanilla.Build\n");
+                Assert.True(registry.TryLoad(path, out string initialLoadError), initialLoadError);
+                registry.CacheVanillaBindings(
+                    new[] { new KeyValuePair<string, ShortcutCombination>("Vanilla.Build", combination) });
                 ShortcutConflictSnapshot conflict = Assert.Single(registry.GetConflictSnapshot());
                 Assert.Contains("vanilla:Vanilla.Build", conflict.VanillaActionIds);
                 Assert.True(conflict.IsAccepted);
+                Assert.Equal(
+                    ShortcutSetStatus.Applied,
+                    registry.TryAcceptConflict("TajsTests.Action", combination, "vanilla:Vanilla.Build").Status);
 
                 Assert.True(registry.TrySave(path, out string saveError), saveError);
                 var restored = new ShortcutRegistry();
@@ -393,6 +417,60 @@ namespace TajsCOI.Tests
                 restored.CacheVanillaBindings(
                     new[] { new KeyValuePair<string, ShortcutCombination>("Vanilla.Build", combination) });
                 Assert.True(Assert.Single(restored.GetConflictSnapshot()).IsAccepted);
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, recursive: true);
+                }
+            }
+        }
+
+        [Fact]
+        public void ShortcutRegistryRequiresEveryTajsVanillaPairButNotVanillaPairs()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "tajs-shortcut-multi-vanilla-tests-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, "shortcuts.txt");
+            try
+            {
+                var registry = new ShortcutRegistry();
+                registry.Register(Descriptor("TajsTests.Action", "F1"));
+                ShortcutCombination combination = new("F9");
+                File.WriteAllText(
+                    path,
+                    "TajsCOIShortcutBindingsV2\n" +
+                    "B\tTajsTests.Action\tF9\t\n" +
+                    "C\tTajsTests.Action\tF9\tvanilla:Vanilla.First\n");
+                Assert.True(registry.TryLoad(path, out string loadError), loadError);
+
+                registry.CacheVanillaBindings(
+                    new[]
+                    {
+                        new KeyValuePair<string, ShortcutCombination>("Vanilla.First", combination),
+                        new KeyValuePair<string, ShortcutCombination>("Vanilla.Second", combination),
+                    });
+                ShortcutConflictSnapshot conflict = Assert.Single(registry.GetConflictSnapshot());
+                Assert.False(conflict.IsAccepted);
+                Assert.Equal(
+                    ShortcutSetStatus.Applied,
+                    registry.TryAcceptConflict("TajsTests.Action", combination, "vanilla:Vanilla.Second").Status);
+                Assert.True(Assert.Single(registry.GetConflictSnapshot()).IsAccepted);
+
+                Assert.True(registry.TrySave(path, out string saveError), saveError);
+                var restored = new ShortcutRegistry();
+                restored.Register(Descriptor("TajsTests.Action", "F1"));
+                Assert.True(restored.TryLoad(path, out string restoredLoadError), restoredLoadError);
+                restored.CacheVanillaBindings(
+                    new[]
+                    {
+                        new KeyValuePair<string, ShortcutCombination>("Vanilla.First", combination),
+                        new KeyValuePair<string, ShortcutCombination>("Vanilla.Second", combination),
+                    });
+                Assert.True(Assert.Single(restored.GetConflictSnapshot()).IsAccepted);
+                Assert.True(restored.TryResolveBinding(combination, out ShortcutBindingSnapshot resolved));
+                Assert.Equal("TajsTests.Action", resolved.Descriptor.ActionId);
             }
             finally
             {

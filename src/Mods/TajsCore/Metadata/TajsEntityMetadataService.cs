@@ -31,7 +31,18 @@ namespace TajsCOI.Core.Metadata
         private readonly ISaveManager m_saveManager;
         private readonly ITajsLogger m_log;
         private readonly EntityMetadataStateStore m_store;
+        private readonly bool m_lifecycleAttached;
         private bool m_disposed;
+
+        // Test-only construction keeps mutation/rollback coverage independent from the native
+        // gameplay resolver. Runtime instances always use the lifecycle constructor below.
+        internal TajsEntityMetadataService(EntityMetadataStateStore store)
+        {
+            m_store = store ?? throw new ArgumentNullException(nameof(store));
+            m_saveManager = null!;
+            m_log = null!;
+            m_lifecycleAttached = false;
+        }
 
         public TajsEntityMetadataService(
             DependencyResolver resolver,
@@ -62,6 +73,7 @@ namespace TajsCOI.Core.Metadata
             entitiesManager.EntityRemovedFull.AddNonSaveable(this, OnEntityRemoved);
             gameLoop.SyncUpdate.AddNonSaveable(this, OnSyncUpdate);
             gameLoop.Terminate.AddNonSaveable(this, OnTerminate);
+            m_lifecycleAttached = true;
             runtime.RegisterComponent(
                 new RuntimeComponentDescriptor(
                     "TajsCore",
@@ -149,6 +161,7 @@ namespace TajsCOI.Core.Metadata
                     return false;
                 }
 
+                bool hadPrevious = m_store.Entities.TryGetValue(identity, out EntityMetadataRecord? previous);
                 var record = new EntityMetadataRecord(identity, alias, note, normalizedGroup);
                 if (!record.HasDisplayMetadata)
                 {
@@ -158,7 +171,21 @@ namespace TajsCOI.Core.Metadata
                 {
                     m_store.SetEntity(record);
                 }
-                return PersistLocked(out error);
+
+                if (PersistLocked(out error))
+                {
+                    return true;
+                }
+
+                if (hadPrevious)
+                {
+                    m_store.SetEntity(previous!);
+                }
+                else
+                {
+                    m_store.RemoveEntity(identity);
+                }
+                return false;
             }
         }
 
@@ -166,8 +193,19 @@ namespace TajsCOI.Core.Metadata
         {
             lock (m_gate)
             {
-                bool changed = m_store.RemoveEntity(identity);
-                return !changed || PersistIfBound();
+                if (!m_store.Entities.TryGetValue(identity, out EntityMetadataRecord? previous))
+                {
+                    return true;
+                }
+
+                m_store.RemoveEntity(identity);
+                if (PersistIfBound())
+                {
+                    return true;
+                }
+
+                m_store.SetEntity(previous);
+                return false;
             }
         }
 
@@ -208,7 +246,8 @@ namespace TajsCOI.Core.Metadata
             error = string.Empty;
             lock (m_gate)
             {
-                if (!m_store.Groups.TryGetValue(groupId.Trim(), out EntityMetadataGroup? existing))
+                string normalizedGroupId = groupId?.Trim() ?? string.Empty;
+                if (!m_store.Groups.TryGetValue(normalizedGroupId, out EntityMetadataGroup? existing))
                 {
                     error = "The requested metadata group does not exist.";
                     return false;
@@ -226,7 +265,13 @@ namespace TajsCOI.Core.Metadata
                         string.IsNullOrWhiteSpace(color) ? existing.Color : color!.Trim(),
                         locked);
                     m_store.SetGroup(updated);
-                    return PersistLocked(out error);
+                    if (PersistLocked(out error))
+                    {
+                        return true;
+                    }
+
+                    m_store.SetGroup(existing);
+                    return false;
                 }
                 catch (ArgumentException exception)
                 {
@@ -245,13 +290,26 @@ namespace TajsCOI.Core.Metadata
                 {
                     return false;
                 }
+                EntityMetadataRecord[] members = m_store.Entities.Values
+                    .Where(record => string.Equals(record.GroupId, normalized, StringComparison.Ordinal))
+                    .ToArray();
                 m_store.RemoveGroup(normalized);
-                foreach (EntityMetadataRecord record in m_store.Entities.Values
-                             .Where(record => string.Equals(record.GroupId, normalized, StringComparison.Ordinal)).ToArray())
+                foreach (EntityMetadataRecord record in members)
                 {
                     m_store.SetEntity(record.With(record.Alias, record.Note, null));
                 }
-                return PersistIfBound();
+
+                if (PersistIfBound())
+                {
+                    return true;
+                }
+
+                m_store.SetGroup(group);
+                foreach (EntityMetadataRecord record in members)
+                {
+                    m_store.SetEntity(record);
+                }
+                return false;
             }
         }
 
@@ -403,11 +461,17 @@ namespace TajsCOI.Core.Metadata
                 return;
             }
             m_disposed = true;
-            m_saveManager.OnSaveDone -= OnSaveDone;
+            if (m_lifecycleAttached)
+            {
+                m_saveManager.OnSaveDone -= OnSaveDone;
+            }
             lock (m_gate)
             {
                 m_pendingRemovals.Clear();
-                m_store.Save();
+                if (m_lifecycleAttached)
+                {
+                    m_store.Save();
+                }
                 m_store.Unbind();
             }
         }

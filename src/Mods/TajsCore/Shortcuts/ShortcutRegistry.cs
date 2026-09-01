@@ -203,8 +203,10 @@ namespace TajsCOI.Core.Shortcuts
                         string[] participants = item.Value.OrderBy(value => value, StringComparer.Ordinal).ToArray();
                         string[] actions = participants.Where(value => !value.StartsWith("vanilla:", StringComparison.Ordinal)).ToArray();
                         string[] vanilla = participants.Where(value => value.StartsWith("vanilla:", StringComparison.Ordinal)).ToArray();
-                        bool accepted = participants
-                            .SelectMany((left, index) => participants.Skip(index + 1).Select(right => ApprovalKey(new ShortcutCombination(item.Key), left, right)))
+                        ShortcutCombination combination = new ShortcutCombination(item.Key);
+                        bool accepted = actions
+                            .SelectMany((left, index) => actions.Skip(index + 1).Select(right => ApprovalKey(combination, left, right)))
+                            .Concat(actions.SelectMany(action => vanilla.Select(vanillaAction => ApprovalKey(combination, action, vanillaAction))))
                             .All(m_conflictApprovals.Contains);
                         return new ShortcutConflictSnapshot(item.Key, actions, vanilla, accepted);
                     })
@@ -427,7 +429,8 @@ namespace TajsCOI.Core.Shortcuts
                             return false;
                         }
                         bool deferredVanillaApproval = record.TargetId.StartsWith("vanilla:", StringComparison.Ordinal) &&
-                                                       !m_vanillaBindings.ContainsKey(record.TargetId.Substring("vanilla:".Length));
+                                                       !m_vanillaBindings.ContainsKey(record.TargetId.Substring("vanilla:".Length)) &&
+                                                       IsBoundToCombination(record.ActionId, record.Combination, candidateBindings);
                         if (!IsActiveConflict(record.ActionId, record.Combination, record.TargetId, candidateBindings) &&
                             !deferredVanillaApproval)
                         {
@@ -686,6 +689,11 @@ namespace TajsCOI.Core.Shortcuts
             string targetId,
             IReadOnlyDictionary<string, (ShortcutCombination Primary, ShortcutCombination Secondary)> bindings)
         {
+            if (!IsBoundToCombination(actionId, combination, bindings))
+            {
+                return false;
+            }
+
             if (targetId.StartsWith("vanilla:", StringComparison.Ordinal))
             {
                 string vanillaId = targetId.Substring("vanilla:".Length);
@@ -694,6 +702,15 @@ namespace TajsCOI.Core.Shortcuts
 
             return bindings.TryGetValue(targetId, out (ShortcutCombination Primary, ShortcutCombination Secondary) binding) &&
                    targetId != actionId && (binding.Primary == combination || binding.Secondary == combination);
+        }
+
+        private static bool IsBoundToCombination(
+            string actionId,
+            ShortcutCombination combination,
+            IReadOnlyDictionary<string, (ShortcutCombination Primary, ShortcutCombination Secondary)> bindings)
+        {
+            return bindings.TryGetValue(actionId, out (ShortcutCombination Primary, ShortcutCombination Secondary) binding) &&
+                   (binding.Primary == combination || binding.Secondary == combination);
         }
 
         private List<string> ValidateCandidate(
@@ -747,14 +764,47 @@ namespace TajsCOI.Core.Shortcuts
 
                 // Preserve a vanilla approval whose native table has not been cached yet. The
                 // first CacheVanillaBindings call resolves it and prunes it if the target is gone.
-                return !TryParseApprovalKey(value, out _, out string left, out string right) ||
-                       (!IsDeferredVanillaTarget(left) && !IsDeferredVanillaTarget(right));
+                return !TryParseApprovalKey(value, out string serializedCombination, out string left, out string right) ||
+                       !IsDeferredVanillaApprovalStillRelevant(serializedCombination, left, right);
             });
         }
 
         private bool IsDeferredVanillaTarget(string participant) =>
             participant.StartsWith("vanilla:", StringComparison.Ordinal) &&
             !m_vanillaBindings.ContainsKey(participant.Substring("vanilla:".Length));
+
+        private bool IsDeferredVanillaApprovalStillRelevant(
+            string serializedCombination,
+            string left,
+            string right)
+        {
+            string actionId;
+            if (left.StartsWith("vanilla:", StringComparison.Ordinal))
+            {
+                if (right.StartsWith("vanilla:", StringComparison.Ordinal))
+                {
+                    return false;
+                }
+                actionId = right;
+            }
+            else if (right.StartsWith("vanilla:", StringComparison.Ordinal))
+            {
+                actionId = left;
+            }
+            else
+            {
+                return false;
+            }
+
+            if ((!IsDeferredVanillaTarget(left) && !IsDeferredVanillaTarget(right)) ||
+                !ShortcutCombination.TryParse(serializedCombination, out ShortcutCombination combination) ||
+                combination.IsEmpty)
+            {
+                return false;
+            }
+
+            return IsBoundToCombination(actionId, combination, m_bindings);
+        }
 
         private static string ApprovalKey(ShortcutCombination combination, string left, string right)
         {

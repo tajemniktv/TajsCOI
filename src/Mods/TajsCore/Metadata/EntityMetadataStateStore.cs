@@ -16,7 +16,9 @@ namespace TajsCOI.Core.Metadata
     /// <summary>
     ///     File-backed state for the Core metadata service. The format is intentionally small,
     ///     deterministic, and independent of MaFi's save serializer; each field is base64 so
-    ///     aliases and notes cannot corrupt a record by containing tabs or newlines.
+    ///     aliases and notes cannot corrupt a record by containing tabs or newlines. Binding is
+    ///     identity-based; callers must use <see cref="TajsSaveIdentity" /> rather than a name-only
+    ///     save key.
     /// </summary>
     internal sealed class EntityMetadataStateStore
     {
@@ -40,47 +42,6 @@ namespace TajsCOI.Core.Metadata
         internal IReadOnlyDictionary<EntityMetadataIdentity, EntityMetadataRecord> Entities => m_entities;
         internal IReadOnlyDictionary<string, EntityMetadataGroup> Groups => m_groups;
         internal bool IsBound => m_filePath is not null;
-
-        internal void Load(string? saveIdentity)
-        {
-            m_entities.Clear();
-            m_groups.Clear();
-            m_identity = null;
-            m_filePath = null;
-            m_allowWrite = false;
-            if (string.IsNullOrWhiteSpace(saveIdentity))
-            {
-                return;
-            }
-
-            string directory = Path.Combine(m_rootDirectory, saveIdentity!.Trim());
-            m_filePath = Path.Combine(directory, "metadata.tsv");
-            m_allowWrite = true;
-            if (!File.Exists(m_filePath))
-            {
-                return;
-            }
-
-            try
-            {
-                string[] lines = File.ReadAllLines(m_filePath, Encoding.UTF8);
-                if (lines.Length == 0 || !string.Equals(lines[0], Header, StringComparison.Ordinal))
-                {
-                    ClearLoadedState();
-                    return;
-                }
-
-                foreach (string line in lines.Skip(1))
-                {
-                    TryParseLine(line);
-                }
-            }
-            catch
-            {
-                // Optional metadata must never prevent a save from loading.
-                ClearLoadedState();
-            }
-        }
 
         internal void LoadIdentity(TajsSaveIdentity? identity)
         {
@@ -120,41 +81,6 @@ namespace TajsCOI.Core.Metadata
                 // Optional metadata must never prevent a save from loading.
                 ClearLoadedState();
             }
-        }
-
-        internal bool Rebind(string? saveIdentity)
-        {
-            if (string.IsNullOrWhiteSpace(saveIdentity))
-            {
-                return false;
-            }
-
-            string directory = Path.Combine(m_rootDirectory, saveIdentity!.Trim());
-            string nextPath = Path.Combine(directory, "metadata.tsv");
-            if (string.Equals(m_filePath, nextPath, StringComparison.OrdinalIgnoreCase))
-            {
-                m_allowWrite = true;
-                return true;
-            }
-
-            // A save identity is deliberately content/file based. If a sidecar already exists
-            // for the new identity, refuse to overwrite it: this is an identity collision, not
-            // evidence that the active records belong to that save. Clear the previous save's
-            // records before returning so callers cannot accidentally expose stale metadata
-            // while the collision is being reported.
-            if (File.Exists(nextPath))
-            {
-                ClearLoadedState();
-                // Keep the collided path as a blocked binding. This makes subsequent Save calls
-                // fail closed instead of treating the unbound, in-memory state as persistable.
-                m_filePath = nextPath;
-                m_allowWrite = false;
-                return false;
-            }
-
-            m_filePath = nextPath;
-            m_allowWrite = true;
-            return true;
         }
 
         internal bool RebindIdentity(TajsSaveIdentity? identity)
