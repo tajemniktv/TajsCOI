@@ -12,6 +12,7 @@ using TajsCOI.Common.Shortcuts;
 using TajsCOI.Core.Configuration;
 using TajsCOI.Core.Localization;
 using TajsCOI.Core.Shortcuts;
+using TajsCOI.Tweaks.Features.Shortcuts;
 using Xunit;
 
 namespace TajsCOI.Tests
@@ -39,6 +40,16 @@ namespace TajsCOI.Tests
             Assert.Equal(
                 "CTRL+K",
                 registry.GetSnapshot().Single(snapshot => snapshot.Descriptor.ActionId == "TajsTests.First").Primary.Serialized);
+        }
+
+        [Fact]
+        public void NativeShortcutBridgeNormalizesUnityModifierNames()
+        {
+            Assert.True(TajsVanillaShortcutBridge.TryNormalizeNativeBinding("LeftControl + LeftShift + K", out ShortcutCombination combination));
+            Assert.Equal("CTRL+SHIFT+K", combination.Serialized);
+            Assert.True(TajsVanillaShortcutBridge.TryNormalizeNativeBinding("RightAlt + F9", out combination));
+            Assert.Equal("ALT+F9", combination.Serialized);
+            Assert.False(TajsVanillaShortcutBridge.TryNormalizeNativeBinding("K + L", out _));
         }
 
         [Fact]

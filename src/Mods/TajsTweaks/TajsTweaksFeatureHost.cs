@@ -53,6 +53,7 @@ using TajsCOI.Tweaks.Features.Overclocking;
 using TajsCOI.Tweaks.Features.Presentation;
 using TajsCOI.Tweaks.Features.ProgressionSandbox;
 using TajsCOI.Tweaks.Features.Selection;
+using TajsCOI.Tweaks.Features.Shortcuts;
 using TajsCOI.Tweaks.Features.Storage;
 using TajsCOI.Tweaks.Features.Sandbox;
 using TajsCOI.Tweaks.Features.Terrain;
@@ -129,6 +130,14 @@ namespace TajsCOI.Tweaks
             TajsTweaksRuntimeState.Load(settings);
             RegisterConfigurationHandlers(m_configurationRegistry, m_runtime);
             RegisterShortcutMetadata(shortcuts);
+            if (!TajsVanillaShortcutBridge.TryCache(shortcuts, out int cachedVanillaShortcuts, out string shortcutError))
+            {
+                m_log.WarningOnce("Native vanilla shortcut conflict cache unavailable: " + shortcutError);
+            }
+            else
+            {
+                m_log.Info("Cached " + cachedVanillaShortcuts + " native vanilla shortcut bindings for conflict diagnostics.");
+            }
             PolygonConstraintFeature.ConfigureModifiers(shortcuts);
             PolygonConstraintFeature.ConfigureGridSize(TajsTweaksRuntimeState.PolygonGridSize);
             TransportPillarRulesFeature.Initialize();

@@ -58,10 +58,8 @@ namespace TajsCOI.Tweaks.Features.World
             {
                 return;
             }
-            Type? pinType = typeof(WorldMapWindow).GetNestedType("LocationPin", BindingFlags.Instance | BindingFlags.NonPublic);
-            MethodInfo? colorMethod = pinType is null
-                ? null
-                : AccessTools.Method(pinType, "setLocationColor");
+            Type? pinType = FindLocationPinType();
+            MethodInfo? colorMethod = FindLocationColorMethod(pinType);
             if (pinType is null || colorMethod is null)
             {
                 throw new MissingMethodException("WorldMapWindow.LocationPin.setLocationColor");
@@ -76,6 +74,32 @@ namespace TajsCOI.Tweaks.Features.World
             harmony.Patch(colorMethod, postfix: new HarmonyMethod(typeof(MineDepletedTintFeature), nameof(SetLocationColorPostfix)));
             s_enabled = TajsTweaksRuntimeState.MineDepletedTint;
             s_installed = true;
+        }
+
+        internal static MethodInfo? FindLocationColorMethod(Type? pinType = null)
+        {
+            pinType ??= FindLocationPinType();
+            if (pinType is null)
+            {
+                return null;
+            }
+            return AccessTools.Method(
+                pinType,
+                "setLocationColor",
+                new[]
+                {
+                    typeof(WorldMapLocationState),
+                    typeof(bool),
+                    typeof(bool),
+                    typeof(bool),
+                    typeof(bool),
+                });
+        }
+
+        private static Type? FindLocationPinType()
+        {
+            Type? mapViewType = typeof(WorldMapWindow).GetNestedType("MapView", BindingFlags.NonPublic);
+            return mapViewType?.GetNestedType("LocationPin", BindingFlags.NonPublic);
         }
 
         internal static void SetEnabled(bool enabled)
