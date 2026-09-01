@@ -650,8 +650,8 @@ namespace TajsCOI.Tweaks
         private void OnRenderUpdateEnd(GameTime _)
         {
             // Research commands are processed on the simulation thread. Reconcile the window
-            // only after IInputScheduler.OnCommandProcessed, rather than reading stale queue data
-            // immediately after scheduling an input command.
+            // after IInputScheduler.OnCommandProcessed, with the window's bounded terminal-state
+            // fallback covering native processor failures that skip that event.
             if (m_researchQueueWindow.HasValue)
             {
                 m_researchQueueWindow.Value.RefreshPending();

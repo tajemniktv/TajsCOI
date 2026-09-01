@@ -41,6 +41,12 @@ namespace TajsCOI.Tweaks.Features.Research
 
     internal static class ResearchQueuePolicy
     {
+        /// <summary>
+        ///     InputScheduler marks both successfully processed and failed commands as processed.
+        ///     The window may therefore clear only after this terminal marker is visible.
+        /// </summary>
+        internal static bool IsPendingCommandTerminal(bool isProcessed) => isProcessed;
+
         internal static IReadOnlyList<ResearchQueueEntry> Validate(IEnumerable<ResearchQueueEntry> entries)
         {
             return (entries ?? Array.Empty<ResearchQueueEntry>())

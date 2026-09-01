@@ -70,25 +70,38 @@ namespace TajsCOI.Tweaks
         /// </summary>
         internal void RefreshPending()
         {
-            if (Interlocked.Exchange(ref m_reconciliationRequested, 0) == 0)
-            {
-                return;
-            }
+            bool eventRequested = Interlocked.Exchange(ref m_reconciliationRequested, 0) != 0;
 
             IInputCommand? command;
             string description;
             lock (m_commandGate)
             {
                 command = m_pendingCommand;
+                if (command is null)
+                {
+                    return;
+                }
+                // OnCommandProcessed is the normal wake-up. InputScheduler also marks a
+                // command processed when its processor throws, but deliberately skips that
+                // event, so inspect only this pending command as a bounded render-thread
+                // fallback. IsProcessed covers both successful and failed terminal states.
+                if (!ResearchQueuePolicy.IsPendingCommandTerminal(command.IsProcessed))
+                {
+                    if (eventRequested)
+                    {
+                        Interlocked.Exchange(ref m_reconciliationRequested, 1);
+                    }
+                    return;
+                }
                 description = m_pendingDescription;
                 m_pendingCommand = null;
                 m_pendingDescription = string.Empty;
             }
 
             RefreshContent();
-            if (command is null || !command.ResultSet)
+            if (!command.ResultSet)
             {
-                SetStatus(description + "; native state reconciled.");
+                SetStatus(description + "; native command failed; native state reconciled.");
             }
             else if (command.HasError)
             {
@@ -209,8 +222,11 @@ namespace TajsCOI.Tweaks
                 {
                     return;
                 }
+                // Publish the wake-up while the pending-command identity is
+                // stable; a render tick cannot otherwise observe a stale
+                // event after the command has already been replaced.
+                Interlocked.Exchange(ref m_reconciliationRequested, 1);
             }
-            Interlocked.Exchange(ref m_reconciliationRequested, 1);
         }
 
         private void OnCloseStartInternal(Window _)

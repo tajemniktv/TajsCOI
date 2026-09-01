@@ -17,10 +17,30 @@ namespace TajsCOI.Tweaks.Features.World
     /// <summary>Presentation-only tint for owned, known-depleted world mines.</summary>
     internal static class MineDepletedTintFeature
     {
-        private sealed class OriginalColors
+        // The native setter owns this baseline.  It is refreshed from the fields
+        // after every successful native setLocationColor call, before Tajs applies
+        // its presentation overlay.
+        internal sealed class OriginalColors
         {
             internal object? Normal;
             internal object? Hover;
+            internal bool HasBaseline;
+
+            internal bool CaptureNative(object? normal, object? hover)
+            {
+                // ColorRgba is a value field in the native pin.  Treat an
+                // unexpected null as an unavailable compatibility seam and
+                // leave the native values untouched rather than restoring a
+                // malformed baseline later.
+                if (normal is null || hover is null)
+                {
+                    return false;
+                }
+                Normal = normal;
+                Hover = hover;
+                HasBaseline = true;
+                return true;
+            }
         }
 
         private static readonly ConditionalWeakTable<object, OriginalColors> s_original = new();
@@ -102,7 +122,10 @@ namespace TajsCOI.Tweaks.Features.World
                 lock (s_gate)
                 {
                     TrackPin(__instance);
-                    ApplyPin(__instance);
+                    if (CaptureNativeBaseline(__instance))
+                    {
+                        ApplyPin(__instance);
+                    }
                 }
             }
             catch
@@ -150,12 +173,12 @@ namespace TajsCOI.Tweaks.Features.World
                 return;
             }
             OriginalColors original = s_original.GetValue(pin, _ => new OriginalColors());
-            object? normal = s_normalField.GetValue(pin);
-            object? hover = s_hoverField.GetValue(pin);
-            if (original.Normal is null)
+            if (!original.HasBaseline)
             {
-                original.Normal = normal;
-                original.Hover = hover;
+                // Only the native setter may establish a baseline.  In
+                // particular, never infer one from a field that may already
+                // contain the Tajs overlay.
+                return;
             }
 
             var location = s_locationProperty.GetValue(pin) as WorldMapLocation;
@@ -175,6 +198,17 @@ namespace TajsCOI.Tweaks.Features.World
             // Keep the two values distinct so hover/selected state remains visible.
             s_normalField.SetValue(pin, new ColorRgba(0xC56A4DFFu));
             s_hoverField.SetValue(pin, new ColorRgba(0xF0A07AFFu));
+        }
+
+        private static bool CaptureNativeBaseline(object pin)
+        {
+            if (s_normalField is null || s_hoverField is null)
+            {
+                return false;
+            }
+
+            OriginalColors original = s_original.GetValue(pin, _ => new OriginalColors());
+            return original.CaptureNative(s_normalField.GetValue(pin), s_hoverField.GetValue(pin));
         }
     }
 }

@@ -156,6 +156,13 @@ namespace TajsCOI.Tests.RuntimeContracts
         }
 
         [Fact]
+        public void ResearchQueuePendingFallbackRequiresProcessedTerminalState()
+        {
+            Assert.False(ResearchQueuePolicy.IsPendingCommandTerminal(false));
+            Assert.True(ResearchQueuePolicy.IsPendingCommandTerminal(true));
+        }
+
+        [Fact]
         public void FleetPlannerHonorsUnassignedFirstAndCap()
         {
             var vehicles = new[]
