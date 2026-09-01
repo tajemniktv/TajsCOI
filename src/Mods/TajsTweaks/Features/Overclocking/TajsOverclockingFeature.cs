@@ -70,7 +70,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         private readonly ITajsSettings m_settings;
         private readonly IEntityMetadataLookup? m_metadata;
         private readonly ITajsLogger m_log;
-        private readonly OverclockingStateStore m_store = new();
+        private readonly OverclockingStateStore m_store;
         private readonly IEntitiesManager m_entities;
         private readonly ISaveManager? m_saveManager;
         private IInputScheduler? m_inputScheduler;
@@ -110,6 +110,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             m_resolver = resolver;
             m_settings = settings;
             m_log = runtime.GetLogger(TajsTweaksSettingsCatalog.ModId, "Overclocking");
+            m_store = new OverclockingStateStore(log: m_log);
             if (!resolver.TryResolve(out m_entities!))
             {
                 throw new InvalidOperationException("The current scene has no entity manager.");
@@ -1913,6 +1914,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             if (!m_store.RebindAfterSave(path, GetSaveName()))
             {
                 m_log.Warning("Overclocking sidecar was not rebound after save; policy state was reset because save identity changed or was ambiguous.");
+            }
+            else if (!m_store.IdentityBindingPersisted)
+            {
+                m_log.WarningOnce("Overclocking sidecar identity was usable for this session, but its binding was not persisted; state may be unavailable after restart.");
             }
         }
 

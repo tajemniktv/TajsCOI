@@ -31,7 +31,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
         private readonly IInputScheduler m_inputScheduler;
         private readonly ISaveManager m_saveManager;
         private readonly ITajsLogger m_log;
-        private readonly TajsDifficultyStateStore m_store = new();
+        private readonly TajsDifficultyStateStore m_store;
         private readonly Dictionary<string, PropertyInfo> m_properties = new(StringComparer.Ordinal);
         private readonly Dictionary<string, IDiffSettingInfo> m_infos = new(StringComparer.Ordinal);
         private readonly Dictionary<string, TajsDifficultyDefinition> m_definitions = new(StringComparer.Ordinal);
@@ -50,6 +50,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             m_inputScheduler = inputScheduler ?? throw new ArgumentNullException(nameof(inputScheduler));
             m_saveManager = saveManager ?? throw new ArgumentNullException(nameof(saveManager));
             m_log = log ?? throw new ArgumentNullException(nameof(log));
+            m_store = new TajsDifficultyStateStore(log: m_log);
 
             foreach (TajsDifficultyDefinition definition in TajsDifficultyOptionCatalog.Definitions)
             {
@@ -232,11 +233,18 @@ namespace TajsCOI.Tweaks.Features.Difficulty
 
         private void OnSaveDone(SaveResult result)
         {
-            if (result.FilePath.ValueOrNull is string path &&
-                !TajsSaveIdentity.IsAutosavePath(path) &&
-                !m_store.RebindAfterSave(path, m_saveManager.GameName))
+            if (result.FilePath.ValueOrNull is not string path || TajsSaveIdentity.IsAutosavePath(path))
+            {
+                return;
+            }
+
+            if (!m_store.RebindAfterSave(path, m_saveManager.GameName))
             {
                 m_log.Warning("Original-save difficulty baseline was not rebound after save; it remains unavailable if the save identity was ambiguous.");
+            }
+            else if (!m_store.IdentityBindingPersisted)
+            {
+                m_log.WarningOnce("Difficulty sidecar identity was usable for this session, but its binding was not persisted; baseline may be unavailable after restart.");
             }
         }
 

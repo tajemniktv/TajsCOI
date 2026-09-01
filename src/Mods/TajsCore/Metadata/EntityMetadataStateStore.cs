@@ -8,6 +8,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using TajsCOI.Common.Logging;
 using TajsCOI.Common.Metadata;
 using TajsCOI.Common.Persistence;
 
@@ -30,33 +31,51 @@ namespace TajsCOI.Core.Metadata
         private string? m_filePath;
         private TajsSaveIdentity? m_identity;
         private bool m_allowWrite;
+        private TajsSaveIdentityBindingStatus m_identityBindingStatus =
+            TajsSaveIdentityBindingStatus.IdentityUnavailable;
 
-        internal EntityMetadataStateStore(string rootDirectory)
+        internal EntityMetadataStateStore(string rootDirectory, ITajsLogger? log = null)
         {
             m_rootDirectory = string.IsNullOrWhiteSpace(rootDirectory)
                 ? throw new ArgumentException("Metadata root directory cannot be empty.", nameof(rootDirectory))
                 : Path.GetFullPath(rootDirectory);
-            m_identityRegistry = new TajsSaveIdentityRegistry(m_rootDirectory);
+            m_identityRegistry = new TajsSaveIdentityRegistry(
+                m_rootDirectory,
+                message => log?.WarningOnce(message));
         }
 
         internal IReadOnlyDictionary<EntityMetadataIdentity, EntityMetadataRecord> Entities => m_entities;
         internal IReadOnlyDictionary<string, EntityMetadataGroup> Groups => m_groups;
         internal bool IsBound => m_filePath is not null;
 
+        internal TajsSaveIdentityBindingStatus IdentityBindingStatus => m_identityBindingStatus;
+
+        internal bool IdentityBindingPersisted =>
+            m_identityBindingStatus == TajsSaveIdentityBindingStatus.IdentityResolvedAndBindingPersisted;
+
         internal void LoadIdentity(TajsSaveIdentity? identity)
         {
             if (identity?.PhysicalPath is string physicalPath)
             {
-                identity = m_identityRegistry.Resolve(physicalPath, identity.GameName, identity.DisplayName) ?? identity;
+                TajsSaveIdentityBindingResult binding = m_identityRegistry.ResolveDetailed(
+                    physicalPath,
+                    identity.GameName,
+                    identity.DisplayName);
+                identity = binding.Identity ?? identity;
+                m_identityBindingStatus = binding.Status;
+            }
+            else
+            {
+                m_identityBindingStatus = TajsSaveIdentityBindingStatus.IdentityUnavailable;
             }
 
             m_entities.Clear();
             m_groups.Clear();
             m_identity = identity;
-            m_filePath = identity?.IsStronglyVerified != true
+            m_filePath = !CanPersistIdentity(identity)
                 ? null
                 : Path.Combine(m_rootDirectory, identity!.OwnershipKey, "metadata.tsv");
-            m_allowWrite = identity?.IsStronglyVerified == true;
+            m_allowWrite = CanPersistIdentity(identity);
             if (m_filePath is null || !File.Exists(m_filePath))
             {
                 return;
@@ -92,11 +111,17 @@ namespace TajsCOI.Core.Metadata
 
             if (identity.PhysicalPath is string physicalPath)
             {
-                identity = m_identityRegistry.Rebind(
+                TajsSaveIdentityBindingResult binding = m_identityRegistry.RebindDetailed(
                     physicalPath,
                     identity.GameName,
                     m_identity,
-                    identity.DisplayName) ?? identity;
+                    identity.DisplayName);
+                m_identityBindingStatus = binding.Status;
+                identity = binding.Identity ?? identity;
+            }
+            else
+            {
+                m_identityBindingStatus = TajsSaveIdentityBindingStatus.IdentityUnavailable;
             }
 
             if (m_identity is null && m_filePath is null)
@@ -107,7 +132,7 @@ namespace TajsCOI.Core.Metadata
                 m_filePath = identity.IsStronglyVerified
                     ? Path.Combine(m_rootDirectory, identity.OwnershipKey, "metadata.tsv")
                     : null;
-                m_allowWrite = identity.IsStronglyVerified;
+                m_allowWrite = CanPersistIdentity(identity);
                 return m_allowWrite;
             }
 
@@ -124,7 +149,7 @@ namespace TajsCOI.Core.Metadata
             if (string.Equals(m_filePath, nextPath, StringComparison.OrdinalIgnoreCase))
             {
                 m_identity = identity;
-                m_allowWrite = true;
+                m_allowWrite = CanPersistIdentity(identity);
                 return true;
             }
 
@@ -142,7 +167,7 @@ namespace TajsCOI.Core.Metadata
             ClearLoadedState();
             m_filePath = nextPath;
             m_identity = identity;
-            m_allowWrite = true;
+            m_allowWrite = CanPersistIdentity(identity);
             return false;
         }
 
@@ -153,6 +178,7 @@ namespace TajsCOI.Core.Metadata
             m_filePath = null;
             m_identity = null;
             m_allowWrite = false;
+            m_identityBindingStatus = TajsSaveIdentityBindingStatus.IdentityUnavailable;
         }
 
         internal void SetEntity(EntityMetadataRecord record) => m_entities[record.Identity] = record;
@@ -285,6 +311,10 @@ namespace TajsCOI.Core.Metadata
                 }
             }
         }
+
+        private bool CanPersistIdentity(TajsSaveIdentity? identity) =>
+            identity?.IsStronglyVerified == true &&
+            m_identityBindingStatus != TajsSaveIdentityBindingStatus.IdentityAmbiguous;
 
         private void ClearLoadedState()
         {

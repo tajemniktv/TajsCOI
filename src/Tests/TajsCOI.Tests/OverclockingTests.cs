@@ -167,6 +167,43 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void RegistryWriteFailureKeepsPoliciesUsableInMemoryButMarksThemNonDurable()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-OverclockingFailure-" + Guid.NewGuid().ToString("N"));
+            string savePath = Path.Combine(root, "slot.save");
+            string invalidRoot = Path.Combine(root, "sidecars-file");
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(savePath, new byte[] { 1, 2, 3 });
+                Directory.CreateDirectory(invalidRoot);
+                Directory.CreateDirectory(Path.Combine(invalidRoot, "_identity-bindings.tsv"));
+
+                var store = new OverclockingStateStore(invalidRoot);
+                TajsSaveIdentity identity = TajsSaveIdentity.FromFile(savePath, "world")!;
+                store.LoadForSave(identity, "world");
+                OverclockEntityPolicy policy = store.GetOrCreateEntity(42);
+                policy.ManualPercent = 225;
+
+                Assert.Equal(
+                    TajsSaveIdentityBindingStatus.IdentityUsableForSessionBindingPersistenceFailed,
+                    store.IdentityBindingStatus);
+                Assert.Contains("persistence failed", store.LoadStatus, StringComparison.OrdinalIgnoreCase);
+                store.Save();
+                Assert.True(store.TryGetEntity(42, out OverclockEntityPolicy? current));
+                Assert.Equal(225, current!.ManualPercent);
+                Assert.True(File.Exists(Path.Combine(invalidRoot, identity.OwnershipKey, "state.txt")));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
         public void LegacyNameSidecarIsPreservedAndNeverImported()
         {
             string root = Path.Combine(Path.GetTempPath(), "TajsCOI-Overclocking-" + Guid.NewGuid().ToString("N"));

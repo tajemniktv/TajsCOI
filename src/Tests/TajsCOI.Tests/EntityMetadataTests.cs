@@ -156,6 +156,41 @@ namespace TajsCOI.Tests
         }
 
         [Fact]
+        public void RegistryWriteFailureKeepsMetadataInMemoryWithoutClaimingDurability()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI.MetadataFailure-" + Guid.NewGuid().ToString("N"));
+            string savePath = Path.Combine(root, "save.save");
+            string invalidRoot = Path.Combine(root, "sidecars-file");
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(savePath, new byte[] { 1, 2, 3 });
+                Directory.CreateDirectory(invalidRoot);
+                Directory.CreateDirectory(Path.Combine(invalidRoot, "_identity-bindings.tsv"));
+                TajsSaveIdentity identity = TajsSaveIdentity.FromFile(savePath, "world")!;
+                var store = new EntityMetadataStateStore(invalidRoot);
+                store.LoadIdentity(identity);
+                var entity = new EntityMetadataIdentity(7, "proto:ore-mine:v3");
+                store.SetEntity(new EntityMetadataRecord(entity, "North Mine", "Watch water", null));
+
+                Assert.Equal(
+                    TajsSaveIdentityBindingStatus.IdentityUsableForSessionBindingPersistenceFailed,
+                    store.IdentityBindingStatus);
+                Assert.False(store.IdentityBindingPersisted);
+                Assert.True(store.Save());
+                Assert.True(store.Entities.ContainsKey(entity));
+                Assert.True(File.Exists(Path.Combine(invalidRoot, identity.OwnershipKey, "metadata.tsv")));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
         public void InvalidGroupColorIsRejected()
         {
             Assert.Throws<ArgumentException>(() => new EntityMetadataGroup("g", "Group", 0, "not-a-color", false));

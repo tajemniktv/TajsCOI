@@ -13,6 +13,9 @@ native save window, resolver lifecycle, or real entity IDs:
   verified physical lineage keeps the policy/group state.
 - Delete a save, recreate the same name, and verify the recreated save starts
   clean even if entity IDs are reused.
+- If the optional identity-registry root is unavailable, verify the game still
+  loads and accepts edits for the current session, while the feature status/log
+  reports that the binding is not durable across restart.
 - Place a legacy name-based overclock sidecar in the old location. Verify it is
   reported as untrusted, left unchanged, and not imported automatically.
 - Pause and resume with Auto enabled, then test a very low and very high

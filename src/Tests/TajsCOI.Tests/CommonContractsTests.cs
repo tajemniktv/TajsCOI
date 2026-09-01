@@ -4,7 +4,9 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
+using System.Text;
 using TajsCOI.Common.Build;
 using TajsCOI.Common.Compatibility;
 using TajsCOI.Common.Persistence;
@@ -90,7 +92,11 @@ namespace TajsCOI.Tests
                 Directory.CreateDirectory(root);
                 File.WriteAllBytes(original, new byte[] { 1, 2, 3 });
                 var registry = new TajsSaveIdentityRegistry(Path.Combine(root, "sidecars"));
-                TajsSaveIdentity first = registry.Resolve(original, "world")!;
+                TajsSaveIdentityBindingResult firstBinding = registry.ResolveDetailed(original, "world");
+                Assert.Equal(
+                    TajsSaveIdentityBindingStatus.IdentityResolvedAndBindingPersisted,
+                    firstBinding.Status);
+                TajsSaveIdentity first = firstBinding.Identity!;
 
                 File.Move(original, renamed);
                 TajsSaveIdentity renamedRaw = TajsSaveIdentity.FromFile(renamed, "world")!;
@@ -101,6 +107,121 @@ namespace TajsCOI.Tests
                 File.Copy(renamed, copy);
                 TajsSaveIdentity copied = registry.Rebind(copy, "world", renamedIdentity)!;
                 Assert.NotEqual(first.OwnershipKey, copied.OwnershipKey);
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void SaveIdentityRegistryReportsWriteFailureWithoutCrossContamination()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-SaveIdentityFailure-" + Guid.NewGuid().ToString("N"));
+            string original = Path.Combine(root, "original.save");
+            string copy = Path.Combine(root, "copy.save");
+            string invalidRegistryRoot = Path.Combine(root, "registry-root");
+            var diagnostics = new System.Collections.Generic.List<string>();
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(original, new byte[] { 1, 2, 3 });
+                File.Copy(original, copy);
+                File.WriteAllText(invalidRegistryRoot, "a file, not a directory");
+
+                var registry = new TajsSaveIdentityRegistry(invalidRegistryRoot, diagnostics.Add);
+                TajsSaveIdentityBindingResult first = registry.ResolveDetailed(original, "world");
+                TajsSaveIdentityBindingResult second = registry.ResolveDetailed(copy, "world");
+
+                Assert.Equal(
+                    TajsSaveIdentityBindingStatus.IdentityUsableForSessionBindingPersistenceFailed,
+                    first.Status);
+                Assert.True(first.IsUsableForSession);
+                Assert.False(first.IsBindingPersisted);
+                Assert.Equal(first.Status, second.Status);
+                Assert.NotEqual(first.Identity!.OwnershipKey, second.Identity!.OwnershipKey);
+                Assert.Single(diagnostics);
+
+                TajsSaveIdentityBindingResult rebound = registry.RebindDetailed(original, "world", first.Identity);
+                Assert.Equal(
+                    TajsSaveIdentityBindingStatus.IdentityUsableForSessionBindingPersistenceFailed,
+                    rebound.Status);
+                Assert.Equal(first.Identity.OwnershipKey, rebound.Identity!.OwnershipKey);
+                Assert.Single(diagnostics);
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void SaveIdentityRegistryFailsClosedOnInvalidRegistryData()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-SaveIdentityAmbiguous-" + Guid.NewGuid().ToString("N"));
+            string savePath = Path.Combine(root, "slot.save");
+            string registryRoot = Path.Combine(root, "sidecars");
+            string registryPath = Path.Combine(registryRoot, "_identity-bindings.tsv");
+            try
+            {
+                Directory.CreateDirectory(registryRoot);
+                File.WriteAllBytes(savePath, new byte[] { 1, 2, 3 });
+                File.WriteAllText(registryPath, "not-a-registry");
+                var registry = new TajsSaveIdentityRegistry(registryRoot);
+
+                TajsSaveIdentityBindingResult result = registry.ResolveDetailed(savePath, "world");
+
+                Assert.Equal(TajsSaveIdentityBindingStatus.IdentityAmbiguous, result.Status);
+                Assert.False(result.IsUsableForSession);
+                Assert.NotNull(result.Identity);
+                Assert.Equal("not-a-registry", File.ReadAllText(registryPath));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void SaveIdentityRegistryReadsAndUpgradesExistingV1Bindings()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-SaveIdentityV1-" + Guid.NewGuid().ToString("N"));
+            string savePath = Path.Combine(root, "slot.save");
+            string registryPath = Path.Combine(root, "_identity-bindings.tsv");
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(savePath, new byte[] { 1, 2, 3 });
+                TajsSaveIdentity raw = TajsSaveIdentity.FromFile(savePath, "world")!;
+                File.WriteAllLines(
+                    registryPath,
+                    new[]
+                    {
+                        "TajsSaveIdentityRegistryV1",
+                        string.Join(
+                            "\t",
+                            "B",
+                            Convert.ToBase64String(Encoding.UTF8.GetBytes(raw.PhysicalPath!)),
+                            Convert.ToBase64String(Encoding.UTF8.GetBytes("world")),
+                            Convert.ToBase64String(Encoding.UTF8.GetBytes(raw.PhysicalKey)),
+                            Convert.ToBase64String(Encoding.UTF8.GetBytes(raw.OwnershipKey)))
+                    });
+
+                var registry = new TajsSaveIdentityRegistry(root);
+                TajsSaveIdentityBindingResult result = registry.ResolveDetailed(savePath, "world");
+
+                Assert.Equal(TajsSaveIdentityBindingStatus.IdentityResolvedAndBindingPersisted, result.Status);
+                Assert.Equal(raw.OwnershipKey, result.Identity!.OwnershipKey);
+                Assert.Equal("TajsSaveIdentityRegistryV2", File.ReadLines(registryPath).First());
             }
             finally
             {

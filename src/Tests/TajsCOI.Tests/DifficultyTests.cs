@@ -9,6 +9,7 @@ using System.Linq;
 using Mafi;
 using Mafi.Core;
 using Mafi.Core.Game;
+using TajsCOI.Common.Persistence;
 using TajsCOI.Tweaks.Features.Difficulty;
 using Xunit;
 using XAssert = Xunit.Assert;
@@ -306,6 +307,45 @@ namespace TajsCOI.Tests
                 XAssert.True(store.IsBaselineAvailable);
                 XAssert.NotNull(store.IdentityFingerprint);
                 XAssert.True(File.Exists(Path.Combine(root, "sidecars", store.IdentityFingerprint!, "state.txt")));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+        }
+
+        [Fact]
+        public void RegistryWriteFailureLeavesDifficultyBaselineAvailableOnlyForThisSession()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TajsCOI-DifficultyFailure-" + Guid.NewGuid().ToString("N"));
+            string savePath = Path.Combine(root, "slot.save");
+            string invalidRoot = Path.Combine(root, "sidecars-file");
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(savePath, new byte[] { 1, 2, 3 });
+                Directory.CreateDirectory(invalidRoot);
+                Directory.CreateDirectory(Path.Combine(invalidRoot, "_identity-bindings.tsv"));
+                TajsDifficultySaveIdentity identity = TajsDifficultySaveIdentity.FromSavePath(savePath, "world")!;
+                var current = (GameDifficultyConfig)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(GameDifficultyConfig));
+                var store = new TajsDifficultyStateStore(invalidRoot);
+                store.LoadOrCapture(
+                    identity,
+                    "world",
+                    current,
+                    new Dictionary<string, System.Reflection.PropertyInfo>(StringComparer.Ordinal));
+
+                XAssert.Equal(
+                    TajsSaveIdentityBindingStatus.IdentityUsableForSessionBindingPersistenceFailed,
+                    store.IdentityBindingStatus);
+                XAssert.True(store.IsBaselineAvailable);
+                XAssert.Contains("persistence failed", store.BaselineStatus, StringComparison.OrdinalIgnoreCase);
+                XAssert.True(store.RebindAfterSave(savePath, "world"));
+                XAssert.True(store.IsBaselineAvailable);
+                XAssert.True(File.Exists(Path.Combine(invalidRoot, identity.OwnershipKey, "state.txt")));
             }
             finally
             {

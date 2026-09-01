@@ -213,6 +213,49 @@ namespace TajsCOI.Common.Persistence
         }
     }
 
+    public enum TajsSaveIdentityBindingStatus
+    {
+        IdentityUnavailable,
+        IdentityAmbiguous,
+        IdentityResolvedAndBindingPersisted,
+        IdentityUsableForSessionBindingPersistenceFailed
+    }
+
+    /// <summary>
+    ///     Result of reconciling a physical save with the optional binding registry. The
+    ///     identity is retained for diagnostics and current-session use even when the registry
+    ///     could not be persisted; callers must inspect <see cref="Status" /> before treating it
+    ///     as durable.
+    /// </summary>
+    public sealed class TajsSaveIdentityBindingResult
+    {
+        internal TajsSaveIdentityBindingResult(
+            TajsSaveIdentity? identity,
+            TajsSaveIdentityBindingStatus status,
+            string? failureReason = null)
+        {
+            Identity = identity;
+            Status = status;
+            FailureReason = failureReason ?? string.Empty;
+        }
+
+        public TajsSaveIdentity? Identity { get; }
+
+        public TajsSaveIdentityBindingStatus Status { get; }
+
+        public string FailureReason { get; }
+
+        public bool IsUsableForSession =>
+            Identity is not null &&
+            (Status == TajsSaveIdentityBindingStatus.IdentityResolvedAndBindingPersisted ||
+             Status == TajsSaveIdentityBindingStatus.IdentityUsableForSessionBindingPersistenceFailed);
+
+        public bool IsBindingPersisted =>
+            Status == TajsSaveIdentityBindingStatus.IdentityResolvedAndBindingPersisted;
+
+        public bool IsAmbiguous => Status == TajsSaveIdentityBindingStatus.IdentityAmbiguous;
+    }
+
     /// <summary>
     ///     Reconciles mutable physical save revisions with a durable logical lineage. The
     ///     registry is optional metadata; failed reads/writes never block gameplay.
@@ -222,8 +265,11 @@ namespace TajsCOI.Common.Persistence
         private const string Header = "TajsSaveIdentityRegistryV2";
         private const string LegacyHeader = "TajsSaveIdentityRegistryV1";
         private readonly string m_path;
+        private readonly Action<string>? m_diagnostic;
+        private bool m_writeFailureReported;
+        private bool m_ambiguityReported;
 
-        public TajsSaveIdentityRegistry(string rootDirectory)
+        public TajsSaveIdentityRegistry(string rootDirectory, Action<string>? diagnostic = null)
         {
             if (string.IsNullOrWhiteSpace(rootDirectory))
             {
@@ -231,33 +277,82 @@ namespace TajsCOI.Common.Persistence
             }
 
             m_path = Path.Combine(Path.GetFullPath(rootDirectory), "_identity-bindings.tsv");
+            m_diagnostic = diagnostic;
         }
 
         public TajsSaveIdentity? Resolve(string path, string? gameName, string? displayName = null)
+            => ResolveDetailed(path, gameName, displayName).Identity;
+
+        public TajsSaveIdentity? Resolve(
+            string path,
+            string? gameName,
+            out TajsSaveIdentityBindingResult result,
+            string? displayName = null)
+        {
+            result = ResolveDetailed(path, gameName, displayName);
+            return result.Identity;
+        }
+
+        public TajsSaveIdentityBindingResult ResolveDetailed(
+            string path,
+            string? gameName,
+            string? displayName = null)
         {
             TajsSaveIdentity? raw = TajsSaveIdentity.FromFile(path, gameName, displayName);
             if (raw is null)
             {
-                return null;
+                return new TajsSaveIdentityBindingResult(
+                    null,
+                    TajsSaveIdentityBindingStatus.IdentityUnavailable,
+                    "The save file identity could not be read.");
             }
 
-            List<Binding> bindings = Read();
+            RegistryReadResult readResult = Read();
+            if (!readResult.Succeeded)
+            {
+                ReportAmbiguity(readResult.FailureReason);
+                return new TajsSaveIdentityBindingResult(
+                    raw,
+                    TajsSaveIdentityBindingStatus.IdentityAmbiguous,
+                    readResult.FailureReason);
+            }
+
+            List<Binding> bindings = readResult.Bindings;
             string canonicalPath = CanonicalPath(path);
             string game = (gameName ?? string.Empty).Trim();
-            Binding? pathBinding = bindings.FirstOrDefault(binding =>
+            List<Binding> pathBindings = bindings.Where(binding =>
                 string.Equals(binding.Path, canonicalPath, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(binding.GameName, game, StringComparison.Ordinal));
-            Binding? physicalBinding = bindings.FirstOrDefault(binding =>
+                string.Equals(binding.GameName, game, StringComparison.Ordinal)).ToList();
+            if (pathBindings.Count > 1)
+            {
+                ReportAmbiguity("The binding registry contains conflicting entries for this save path.");
+                return new TajsSaveIdentityBindingResult(
+                    raw,
+                    TajsSaveIdentityBindingStatus.IdentityAmbiguous,
+                    "The binding registry contains conflicting entries for this save path.");
+            }
+
+            Binding? pathBinding = pathBindings.SingleOrDefault();
+            List<Binding> physicalBindings = bindings.Where(binding =>
                 raw.IsStronglyVerified && !string.IsNullOrWhiteSpace(binding.RevisionKey) &&
                 string.Equals(binding.PhysicalKey, raw.PhysicalKey, StringComparison.Ordinal) &&
                 string.Equals(binding.GameName, game, StringComparison.Ordinal) &&
-                string.Equals(binding.RevisionKey, raw.RevisionKey, StringComparison.Ordinal));
+                string.Equals(binding.RevisionKey, raw.RevisionKey, StringComparison.Ordinal)).ToList();
+            if (physicalBindings.Select(binding => binding.OwnershipKey).Distinct(StringComparer.Ordinal).Count() > 1)
+            {
+                ReportAmbiguity("The binding registry contains conflicting physical-file entries for this save.");
+                return new TajsSaveIdentityBindingResult(
+                    raw,
+                    TajsSaveIdentityBindingStatus.IdentityAmbiguous,
+                    "The binding registry contains conflicting physical-file entries for this save.");
+            }
+
+            Binding? physicalBinding = physicalBindings.FirstOrDefault();
 
             if (pathBinding is not null && string.Equals(pathBinding.PhysicalKey, raw.PhysicalKey, StringComparison.Ordinal))
             {
                 pathBinding.RevisionKey = raw.RevisionKey;
-                Write(bindings);
-                return raw.WithOwnershipKey(pathBinding.OwnershipKey);
+                return PersistBinding(raw.WithOwnershipKey(pathBinding.OwnershipKey), bindings);
             }
 
             if (physicalBinding is not null)
@@ -274,8 +369,7 @@ namespace TajsCOI.Common.Persistence
                     RevisionKey = raw.RevisionKey,
                     OwnershipKey = physicalOwnership
                 });
-                Write(bindings);
-                return raw.WithOwnershipKey(physicalOwnership);
+                return PersistBinding(raw.WithOwnershipKey(physicalOwnership), bindings);
             }
 
             string ownership = raw.OwnershipKey;
@@ -291,21 +385,46 @@ namespace TajsCOI.Common.Persistence
                 RevisionKey = raw.RevisionKey,
                 OwnershipKey = ownership
             });
-            Write(bindings);
-            return raw;
+            return PersistBinding(raw, bindings);
         }
 
+        public TajsSaveIdentityBindingResult ResolveWithStatus(
+            string path,
+            string? gameName,
+            string? displayName = null) => ResolveDetailed(path, gameName, displayName);
+
         public TajsSaveIdentity? Rebind(string path, string? gameName, TajsSaveIdentity? previous, string? displayName = null)
+            => RebindDetailed(path, gameName, previous, displayName).Identity;
+
+        public TajsSaveIdentity? Rebind(
+            string path,
+            string? gameName,
+            TajsSaveIdentity? previous,
+            out TajsSaveIdentityBindingResult result,
+            string? displayName = null)
+        {
+            result = RebindDetailed(path, gameName, previous, displayName);
+            return result.Identity;
+        }
+
+        public TajsSaveIdentityBindingResult RebindDetailed(
+            string path,
+            string? gameName,
+            TajsSaveIdentity? previous,
+            string? displayName = null)
         {
             TajsSaveIdentity? raw = TajsSaveIdentity.FromFile(path, gameName, displayName);
             if (raw is null)
             {
-                return null;
+                return new TajsSaveIdentityBindingResult(
+                    null,
+                    TajsSaveIdentityBindingStatus.IdentityUnavailable,
+                    "The save file identity could not be read.");
             }
 
             if (previous is null || string.IsNullOrWhiteSpace(previous.OwnershipKey))
             {
-                return Resolve(path, gameName, displayName);
+                return ResolveDetailed(path, gameName, displayName);
             }
 
             string canonicalPath = CanonicalPath(path);
@@ -324,10 +443,46 @@ namespace TajsCOI.Common.Persistence
             // identity remains safe because samePhysicalFile is true.
             if (!samePath && !samePhysicalFile)
             {
-                return Resolve(path, gameName, displayName);
+                return ResolveDetailed(path, gameName, displayName);
             }
 
-            List<Binding> bindings = Read();
+            RegistryReadResult readResult = Read();
+            if (!readResult.Succeeded)
+            {
+                ReportAmbiguity(readResult.FailureReason);
+                return new TajsSaveIdentityBindingResult(
+                    raw,
+                    TajsSaveIdentityBindingStatus.IdentityAmbiguous,
+                    readResult.FailureReason);
+            }
+
+            List<Binding> bindings = readResult.Bindings;
+            List<Binding> pathBindings = bindings.Where(binding =>
+                string.Equals(binding.Path, canonicalPath, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(binding.GameName, game, StringComparison.Ordinal)).ToList();
+            if (pathBindings.Count > 1)
+            {
+                ReportAmbiguity("The binding registry contains conflicting entries for this save path.");
+                return new TajsSaveIdentityBindingResult(
+                    raw,
+                    TajsSaveIdentityBindingStatus.IdentityAmbiguous,
+                    "The binding registry contains conflicting entries for this save path.");
+            }
+
+            List<Binding> physicalBindings = bindings.Where(binding =>
+                raw.IsStronglyVerified && !string.IsNullOrWhiteSpace(binding.RevisionKey) &&
+                string.Equals(binding.PhysicalKey, raw.PhysicalKey, StringComparison.Ordinal) &&
+                string.Equals(binding.GameName, game, StringComparison.Ordinal) &&
+                string.Equals(binding.RevisionKey, raw.RevisionKey, StringComparison.Ordinal)).ToList();
+            if (physicalBindings.Select(binding => binding.OwnershipKey).Distinct(StringComparer.Ordinal).Count() > 1)
+            {
+                ReportAmbiguity("The binding registry contains conflicting physical-file entries for this save.");
+                return new TajsSaveIdentityBindingResult(
+                    raw,
+                    TajsSaveIdentityBindingStatus.IdentityAmbiguous,
+                    "The binding registry contains conflicting physical-file entries for this save.");
+            }
+
             // Remove stale aliases for this ownership so rename/rebind does not accumulate
             // obsolete path entries. The sidecar directory remains stable and is never moved.
             bindings.RemoveAll(binding =>
@@ -344,64 +499,110 @@ namespace TajsCOI.Common.Persistence
                 RevisionKey = raw.RevisionKey,
                 OwnershipKey = previous.OwnershipKey
             });
-            Write(bindings);
-            return raw.WithOwnershipKey(previous.OwnershipKey);
+            return PersistBinding(raw.WithOwnershipKey(previous.OwnershipKey), bindings);
         }
 
-        private List<Binding> Read()
+        public TajsSaveIdentityBindingResult RebindWithStatus(
+            string path,
+            string? gameName,
+            TajsSaveIdentity? previous,
+            string? displayName = null) => RebindDetailed(path, gameName, previous, displayName);
+
+        private TajsSaveIdentityBindingResult PersistBinding(
+            TajsSaveIdentity identity,
+            List<Binding> bindings)
+        {
+            bool persisted = Write(bindings);
+            return new TajsSaveIdentityBindingResult(
+                identity,
+                persisted
+                    ? TajsSaveIdentityBindingStatus.IdentityResolvedAndBindingPersisted
+                    : TajsSaveIdentityBindingStatus.IdentityUsableForSessionBindingPersistenceFailed,
+                persisted ? null : "The save identity binding registry could not be persisted.");
+        }
+
+        private RegistryReadResult Read()
         {
             var result = new List<Binding>();
             try
             {
                 if (!File.Exists(m_path))
                 {
-                    return result;
+                    return new RegistryReadResult(result, true, string.Empty);
                 }
 
                 string[] lines = File.ReadAllLines(m_path);
                 if (lines.Length == 0 || (!string.Equals(lines[0], Header, StringComparison.Ordinal) &&
                                          !string.Equals(lines[0], LegacyHeader, StringComparison.Ordinal)))
                 {
-                    return result;
+                    return new RegistryReadResult(
+                        result,
+                        false,
+                        "The binding registry header is missing or invalid.");
                 }
 
                 foreach (string line in lines.Skip(1))
                 {
                     string[] fields = line.Split('\t');
-                    if (fields.Length == 6 && fields[0] == "B")
+                    if (fields.Length == 6 && fields[0] == "B" &&
+                        TryDecode(fields[1], out string path) &&
+                        TryDecode(fields[2], out string gameName) &&
+                        TryDecode(fields[3], out string physicalKey) &&
+                        TryDecode(fields[4], out string revisionKey) &&
+                        TryDecode(fields[5], out string ownershipKey) &&
+                        !string.IsNullOrWhiteSpace(path) &&
+                        !string.IsNullOrWhiteSpace(revisionKey) &&
+                        !string.IsNullOrWhiteSpace(ownershipKey))
                     {
                         result.Add(new Binding
                         {
-                            Path = Decode(fields[1]),
-                            GameName = Decode(fields[2]),
-                            PhysicalKey = Decode(fields[3]),
-                            RevisionKey = Decode(fields[4]),
-                            OwnershipKey = Decode(fields[5])
+                            Path = path,
+                            GameName = gameName,
+                            PhysicalKey = physicalKey,
+                            RevisionKey = revisionKey,
+                            OwnershipKey = ownershipKey
                         });
                     }
-                    else if (fields.Length == 5 && fields[0] == "B" && lines[0] == LegacyHeader)
+                    else if (fields.Length == 5 && fields[0] == "B" && lines[0] == LegacyHeader &&
+                             TryDecode(fields[1], out string legacyPath) &&
+                             TryDecode(fields[2], out string legacyGameName) &&
+                             TryDecode(fields[3], out string legacyPhysicalKey) &&
+                             TryDecode(fields[4], out string legacyOwnershipKey) &&
+                             !string.IsNullOrWhiteSpace(legacyPath) &&
+                             !string.IsNullOrWhiteSpace(legacyOwnershipKey))
                     {
                         // V1 bindings had no revision marker. They remain readable for
                         // diagnostics but are never used for changed-path physical matching.
                         result.Add(new Binding
                         {
-                            Path = Decode(fields[1]),
-                            GameName = Decode(fields[2]),
-                            PhysicalKey = Decode(fields[3]),
-                            OwnershipKey = Decode(fields[4])
+                            Path = legacyPath,
+                            GameName = legacyGameName,
+                            PhysicalKey = legacyPhysicalKey,
+                            OwnershipKey = legacyOwnershipKey
                         });
+                    }
+                    else if (!string.IsNullOrWhiteSpace(line))
+                    {
+                        return new RegistryReadResult(
+                            result,
+                            false,
+                            "The binding registry contains a malformed entry.");
                     }
                 }
             }
-            catch
+            catch (Exception exception)
             {
                 result.Clear();
+                return new RegistryReadResult(
+                    result,
+                    false,
+                    "The binding registry could not be read (" + exception.GetType().Name + ").");
             }
 
-            return result;
+            return new RegistryReadResult(result, true, string.Empty);
         }
 
-        private void Write(List<Binding> bindings)
+        private bool Write(List<Binding> bindings)
         {
             string? temporary = null;
             try
@@ -429,9 +630,25 @@ namespace TajsCOI.Common.Persistence
                     File.Move(temporary, m_path);
                 }
                 temporary = null;
+                return true;
             }
-            catch
+            catch (Exception exception)
             {
+                if (!m_writeFailureReported)
+                {
+                    m_writeFailureReported = true;
+                    try
+                    {
+                        m_diagnostic?.Invoke(
+                            "Save identity registry persistence failed (" + exception.GetType().Name + "); " +
+                            "the identity remains usable for this session only.");
+                    }
+                    catch
+                    {
+                        // Diagnostics are optional metadata and must never affect save/load.
+                    }
+                }
+                return false;
             }
             finally
             {
@@ -442,11 +659,40 @@ namespace TajsCOI.Common.Persistence
             }
         }
 
+        private void ReportAmbiguity(string message)
+        {
+            if (m_ambiguityReported)
+            {
+                return;
+            }
+
+            m_ambiguityReported = true;
+            try
+            {
+                m_diagnostic?.Invoke(
+                    "Save identity registry is unavailable or ambiguous; sidecar ownership was left fail-closed. " +
+                    message);
+            }
+            catch
+            {
+                // Diagnostics are optional metadata and must never affect save/load.
+            }
+        }
+
         private static string CanonicalPath(string path) => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         private static string Encode(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value ?? string.Empty));
-        private static string Decode(string value)
+        private static bool TryDecode(string value, out string decoded)
         {
-            try { return Encoding.UTF8.GetString(Convert.FromBase64String(value)); } catch { return string.Empty; }
+            try
+            {
+                decoded = Encoding.UTF8.GetString(Convert.FromBase64String(value));
+                return true;
+            }
+            catch
+            {
+                decoded = string.Empty;
+                return false;
+            }
         }
 
         private sealed class Binding
@@ -456,6 +702,20 @@ namespace TajsCOI.Common.Persistence
             internal string PhysicalKey = string.Empty;
             internal string RevisionKey = string.Empty;
             internal string OwnershipKey = string.Empty;
+        }
+
+        private sealed class RegistryReadResult
+        {
+            internal RegistryReadResult(List<Binding> bindings, bool succeeded, string failureReason)
+            {
+                Bindings = bindings;
+                Succeeded = succeeded;
+                FailureReason = failureReason;
+            }
+
+            internal List<Binding> Bindings { get; }
+            internal bool Succeeded { get; }
+            internal string FailureReason { get; }
         }
     }
 }

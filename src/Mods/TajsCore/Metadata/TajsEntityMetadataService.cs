@@ -66,7 +66,7 @@ namespace TajsCOI.Core.Metadata
                 "Captain of Industry",
                 "TajsCOI",
                 "EntityMetadata");
-            m_store = new EntityMetadataStateStore(root);
+            m_store = new EntityMetadataStateStore(root, m_log);
             TajsSaveIdentity? identity = TryGetLoadedIdentity(resolver, saveManager.GameName);
             m_store.LoadIdentity(identity);
             m_saveManager.OnSaveDone += OnSaveDone;
@@ -594,6 +594,10 @@ namespace TajsCOI.Core.Metadata
                 if (!m_store.RebindIdentity(identity) || !m_store.Save())
                 {
                     m_log.Warning("Entity metadata sidecar could not be written after the native save completed.");
+                }
+                else if (!m_store.IdentityBindingPersisted)
+                {
+                    m_log.WarningOnce("Entity metadata identity was usable for this session, but its binding was not persisted; metadata may be unavailable after restart.");
                 }
             }
         }

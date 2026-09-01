@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using TajsCOI.Common.Logging;
 using TajsCOI.Common.Persistence;
 
 namespace TajsCOI.Tweaks.Features.Overclocking
@@ -57,15 +58,26 @@ namespace TajsCOI.Tweaks.Features.Overclocking
         private bool m_parseValid;
         private bool m_allowWrite;
         private bool m_persistenceBlocked;
+        private TajsSaveIdentityBindingStatus m_identityBindingStatus =
+            TajsSaveIdentityBindingStatus.IdentityUnavailable;
         private int m_nextGroupId = 1;
         private int m_selectedGroupId = -1;
 
         internal IReadOnlyDictionary<int, OverclockEntityPolicy> Entities => m_entities;
         internal IReadOnlyList<OverclockGroup> Groups => m_groups;
         internal int SelectedGroupId => m_selectedGroupId;
-        internal string LoadStatus { get; private set; } = "overclocking sidecar identity unavailable.";
+        private string m_loadStatus = "overclocking sidecar identity unavailable.";
+        internal string LoadStatus => m_loadStatus +
+            (m_identityBindingStatus == TajsSaveIdentityBindingStatus.IdentityUsableForSessionBindingPersistenceFailed
+                ? " Binding registry persistence failed; this session is not durable across restart."
+                : m_identityBindingStatus == TajsSaveIdentityBindingStatus.IdentityAmbiguous
+                    ? " Binding registry identity is ambiguous; sidecar writes are disabled."
+                    : string.Empty);
+        internal TajsSaveIdentityBindingStatus IdentityBindingStatus => m_identityBindingStatus;
+        internal bool IdentityBindingPersisted =>
+            m_identityBindingStatus == TajsSaveIdentityBindingStatus.IdentityResolvedAndBindingPersisted;
 
-        internal OverclockingStateStore(string? rootDirectory = null)
+        internal OverclockingStateStore(string? rootDirectory = null, ITajsLogger? log = null)
         {
             m_rootDirectory = string.IsNullOrWhiteSpace(rootDirectory)
                 ? Path.Combine(
@@ -74,14 +86,25 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     "TajsTweaks",
                     "Overclocking")
                 : Path.GetFullPath(rootDirectory!);
-            m_identityRegistry = new TajsSaveIdentityRegistry(m_rootDirectory);
+            m_identityRegistry = new TajsSaveIdentityRegistry(
+                m_rootDirectory,
+                message => log?.WarningOnce(message));
         }
 
         internal void LoadForSave(TajsSaveIdentity? identity, string? saveName = null)
         {
             if (identity?.PhysicalPath is string physicalPath)
             {
-                identity = m_identityRegistry.Resolve(physicalPath, identity.GameName, identity.DisplayName) ?? identity;
+                TajsSaveIdentityBindingResult binding = m_identityRegistry.ResolveDetailed(
+                    physicalPath,
+                    identity.GameName,
+                    identity.DisplayName);
+                identity = binding.Identity ?? identity;
+                m_identityBindingStatus = binding.Status;
+            }
+            else
+            {
+                m_identityBindingStatus = TajsSaveIdentityBindingStatus.IdentityUnavailable;
             }
 
             m_entities.Clear();
@@ -93,12 +116,12 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             m_identity = identity;
             m_loadedIdentityMatches = false;
             m_parseValid = true;
-            m_allowWrite = identity?.IsStronglyVerified == true;
-            m_persistenceBlocked = false;
-            m_filePath = identity?.IsStronglyVerified != true
+            m_allowWrite = CanPersistIdentity(identity);
+            m_persistenceBlocked = m_identityBindingStatus == TajsSaveIdentityBindingStatus.IdentityAmbiguous;
+            m_filePath = !CanPersistIdentity(identity)
                 ? null
-                : Path.Combine(m_rootDirectory, identity.OwnershipKey, "state.txt");
-            LoadStatus = identity is null
+                : Path.Combine(m_rootDirectory, identity!.OwnershipKey, "state.txt");
+            m_loadStatus = identity is null
                 ? "overclocking sidecar identity unavailable; policy is in memory only."
                 : identity.IsStronglyVerified
                     ? "overclocking sidecar identity verified."
@@ -108,7 +131,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             {
                 if (saveName is not null && HasLegacySidecar(saveName))
                 {
-                    LoadStatus = "overclocking sidecar unavailable: legacy name-based sidecar requires explicit recapture.";
+                    m_loadStatus = "overclocking sidecar unavailable: legacy name-based sidecar requires explicit recapture.";
                 }
                 return;
             }
@@ -124,7 +147,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                     ClearLoadedState();
                     m_allowWrite = false;
                     m_persistenceBlocked = true;
-                    LoadStatus = "overclocking sidecar unavailable: identity metadata is invalid or belongs to another save.";
+                    m_loadStatus = "overclocking sidecar unavailable: identity metadata is invalid or belongs to another save.";
                 }
             }
             catch
@@ -136,7 +159,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 m_selectedGroupId = -1;
                 m_allowWrite = false;
                 m_persistenceBlocked = true;
-                LoadStatus = "overclocking sidecar unavailable: sidecar is invalid.";
+                m_loadStatus = "overclocking sidecar unavailable: sidecar is invalid.";
             }
         }
 
@@ -157,7 +180,13 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 return false;
             }
 
-            identity = m_identityRegistry.Rebind(savePath!, gameName, m_identity, identity.DisplayName) ?? identity;
+            TajsSaveIdentityBindingResult binding = m_identityRegistry.RebindDetailed(
+                savePath!,
+                gameName,
+                m_identity,
+                identity.DisplayName);
+            identity = binding.Identity ?? identity;
+            m_identityBindingStatus = binding.Status;
 
             if (m_identity is null && m_identityKey is null)
             {
@@ -167,9 +196,11 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 m_revisionKey = identity.RevisionKey;
                 m_identity = identity;
                 m_filePath = Path.Combine(m_rootDirectory, identity.OwnershipKey, "state.txt");
-                m_allowWrite = identity.IsStronglyVerified;
-                m_persistenceBlocked = false;
-                LoadStatus = "overclocking sidecar identity verified after first save.";
+                m_allowWrite = CanPersistIdentity(identity);
+                m_persistenceBlocked = m_identityBindingStatus == TajsSaveIdentityBindingStatus.IdentityAmbiguous;
+                m_loadStatus = identity.IsStronglyVerified
+                    ? "overclocking sidecar identity verified after first save."
+                    : "overclocking sidecar identity remains unavailable after first save.";
                 Save();
                 return m_allowWrite;
             }
@@ -183,7 +214,11 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
                 m_revisionKey = identity.RevisionKey;
                 m_identity = identity;
-                m_allowWrite = identity.IsStronglyVerified;
+                m_allowWrite = CanPersistIdentity(identity);
+                if (m_identityBindingStatus == TajsSaveIdentityBindingStatus.IdentityUsableForSessionBindingPersistenceFailed)
+                {
+                    m_loadStatus = "overclocking sidecar identity resolved for this session only.";
+                }
                 Save();
                 return true;
             }
@@ -198,7 +233,7 @@ namespace TajsCOI.Tweaks.Features.Overclocking
                 m_identity = identity;
                 m_allowWrite = false;
                 m_persistenceBlocked = true;
-                LoadStatus = "overclocking sidecar unavailable: save identity collision.";
+                m_loadStatus = "overclocking sidecar unavailable: save identity collision.";
                 return false;
             }
 
@@ -209,9 +244,9 @@ namespace TajsCOI.Tweaks.Features.Overclocking
             m_identityKey = identity.OwnershipKey;
             m_revisionKey = identity.RevisionKey;
             m_identity = identity;
-            m_allowWrite = identity.IsStronglyVerified;
-            m_persistenceBlocked = false;
-            LoadStatus = "overclocking sidecar reset: save identity changed.";
+            m_allowWrite = CanPersistIdentity(identity);
+            m_persistenceBlocked = m_identityBindingStatus == TajsSaveIdentityBindingStatus.IdentityAmbiguous;
+            m_loadStatus = "overclocking sidecar reset: save identity changed.";
             return false;
         }
 
@@ -528,6 +563,10 @@ namespace TajsCOI.Tweaks.Features.Overclocking
 
             m_parseValid = false;
         }
+
+        private bool CanPersistIdentity(TajsSaveIdentity? identity) =>
+            identity?.IsStronglyVerified == true &&
+            m_identityBindingStatus != TajsSaveIdentityBindingStatus.IdentityAmbiguous;
 
         private static string Bool(bool value) => value ? "1" : "0";
         private static bool TryParseBool(string value, out bool result)

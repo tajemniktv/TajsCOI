@@ -12,6 +12,7 @@ using System.Text;
 using Mafi;
 using Mafi.Core;
 using Mafi.Core.Game;
+using TajsCOI.Common.Logging;
 using TajsCOI.Common.Persistence;
 
 namespace TajsCOI.Tweaks.Features.Difficulty
@@ -96,9 +97,11 @@ namespace TajsCOI.Tweaks.Features.Difficulty
         private TajsDifficultySaveIdentity? m_identity;
         private bool m_allowWrite;
         private bool m_baselineAvailable;
+        private TajsSaveIdentityBindingStatus m_identityBindingStatus =
+            TajsSaveIdentityBindingStatus.IdentityUnavailable;
         private string m_baselineStatus = "original-save baseline unavailable.";
 
-        internal TajsDifficultyStateStore(string? rootDirectory = null)
+        internal TajsDifficultyStateStore(string? rootDirectory = null, ITajsLogger? log = null)
         {
             m_rootDirectory = string.IsNullOrWhiteSpace(rootDirectory)
                 ? Path.Combine(
@@ -107,16 +110,28 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                     "TajsTweaks",
                     "Difficulty")
                 : Path.GetFullPath(rootDirectory!);
-            m_identityRegistry = new TajsSaveIdentityRegistry(m_rootDirectory);
+            m_identityRegistry = new TajsSaveIdentityRegistry(
+                m_rootDirectory,
+                message => log?.WarningOnce(message));
         }
 
         internal IReadOnlyDictionary<string, string> OriginalValues => m_originalValues;
 
         internal bool IsBaselineAvailable => m_baselineAvailable;
 
-        internal string BaselineStatus => m_baselineStatus;
+        internal string BaselineStatus => m_baselineStatus +
+            (m_identityBindingStatus == TajsSaveIdentityBindingStatus.IdentityUsableForSessionBindingPersistenceFailed
+                ? " Binding registry persistence failed; this session is not durable across restart."
+                : m_identityBindingStatus == TajsSaveIdentityBindingStatus.IdentityAmbiguous
+                    ? " Binding registry identity is ambiguous; sidecar writes are disabled."
+                    : string.Empty);
 
         internal string? IdentityFingerprint => m_identityFingerprint;
+
+        internal TajsSaveIdentityBindingStatus IdentityBindingStatus => m_identityBindingStatus;
+
+        internal bool IdentityBindingPersisted =>
+            m_identityBindingStatus == TajsSaveIdentityBindingStatus.IdentityResolvedAndBindingPersisted;
 
         internal void LoadOrCapture(
             TajsDifficultySaveIdentity? identity,
@@ -126,20 +141,25 @@ namespace TajsCOI.Tweaks.Features.Difficulty
         {
             if (identity?.Inner.PhysicalPath is string physicalPath)
             {
-                TajsSaveIdentity? resolved = m_identityRegistry.Resolve(
+                TajsSaveIdentityBindingResult binding = m_identityRegistry.ResolveDetailed(
                     physicalPath,
                     identity.Inner.GameName,
                     identity.Inner.DisplayName);
-                if (resolved is not null)
+                m_identityBindingStatus = binding.Status;
+                if (binding.Identity is not null)
                 {
-                    identity = TajsDifficultySaveIdentity.FromInner(resolved);
+                    identity = TajsDifficultySaveIdentity.FromInner(binding.Identity);
                 }
+            }
+            else
+            {
+                m_identityBindingStatus = TajsSaveIdentityBindingStatus.IdentityUnavailable;
             }
 
             m_originalValues.Clear();
             m_identity = identity;
             bool hasVerifiedFileIdentity = identity?.IsStronglyVerified == true;
-            m_filePath = !hasVerifiedFileIdentity
+            m_filePath = !CanPersistIdentity(identity)
                 ? null
                 : Path.Combine(m_rootDirectory, identity!.OwnershipKey, "state.txt");
             m_identityFingerprint = identity?.OwnershipKey;
@@ -178,7 +198,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 }
 
                 m_baselineAvailable = true;
-                m_allowWrite = true;
+                m_allowWrite = CanPersistIdentity(identity);
                 m_baselineStatus = identity.IsVerified
                     ? "original-save baseline identity verified."
                     : "original-save baseline loaded from metadata-only identity.";
@@ -205,7 +225,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 : identity.IsVerified
                     ? "original-save baseline captured with verified save identity."
                     : "original-save baseline captured from metadata-only identity.";
-            m_allowWrite = hasVerifiedFileIdentity;
+            m_allowWrite = CanPersistIdentity(identity);
             if (m_allowWrite)
             {
                 Save();
@@ -229,14 +249,15 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 return false;
             }
 
-            TajsSaveIdentity? rebound = m_identityRegistry.Rebind(
+            TajsSaveIdentityBindingResult binding = m_identityRegistry.RebindDetailed(
                 savePath!,
                 gameName,
                 m_identity?.Inner,
                 identity.DisplayName);
-            if (rebound is not null)
+            m_identityBindingStatus = binding.Status;
+            if (binding.Identity is not null)
             {
-                identity = TajsDifficultySaveIdentity.FromInner(rebound);
+                identity = TajsDifficultySaveIdentity.FromInner(binding.Identity);
             }
 
             if (m_identity is null && m_identityFingerprint is null)
@@ -249,7 +270,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 m_filePath = identity.IsStronglyVerified
                     ? Path.Combine(m_rootDirectory, identity.OwnershipKey, "state.txt")
                     : null;
-                m_allowWrite = identity.IsStronglyVerified;
+                m_allowWrite = CanPersistIdentity(identity);
                 m_baselineStatus = identity.IsStronglyVerified
                     ? "original-save baseline captured with verified save identity."
                     : "original-save baseline remains in memory only: verified file identity was unavailable.";
@@ -260,6 +281,7 @@ namespace TajsCOI.Tweaks.Features.Difficulty
             {
                 m_identity = identity;
                 m_revisionFingerprint = identity.RevisionKey;
+                m_allowWrite = CanPersistIdentity(identity);
                 return m_allowWrite && Save();
             }
 
@@ -518,6 +540,10 @@ namespace TajsCOI.Tweaks.Features.Difficulty
                 return false;
             }
         }
+
+        private bool CanPersistIdentity(TajsDifficultySaveIdentity? identity) =>
+            identity?.IsStronglyVerified == true &&
+            m_identityBindingStatus != TajsSaveIdentityBindingStatus.IdentityAmbiguous;
 
         private bool HasLegacySidecar(string saveName)
         {
